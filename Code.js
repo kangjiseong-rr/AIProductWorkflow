@@ -57,14 +57,14 @@ const CONFIG = {
   보고서: {
     작성기관: '한국정보통신기술협회(TTA)',
     문서번호접두: 'TTA-AI심사',          // 예: TTA-AI심사-2026-0003
-    심사근거: '',                         // 예: 'OOO법 제O조, OOO지침 제O조' (없으면 빈칸 유지)
+    심사근거: '「인공지능 발전과 신뢰 기반 조성 등에 관한 기본법」제16조제3항, ｢인공지능제품·서비스 확인 절차 운영에 관한 고시｣'                         // 예: 'OOO법 제O조, OOO지침 제O조' (없으면 빈칸 유지)
     심사방법: '제출 기술자료 검토 및 항목별 적합성 평가',
     보안등급: '대외제한',                 // 표지 표기
     책임자직위: '심사책임자',
   },
 
   // ── 심사 폼 웹앱 URL (배포 후 발급된 URL을 여기에 붙여넣기) ──
-  심사폼URL: 'https://script.google.com/a/macros/tta.or.kr/s/AKfycbwRhb_TXMfVAGOWlm8Vnh819grCD70hDyR6hGMp-TsNdA7MWjDuyID7VUDhcO1hw_Zo/exec',   // 예: 'https://script.google.com/a/macros/tta.or.kr/s/XXXX/exec'
+  심사폼URL: 'https://script.google.com/a/macros/tta.or.kr/s/AKfycby8QNKlBDDUSNEjMWsDXyLGpzeDPiN056q4hJFP0FUtj1G2fdT4u0SBJjFQbrIVEZ1yxQ/exec'
 };
 
 // 시트 이름 상수
