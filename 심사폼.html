@@ -229,8 +229,11 @@
     data.항목들.forEach(function(it, idx) {
       var sel = it.기존판정;
       html += '<div class="item" data-id="' + it.id + '" data-no="' + it.no + '">';
-      html += '  <div class="item-top"><span class="item-q">' + it.항목
-            + '</span><span class="item-no">' + it.no + '</span></div>';
+      var 방법배지 = it.방법 && it.방법 !== '-'
+        ? '<span class="readonly-badge">' + escapeHtml(it.방법) + '</span>' : '';
+      html += '  <div class="item-top"><span class="item-q">'
+            + '<b>[' + it.no + ']</b> ' + escapeHtml(it.항목) + 방법배지
+            + '</span><span class="item-no">' + escapeHtml(it.구분 || '') + '</span></div>';
       html += '  <div class="filled"><span class="tag">제출값</span>'
             + escapeHtml(it.채워진값) + '</div>';
       html += '  <div class="opts">';
@@ -247,7 +250,7 @@
 
     html += '<div class="footer">';
     html += '<span class="prog" id="prog"></span>';
-    html += '<button class="save" onclick="완료()">완료!doq  (저장 + 3종 산출)</button>';
+    html += '<button class="save" onclick="완료()">완료!  (저장 + 3종 산출)</button>';
     html += '</div>';
 
     document.getElementById('content').innerHTML = html;
