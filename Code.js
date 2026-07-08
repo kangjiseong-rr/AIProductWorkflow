@@ -323,15 +323,19 @@ function 초기설정실행() {
   일정시트.setFrozenColumns(1);  // 접수번호 고정
 
   // ── 접수대장 상태 드롭다운 ────────────────────────
+  // 하드코딩 금지 — 실제 헤더에서 '상태' 위치를 찾아서 설정
   const 대장시트 = ss.getSheetByName(SHEET.접수대장);
-  const 상태범위 = 대장시트.getRange('C2:C1000');
-  const 규칙 = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['접수', '심사중', '보완요청', '완료', '반려'], true)
-    .build();
-  상태범위.setDataValidation(규칙);
+  const 대장H = 대장시트.getRange(1, 1, 1, 대장시트.getLastColumn()).getValues()[0];
+  const 대장상태열 = 대장H.indexOf('상태') + 1;
+  if (대장상태열 > 0) {
+    const 대장상태범위 = 대장시트.getRange(2, 대장상태열, 999, 1);
+    const 대장상태규칙 = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['접수', '심사중', '보완요청', '완료', '반려'], true)
+      .build();
+    대장상태범위.setDataValidation(대장상태규칙);
+  }
 
   SpreadsheetApp.getUi().alert('초기설정 완료! 시트 7개가 생성되었습니다.');
-
 }
 
 /** 열 번호(1-based) → 알파벳 열 문자 (1→A, 27→AA) */
@@ -369,6 +373,55 @@ function _시트초기화(ss, 이름, 헤더배열) {
 }
 
 // 강제 재생성용 (정말 처음부터 다시 만들 때만 메뉴에서 호출)
+/**
+ * 헤더만 재설정 — 데이터는 유지하고 1행 헤더만 표준으로 덮어씀
+ * 기존 시트 컬럼 순서가 틀어진 경우 사용 (데이터 날아가지 않음)
+ * ※ 단, 컬럼 순서 자체를 바꾸지는 않음 — 헤더 이름만 교정
+ * 컬럼 순서까지 맞추려면 '시트 재생성'을 사용 (데이터 소실 주의)
+ */
+function 헤더만재설정() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.alert(
+    '헤더 재설정',
+    '각 시트의 1행(헤더)을 표준 컬럼명으로 덮어씁니다.\n데이터 행은 건드리지 않습니다.\n\n계속하시겠습니까?',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (res !== ui.Button.OK) return;
+
+  Object.keys(시트헤더정의).forEach(이름 => {
+    const 시트 = ss.getSheetByName(이름);
+    if (!시트) return;
+    const 헤더 = 시트헤더정의[이름];
+    시트.getRange(1, 1, 1, 헤더.length).setValues([헤더]);
+    시트.getRange(1, 1, 1, 헤더.length)
+      .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+  });
+
+  // 드롭다운·수식도 헤더 기준으로 재설정
+  try { 초기설정실행(); } catch (e) { /* 이미 시트 있으면 무시 */ }
+  ui.alert('헤더 재설정 완료. 드롭다운·수식도 갱신했습니다.');
+}
+
+/**
+ * 접수대장·일정관리 시트를 완전히 비우고 표준 헤더로 재생성
+ * ⚠️ 기존 데이터가 모두 삭제됩니다. 테스트/리셋 용도로만 사용하세요.
+ */
+function 시트재생성_데이터초기화() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.alert(
+    '⚠️ 데이터 초기화',
+    '모든 시트의 데이터가 삭제되고 표준 헤더로 재생성됩니다.\n되돌릴 수 없습니다.\n\n정말 진행하시겠습니까?',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (res !== ui.Button.OK) return;
+
+  Object.keys(시트헤더정의).forEach(이름 => _시트강제초기화(ss, 이름, 시트헤더정의[이름]));
+  초기설정실행();
+  ui.alert('재생성 완료.');
+}
+
 function _시트강제초기화(ss, 이름, 헤더배열) {
   let sheet = ss.getSheetByName(이름);
   if (!sheet) { sheet = ss.insertSheet(이름); }
@@ -1560,6 +1613,8 @@ function onOpen() {
     .addItem('📦 보고서 3종 산출 (PDF·DOCX·JSON)', '증적3종산출')
     .addSeparator()
     .addItem('⚙️ 초기 설정 (최초 1회)', '초기설정실행')
+    .addItem('🔧 헤더만 재설정 (데이터 유지)', '헤더만재설정')
+    .addItem('⚠️ 시트 재생성 (데이터 초기화)', '시트재생성_데이터초기화')
     .addItem('💬 Chat 알림 테스트', '챗알림테스트')
     .addToUi();
 }
