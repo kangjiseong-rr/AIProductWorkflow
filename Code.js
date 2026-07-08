@@ -75,6 +75,7 @@ const SHEET = {
   일정관리: '일정관리',
   로그: '파싱로그',
   체크결과: '인공지능심사체크결과',    // 체크 폼 결과 저장 (원본과 완전 분리)
+  기능확인: '인공지능기능확인',        // 심사폼 기능명세 표의 확인·비고 저장
 };
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
@@ -142,7 +143,9 @@ const 시트헤더정의 = {
   ],
   [SHEET.일정관리]: [
     // ── 일정·기한 ─────────────────────────────────
+    '순번',          // 표시용 일련번호 (자동)
     '접수번호',
+    '심사링크',      // 심사폼 바로가기 (이 시트가 워크플로우 허브)
     '신청일',        // 기산일 (신청서 원본)
     '심사접수일',    // TTA 인수일
     '마감예정일',    // 신청일 + 15일 (수식 자동 생성)
@@ -164,6 +167,9 @@ const 시트헤더정의 = {
   [SHEET.체크결과]: [
     '접수번호', '항목ID', '항목번호', '체크항목',
     '판정', '사유', '심사원', '검토일시',
+  ],
+  [SHEET.기능확인]: [
+    '접수번호', 'ID', '기능번호', '기능명', '확인', '비고', '심사원', '검토일시',
   ],
 };
 
@@ -278,7 +284,6 @@ function 초기설정실행() {
   // ── 일정관리 시트 후처리 ─────────────────────────────
   const 일정시트 = ss.getSheetByName(SHEET.일정관리);
   const 일정H = 시트헤더정의[SHEET.일정관리];
-  const iD신청 = 일정H.indexOf('신청일') + 1;
   const iD마감 = 일정H.indexOf('마감예정일') + 1;
   const iD상태 = 일정H.indexOf('상태') + 1;
   const 끝열문자 = columnLetter(일정H.length);
@@ -314,11 +319,11 @@ function 초기설정실행() {
 
   일정시트.setConditionalFormatRules([빨강, 주황]);
 
-  // 열 너비 (픽셀)
-  const 일정너비 = [100, 90, 90, 90, 70, 90, 150, 80, 110, 170, 160, 220, 110, 80, 250, 250, 90, 70, 130, 55];
+  // 열 너비 (픽셀) — 22개 컬럼 (순번·심사링크 포함)
+  const 일정너비 = [45, 100, 60, 90, 90, 90, 70, 90, 150, 80, 110, 170, 160, 220, 110, 80, 250, 250, 90, 70, 130, 55];
   일정너비.forEach((w, i) => { if (i < 일정H.length) 일정시트.setColumnWidth(i + 1, w); });
   일정시트.setFrozenRows(1);
-  일정시트.setFrozenColumns(1);  // 접수번호 고정
+  일정시트.setFrozenColumns(2);  // 순번 + 접수번호 고정
 
   // ── 접수대장 상태 드롭다운 ────────────────────────
   // 하드코딩 금지 — 실제 헤더에서 '상태' 위치를 찾아서 설정
@@ -846,6 +851,17 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
 
   // 각 컬럼별 값/수식 생성
   const 행값 = 일정H.map(h => {
+    // 0) 순번 = 헤더 제외한 현재 행 위치 (새행번호 - 1)
+    if (h === '순번') return 새행번호 - 1;
+
+    // 0-1) 심사링크 = 심사폼 URL + 접수번호 (CONFIG.심사폼URL 있을 때만)
+    if (h === '심사링크') {
+      const url = (CONFIG.심사폼URL || '').trim();
+      if (!url) return '';
+      const 건URL = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(접수번호);
+      return `=HYPERLINK("${건URL}","▶ 심사")`;
+    }
+
     // 1) 직접 입력값 (상태·담당심사원·신청일·심사접수일)
     if (h === '접수번호') return 접수번호;
     if (h === '상태') return '대기';
@@ -860,7 +876,6 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
 
     // 3) 기타제출서류여부 = 접수대장의 파일명 있으면 Y
     if (h === '기타제출서류여부') {
-      const 콜 = _대장열문자('기타제출서류파일명', 대장H);
       return `=IF(VLOOKUP($${접수열문자}${새행번호},${대장범위},${_대장열번호('기타제출서류파일명', 대장H)},0)="","","Y")`;
     }
 
@@ -1690,11 +1705,18 @@ function 심사폼열기() {
   let 최종URL = url;
   try {
     const 시트 = SpreadsheetApp.getActiveSheet();
-    if (시트.getName() === SHEET.접수대장) {
+    const 시트명 = 시트.getName();
+    // 메인 시트(일정관리) 또는 접수대장에서 활성 행의 접수번호를 읽음
+    if (시트명 === SHEET.일정관리 || 시트명 === SHEET.접수대장) {
       const 행 = 시트.getActiveRange().getRow();
       if (행 > 1) {
-        const 접수번호 = 시트.getRange(행, 1).getValue();
-        if (접수번호) 최종URL = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(접수번호);
+        // 두 시트 모두 접수번호가 있는 열을 헤더에서 찾아서 사용
+        const H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0];
+        const iNo = H.indexOf('접수번호');
+        if (iNo >= 0) {
+          const 접수번호 = 시트.getRange(행, iNo + 1).getValue();
+          if (접수번호) 최종URL = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(접수번호);
+        }
       }
     }
   } catch (e) {}
@@ -1714,7 +1736,7 @@ function 심사링크채우기() {
   if (!url) { SpreadsheetApp.getUi().alert('CONFIG.심사폼URL을 먼저 설정하세요.'); return; }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getSheetByName(SHEET.접수대장);
+  const 시트 = ss.getSheetByName(SHEET.일정관리);  // 메인 시트
   const D = 시트.getDataRange().getValues();
   const H = D[0];
   let i링크 = H.indexOf('심사링크');
@@ -1732,7 +1754,7 @@ function 심사링크채우기() {
     시트.getRange(r + 1, i링크 + 1)
       .setFormula(`=HYPERLINK("${건URL}","▶ 심사")`);
   }
-  SpreadsheetApp.getUi().alert('각 행에 "심사" 링크를 채웠습니다. 클릭하면 해당 건 심사 폼이 열립니다.');
+  SpreadsheetApp.getUi().alert('일정관리 시트 각 행에 "심사" 링크를 채웠습니다. 클릭하면 해당 건 심사 폼이 열립니다.');
 }
 
 
@@ -1893,6 +1915,36 @@ function 웹_체크폼데이터(접수번호) {
     기존사유: 기존체크[정의.id] ? 기존체크[정의.id].사유 : '',
   }));
 
+  // 5) 기능명세 표용 데이터 (ID = 접수번호-기능번호, 증빙 캡처 파일명으로 사용)
+  const 기존기능확인 = 웹_기능확인조회(접수번호);
+  const 기능표 = 기능목록.map((f, idx) => {
+    const ID = `${접수번호}-F${String(f['기능번호'] || (idx + 1)).padStart(2, '0')}`;
+    return {
+      ID: ID,
+      기능번호: f['기능번호'] || (idx + 1),
+      기능명: f['기능명'] || '',
+      인공지능역할: f['인공지능역할'] || '',
+      입력: f['입력'] || '',
+      출력: f['출력'] || '',
+      구현방식: f['구현방식'] || '',
+      설명서참조위치: f['설명서참조위치'] || '',
+      확인: 기존기능확인[ID] ? (기존기능확인[ID].확인 === 'Y') : false,
+      비고: 기존기능확인[ID] ? 기존기능확인[ID].비고 : '',
+    };
+  });
+  // 기타 행 (ID = 접수번호-ETC)
+  const 기타ID = `${접수번호}-ETC`;
+  const 기타행 = {
+    ID: 기타ID,
+    기능번호: '',
+    기능명: '기타',
+    인공지능역할: '', 입력: '', 출력: '', 구현방식: '', 설명서참조위치: '',
+    확인: 기존기능확인[기타ID] ? (기존기능확인[기타ID].확인 === 'Y') : false,
+    비고: 기존기능확인[기타ID] ? 기존기능확인[기타ID].비고 : '',
+    기타: true,
+  };
+  기능표.push(기타행);
+
   return {
     접수번호: 접수번호,
     제품명: 건['제품명'],
@@ -1900,6 +1952,7 @@ function 웹_체크폼데이터(접수번호) {
     담당심사원: 건['담당심사원'],
     상태: 건['상태'],
     항목들: 항목들,
+    기능표: 기능표,
   };
 }
 
@@ -2001,6 +2054,78 @@ function 웹_체크결과저장(접수번호, results, 심사원) {
     _상태업데이트(ss, 접수번호, '심사중');
 
     return { ok: true, saved: results.length, time: 시각 };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 기능확인 시트 확보 */
+function _기능확인시트확보(ss) {
+  let 시트 = ss.getSheetByName(SHEET.기능확인);
+  if (!시트) {
+    시트 = ss.insertSheet(SHEET.기능확인);
+    const 헤더 = 시트헤더정의[SHEET.기능확인];
+    시트.getRange(1, 1, 1, 헤더.length).setValues([헤더])
+      .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+    시트.setFrozenRows(1);
+  }
+  return 시트;
+}
+
+/** 웹앱: 기능명세 표의 확인·비고 조회 (이어서 검토 가능) */
+function 웹_기능확인조회(접수번호) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = _기능확인시트확보(ss);
+  const out = {};
+  if (시트.getLastRow() < 2) return out;
+  const D = 시트.getDataRange().getValues();
+  const H = D[0];
+  D.slice(1).forEach(r => {
+    if (r[H.indexOf('접수번호')] === 접수번호) {
+      out[r[H.indexOf('ID')]] = {
+        확인: r[H.indexOf('확인')],
+        비고: r[H.indexOf('비고')],
+      };
+    }
+  });
+  return out;
+}
+
+/**
+ * 웹앱: 기능명세 표 확인·비고 저장 (기타 행 포함)
+ * items = [{ ID, 기능번호, 기능명, 확인(true/false), 비고 }, ...]
+ * '기타' 항목은 ID = 접수번호 + '-ETC' 로 저장됨
+ */
+function 웹_기능확인저장(접수번호, items, 심사원) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const 시트 = _기능확인시트확보(ss);
+    const D = 시트.getDataRange().getValues();
+    const H = D[0];
+    const iNo = H.indexOf('접수번호');
+    const iId = H.indexOf('ID');
+
+    const 기존행 = {};
+    for (let r = 1; r < D.length; r++) {
+      if (D[r][iNo] === 접수번호) 기존행[D[r][iId]] = r + 1;
+    }
+
+    const 시각 = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+    (items || []).forEach(it => {
+      const 행값 = [
+        접수번호, it.ID, it.기능번호 || '', it.기능명 || '',
+        it.확인 ? 'Y' : '', it.비고 || '', 심사원 || '', 시각,
+      ];
+      if (기존행[it.ID]) {
+        시트.getRange(기존행[it.ID], 1, 1, 행값.length).setValues([행값]);
+      } else {
+        시트.appendRow(행값);
+      }
+    });
+
+    return { ok: true, saved: (items || []).length, time: 시각 };
   } finally {
     lock.releaseLock();
   }

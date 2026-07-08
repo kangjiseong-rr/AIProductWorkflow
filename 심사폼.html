@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root {
+    --blue: #1a73e8; --blue-bg: #e8f0fe;
+    --green: #137333; --green-bg: #e6f4ea;
+    --red: #c5221f; --red-bg: #fce8e6;
+    --amber: #e37400; --amber-bg: #fef7e0;
+    --gray-line: #dadce0; --gray-bg: #f8f9fa;
+    --text: #202124; --text-sub: #5f6368;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", Roboto, sans-serif;
+    margin: 0; background: #f1f3f4; color: var(--text);
+    font-size: 14px; line-height: 1.5;
+  }
+  .container { max-width: 900px; margin: 0 auto; padding: 16px; }
+  .header {
+    background: #fff; border-radius: 12px; padding: 16px 20px;
+    margin-bottom: 14px; border: 1px solid var(--gray-line);
+  }
+  .header h1 { font-size: 17px; margin: 0 0 8px; font-weight: 600; }
+  .header .meta { font-size: 13px; color: var(--text-sub); }
+  .picker { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  select, button {
+    font-family: inherit; font-size: 14px; padding: 8px 12px;
+    border-radius: 8px; border: 1px solid var(--gray-line); background: #fff;
+  }
+  select { flex: 1; min-width: 200px; }
+  .section-title {
+    font-size: 15px; font-weight: 700; margin: 22px 4px 10px;
+    color: var(--text); display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .badge {
+    font-size: 11px; font-weight: 600; color: var(--blue);
+    background: var(--blue-bg); border-radius: 10px; padding: 2px 9px;
+  }
+  .item {
+    background: #fff; border: 1px solid var(--gray-line);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 12px;
+  }
+  .item-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .item-q { font-size: 14px; font-weight: 500; flex: 1; }
+  .item-no { font-size: 12px; color: var(--text-sub); font-family: monospace; flex-shrink: 0; }
+  .filled {
+    background: var(--gray-bg); border: 1px solid var(--gray-line);
+    border-radius: 8px; padding: 9px 12px; font-size: 13px;
+    color: var(--text-sub); margin-bottom: 12px; word-break: break-word;
+  }
+  .filled .tag { font-size: 11px; color: var(--blue); font-weight: 600; margin-right: 4px; }
+  .opts { display: flex; gap: 8px; }
+  .opt {
+    flex: 1; text-align: center; font-size: 13px; padding: 9px 0;
+    border-radius: 8px; border: 1px solid var(--gray-line);
+    cursor: pointer; background: #fff; color: var(--text-sub);
+    user-select: none; transition: all .12s;
+  }
+  .opt:hover { background: var(--gray-bg); }
+  .opt.sel-ok  { background: var(--green-bg); color: var(--green); border-color: var(--green); font-weight: 600; }
+  .opt.sel-mid { background: var(--amber-bg); color: var(--amber); border-color: var(--amber); font-weight: 600; }
+  .opt.sel-no  { background: var(--red-bg);   color: var(--red);   border-color: var(--red);   font-weight: 600; }
+  .note {
+    width: 100%; margin-top: 10px; font-family: inherit; font-size: 13px;
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--gray-line);
+    resize: vertical; min-height: 36px; display: none;
+  }
+  .note.show { display: block; }
+
+  /* 기능명세 표 */
+  .spec-wrap { background:#fff; border:1px solid var(--gray-line); border-radius:12px; padding:6px; overflow-x:auto; }
+  table.spec { width:100%; border-collapse:collapse; font-size:13px; }
+  table.spec th, table.spec td { border:1px solid var(--gray-line); padding:8px 10px; vertical-align:top; text-align:left; }
+  table.spec th { background:var(--gray-bg); font-weight:600; color:var(--text-sub); white-space:nowrap; }
+  table.spec td.id { font-family:monospace; font-size:12px; color:var(--blue); white-space:nowrap; }
+  table.spec td.center { text-align:center; }
+  table.spec tr.etc td { background:#fffdf5; }
+  table.spec input[type=checkbox] { width:18px; height:18px; cursor:pointer; }
+  table.spec textarea.bigo {
+    width:100%; min-width:120px; font-family:inherit; font-size:12px;
+    border:1px solid var(--gray-line); border-radius:6px; padding:5px 7px; resize:vertical; min-height:32px;
+  }
+  table.spec .fn-name { font-weight:600; color:var(--text); }
+  table.spec .fn-sub { font-size:12px; color:var(--text-sub); margin-top:3px; }
+
+  .footer {
+    position: sticky; bottom: 0; background: #fff;
+    border: 1px solid var(--gray-line); border-radius: 12px;
+    padding: 14px 18px; margin-top: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .prog { font-size: 13px; color: var(--text-sub); }
+  .save {
+    background: var(--blue); color: #fff; border: none; font-weight: 600;
+    padding: 10px 20px; cursor: pointer;
+  }
+  .save:disabled { opacity: .5; cursor: default; }
+  .loading, .empty { text-align: center; padding: 40px 20px; color: var(--text-sub); }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #202124; color: #fff; padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+  .readonly-badge {
+    display: inline-block; font-size: 11px; background: var(--gray-bg);
+    color: var(--text-sub); padding: 2px 8px; border-radius: 10px;
+    border: 1px solid var(--gray-line); margin-left: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="picker">
+    <select id="picker" onchange="onPick()">
+      <option value="">— 심사 대상 선택 —</option>
+    </select>
+    <button onclick="reload()">새로고침</button>
+  </div>
+
+  <div id="content">
+    <div class="loading">목록을 불러오는 중…</div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  var 현재데이터 = null;
+  var 초기접수번호 = '<?= 초기접수번호 ?>';
+
+  function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  }
+
+  function 목록로드() {
+    google.script.run.withSuccessHandler(function(list) {
+      var sel = document.getElementById('picker');
+      sel.innerHTML = '<option value="">— 심사 대상 선택 —</option>';
+      list.forEach(function(item) {
+        var o = document.createElement('option');
+        o.value = item.접수번호;
+        o.textContent = item.접수번호 + '  ·  ' + item.제품명 + ' (' + item.기업명 + ')'
+          + (item.상태 ? '  [' + item.상태 + ']' : '');
+        sel.appendChild(o);
+      });
+      if (초기접수번호) { sel.value = 초기접수번호; onPick(); }
+      else if (list.length === 0) {
+        document.getElementById('content').innerHTML =
+          '<div class="empty">등록된 심사 건이 없습니다.<br>먼저 엑셀을 등록해주세요.</div>';
+      } else {
+        document.getElementById('content').innerHTML =
+          '<div class="empty">위에서 심사 대상을 선택하세요.</div>';
+      }
+    }).withFailureHandler(function(err) {
+      document.getElementById('content').innerHTML =
+        '<div class="empty">목록 로드 실패: ' + err.message + '</div>';
+    }).웹_접수목록조회();
+  }
+
+  function onPick() {
+    var id = document.getElementById('picker').value;
+    if (!id) return;
+    document.getElementById('content').innerHTML = '<div class="loading">불러오는 중…</div>';
+    google.script.run.withSuccessHandler(렌더).withFailureHandler(function(err){
+      document.getElementById('content').innerHTML =
+        '<div class="empty">로드 실패: ' + err.message + '</div>';
+    }).웹_체크폼데이터(id);
+  }
+
+  function reload() { 목록로드(); }
+
+  function 렌더(data) {
+    if (data.error) {
+      document.getElementById('content').innerHTML = '<div class="empty">' + data.error + '</div>';
+      return;
+    }
+    현재데이터 = data;
+
+    var html = '';
+    html += '<div class="header">';
+    html += '<h1>기술심사 체크리스트 — ' + data.접수번호
+          + '<span class="readonly-badge">원본 읽기전용</span></h1>';
+    html += '<div class="meta">' + data.제품명 + ' · ' + data.기업명
+          + ' · 담당 ' + (data.담당심사원 || '-') + '</div>';
+    html += '</div>';
+
+    // ── 기능명세 확인 표 ──
+    html += '<div class="section-title">인공지능 기능 명세 확인 '
+          + '<span class="badge">증빙 ID = 캡처 파일명</span></div>';
+    html += '<div class="spec-wrap"><table class="spec">';
+    html += '<thead><tr>'
+          + '<th>ID</th><th>기능명 / 상세</th><th>구현방식</th>'
+          + '<th style="text-align:center">확인</th><th>비고</th>'
+          + '</tr></thead><tbody>';
+    (data.기능표 || []).forEach(function(f, i) {
+      var etc = f.기타 ? ' etc' : '';
+      html += '<tr class="' + etc + '" data-fid="' + escapeHtml(f.ID) + '" data-fnum="'
+            + escapeHtml(String(f.기능번호)) + '" data-fname="' + escapeHtml(f.기능명) + '">';
+      html += '<td class="id">' + escapeHtml(f.ID) + '</td>';
+      if (f.기타) {
+        html += '<td class="fn-name">기타 <span class="fn-sub">(표에 없는 추가 확인 사항)</span></td>';
+        html += '<td class="center">-</td>';
+      } else {
+        html += '<td><div class="fn-name">' + escapeHtml(f.기능명) + '</div>'
+              + '<div class="fn-sub">역할: ' + escapeHtml(f.인공지능역할 || '-') + '</div>'
+              + '<div class="fn-sub">입력: ' + escapeHtml(f.입력 || '-')
+              + ' / 출력: ' + escapeHtml(f.출력 || '-') + '</div>'
+              + (f.설명서참조위치 ? '<div class="fn-sub">설명서: ' + escapeHtml(f.설명서참조위치) + '</div>' : '')
+              + '</td>';
+        html += '<td class="center">' + escapeHtml(f.구현방식 || '-') + '</td>';
+      }
+      html += '<td class="center"><input type="checkbox" class="chk"'
+            + (f.확인 ? ' checked' : '') + '></td>';
+      html += '<td><textarea class="bigo" placeholder="비고">' + escapeHtml(f.비고 || '') + '</textarea></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+
+    // ── 항목별 판정 ──
+    html += '<div class="section-title">심사 항목 판정</div>';
+    data.항목들.forEach(function(it, idx) {
+      var sel = it.기존판정;
+      html += '<div class="item" data-id="' + it.id + '" data-no="' + it.no + '">';
+      html += '  <div class="item-top"><span class="item-q">' + it.항목
+            + '</span><span class="item-no">' + it.no + '</span></div>';
+      html += '  <div class="filled"><span class="tag">제출값</span>'
+            + escapeHtml(it.채워진값) + '</div>';
+      html += '  <div class="opts">';
+      html += optBtn(idx, '적합', sel);
+      html += optBtn(idx, '보완', sel);
+      html += optBtn(idx, '부적합', sel);
+      html += '  </div>';
+      var showNote = (sel === '보완' || sel === '부적합');
+      html += '  <textarea class="note' + (showNote ? ' show' : '')
+            + '" data-idx="' + idx + '" placeholder="사유 / 보완 요청 내용">'
+            + escapeHtml(it.기존사유 || '') + '</textarea>';
+      html += '</div>';
+    });
+
+    html += '<div class="footer">';
+    html += '<span class="prog" id="prog"></span>';
+    html += '<button class="save" onclick="완료()">완료!doq  (저장 + 3종 산출)</button>';
+    html += '</div>';
+
+    document.getElementById('content').innerHTML = html;
+    갱신진행률();
+  }
+
+  function optBtn(idx, label, sel) {
+    var cls = 'opt';
+    if (sel === label) {
+      cls += label === '적합' ? ' sel-ok' : (label === '보완' ? ' sel-mid' : ' sel-no');
+    }
+    return '<div class="' + cls + '" data-idx="' + idx + '" data-val="' + label
+      + '" onclick="선택(this)">' + label + '</div>';
+  }
+
+  function 선택(el) {
+    var parent = el.parentNode;
+    var idx = el.getAttribute('data-idx');
+    var val = el.getAttribute('data-val');
+    Array.prototype.forEach.call(parent.children, function(c) {
+      c.className = 'opt';
+    });
+    el.className = 'opt ' + (val === '적합' ? 'sel-ok' : (val === '보완' ? 'sel-mid' : 'sel-no'));
+
+    var note = document.querySelector('textarea.note[data-idx="' + idx + '"]');
+    if (val === '보완' || val === '부적합') note.classList.add('show');
+    else note.classList.remove('show');
+    갱신진행률();
+  }
+
+  function 갱신진행률() {
+    var items = document.querySelectorAll('.item');
+    var done = document.querySelectorAll('.opt.sel-ok, .opt.sel-mid, .opt.sel-no').length;
+    var prog = document.getElementById('prog');
+    if (prog) prog.textContent = done + ' / ' + items.length + ' 항목 검토됨';
+  }
+
+  function 완료() {
+    if (!현재데이터) return;
+    var btn = document.querySelector('.save');
+
+    // 1) 체크 결과 수집
+    var results = [];
+    document.querySelectorAll('.item').forEach(function(item) {
+      var sel = item.querySelector('.opt.sel-ok, .opt.sel-mid, .opt.sel-no');
+      if (!sel) return;
+      var note = item.querySelector('textarea.note');
+      results.push({
+        id: item.getAttribute('data-id'),
+        no: item.getAttribute('data-no'),
+        항목: item.querySelector('.item-q').textContent,
+        판정: sel.getAttribute('data-val'),
+        사유: note ? note.value : ''
+      });
+    });
+
+    // 1-2) 기능명세 표 확인·비고 수집 (기타 행 포함)
+    var 기능확인 = [];
+    document.querySelectorAll('table.spec tbody tr').forEach(function(tr) {
+      var chk = tr.querySelector('input.chk');
+      var bigo = tr.querySelector('textarea.bigo');
+      기능확인.push({
+        ID: tr.getAttribute('data-fid'),
+        기능번호: tr.getAttribute('data-fnum'),
+        기능명: tr.getAttribute('data-fname'),
+        확인: chk ? chk.checked : false,
+        비고: bigo ? bigo.value : ''
+      });
+    });
+
+    if (results.length === 0 && 기능확인.length === 0) {
+      showToast('검토한 항목이 없습니다');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '저장 중…';
+
+    // 2) 체크결과 저장 → 기능확인 저장 → 3종 산출 (순차 보장)
+    google.script.run.withSuccessHandler(function(res) {
+      google.script.run.withSuccessHandler(function() {
+        btn.textContent = '3종 산출 중… (10초 내외)';
+        google.script.run.withSuccessHandler(function(out) {
+          btn.disabled = false;
+          btn.textContent = '완료!  (저장 + 3종 산출)';
+          showToast('완료 — 저장 ' + res.saved + '건 · PDF·DOCX·JSON 산출됨');
+          window.open(out.folderUrl, '_blank');
+        }).withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = '완료!  (저장 + 3종 산출)';
+          showToast('저장은 됐으나 산출 실패: ' + err.message);
+        }).증적3종산출_byId(현재데이터.접수번호);
+      }).withFailureHandler(function(err) {
+        btn.disabled = false;
+        btn.textContent = '완료!  (저장 + 3종 산출)';
+        showToast('기능확인 저장 실패: ' + err.message);
+      }).웹_기능확인저장(현재데이터.접수번호, 기능확인, '');
+    }).withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.textContent = '완료!  (저장 + 3종 산출)';
+      showToast('저장 실패: ' + err.message);
+    }).웹_체크결과저장(현재데이터.접수번호, results, '');
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  목록로드();
+</script>
+</body>
+</html>
