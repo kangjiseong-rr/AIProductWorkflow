@@ -88,7 +88,7 @@ const SHEET = {
 };
 
 const 일정관리_헤더색 = '#0f5b5f';
-const 보고서_표헤더색 = '#f8f9fa';
+const 보고서_표헤더색 = '#f1f3f3';
 const 보고서_표헤더글자색 = '#202124';
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
@@ -1989,13 +1989,14 @@ function _표헤더스타일(표) {
 
 function _구현방식레이블(코드) {
   const 맵 = {
-    A: 'A. 자체 학습 모델',
-    B: 'B. 사전학습+파인튜닝',
-    C: 'C. 외부 API/모델 활용',
-    D: 'D. 엣지 디바이스 추론',
-    E: 'E. 혼합형',
+    A: '자체 학습 모델',
+    B: '사전학습+파인튜닝',
+    C: '외부 API/모델 활용',
+    D: '엣지 디바이스 추론',
+    E: '혼합형',
   };
-  return 맵[코드] ?? (코드 || '미입력');
+  const raw = String(코드 || '').trim();
+  return 맵[raw] ?? (raw ? raw.replace(/^[A-E]\.\s*/, '') : '미입력');
 }
 
 
@@ -2764,7 +2765,7 @@ function _증적명세서Docs생성(ss, 건) {
   const 제목문 = `[기술심사보고서] ${접수번호} — ${건['제품명']}`;
   const doc = DocumentApp.create(제목문);
   const body = doc.getBody();
-  _문서여백설정(body, 0, 2, 2, 2);
+  _문서여백설정(body, 1, 2, 2, 2);
   _문서번호머리글생성(doc, 문서번호);
 
   // ═══════════════ 표지 ═══════════════
@@ -2786,6 +2787,7 @@ function _증적명세서Docs생성(ss, 건) {
     ['심사 방법', _v(R.심사방법)],
     ['심사일', 오늘],
     ['담당심사원', _v(건['담당심사원'])],
+    ['기술 책임자', _v(건['기술책임자'])],
   ]);
 
   // ═══════════════ 2. 신청기업 현황 ═══════════════
@@ -2795,7 +2797,7 @@ function _증적명세서Docs생성(ss, 건) {
     ['사업자등록번호', _v(건['사업자번호'])],
     ['대표자명', _v(건['대표자'])],
     ['담당자', `${_v(건['담당자명'])} / ${_v(건['연락처'])} / ${_v(건['이메일'])}`],
-    ['소재지', _v(건['소재지'])],
+    ['주소', _v(건['소재지'])],
   ]);
 
   // ═══════════════ 3. 심사 대상 제품 ═══════════════
@@ -2819,7 +2821,6 @@ function _증적명세서Docs생성(ss, 건) {
       body.appendParagraph(`<기능 ${idx + 1}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
       const 표 = [
         ['구분', '내용'],
-        ['번호', _v(f['기능번호'])],
         ['기능명', _v(f['기능명'])],
         ['인공지능 역할', _v(f['인공지능역할'])],
         ['입력', _v(f['입력'] || f['입력데이터설명'])],
@@ -3004,7 +3005,12 @@ function _두열표스타일(table, firstWidth, secondWidth) {
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
       if (widths[c]) cell.setWidth(widths[c]);
       cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
-      _셀문단정렬(cell, c === 0 ? DocumentApp.HorizontalAlignment.CENTER : DocumentApp.HorizontalAlignment.LEFT);
+      if (r === 0 || c === 0) {
+        cell.editAsText().setBold(true);
+        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
+      } else {
+        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.LEFT);
+      }
     }
   }
 }
@@ -3117,6 +3123,10 @@ function _명세표(body, 행들) {
     row.getCell(0).setBackgroundColor('#f1f3f4').setWidth(160);
     for (let c = 0; c < row.getNumCells(); c++) {
       row.getCell(c).setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(8).setPaddingRight(8);
+      if (c === 0) {
+        row.getCell(c).editAsText().setBold(true);
+        _셀문단정렬(row.getCell(c), DocumentApp.HorizontalAlignment.CENTER);
+      }
     }
   }
   return t;
