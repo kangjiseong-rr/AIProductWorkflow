@@ -1224,12 +1224,19 @@ function _접수대장제품모델요약갱신(ss, 접수번호, 모델목록) {
   const D = 대장시트.getDataRange().getValues();
   const H = D[0].map(v => String(v).trim());
   const iNo = H.indexOf('접수번호');
+  const i제품명 = H.indexOf('제품명');
   const i제품수 = H.indexOf('제품수');
-  if (iNo < 0 || i제품수 < 0) return;
+  if (iNo < 0) return;
+
+  // 신청 폼에는 "대표 제품명"이라는 별도 항목이 없다 — 조달청 기준 모델명(제품모델
+  // 반복 목록)만 존재하므로, 접수대장 제품명은 항상 1번(연번 최소) 모델명을 그대로 쓴다.
+  const 정렬목록 = 모델목록.slice().sort((a, b) => Number(a.연번 || 0) - Number(b.연번 || 0));
+  const 대표모델명 = String(정렬목록[0].모델명 || '').trim();
 
   for (let r = 1; r < D.length; r++) {
     if (String(D[r][iNo]).trim() !== String(접수번호).trim()) continue;
-    대장시트.getRange(r + 1, i제품수 + 1).setValue(모델목록.length);
+    if (i제품명 >= 0 && 대표모델명) 대장시트.getRange(r + 1, i제품명 + 1).setValue(대표모델명);
+    if (i제품수 >= 0) 대장시트.getRange(r + 1, i제품수 + 1).setValue(모델목록.length);
     break;
   }
 }
