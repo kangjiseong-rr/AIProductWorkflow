@@ -637,6 +637,8 @@ function _드라이브ID추출(입력) {
 function _엑셀파싱처리(blob, 파일명) {
   const 제목 = '__임시파싱__' + new Date().getTime();
   let 임시파일ID;
+  let 등록건수 = 0;
+  const 건너뛴행 = [];
 
   try {
     임시파일ID = _엑셀을Sheets로변환(blob, 제목);
@@ -667,12 +669,28 @@ function _엑셀파싱처리(blob, 파일명) {
 
     const 세로형여부 = _세로형감지(기본데이터);
     const 건목록 = 세로형여부 ? [_파싱_세로형(기본데이터)] : _파싱_가로형(기본데이터);
-    건목록.forEach(건 => {
-      const 접수번호 = _Sheets에등록(건, 파일명);
-      if (건.제품명) 제품명별접수번호[String(건.제품명).trim()] = 접수번호;
-      // 접수번호 자기참조도 등록 (기능탭에 접수번호 컬럼이 있으면 직접 매칭)
-      제품명별접수번호['__접수__' + 접수번호] = 접수번호;
+    건목록.forEach((건, idx) => {
+      try {
+        const 접수번호 = _Sheets에등록(건, 파일명);
+        if (건.제품명) 제품명별접수번호[String(건.제품명).trim()] = 접수번호;
+        // 접수번호 자기참조도 등록 (기능탭에 접수번호 컬럼이 있으면 직접 매칭)
+        제품명별접수번호['__접수__' + 접수번호] = 접수번호;
+        등록건수++;
+      } catch (e) {
+        // 접수번호 없는 행 등은 등록하지 않고 건너뜀 (로그에 기록)
+        건너뛴행.push(`${idx + 1}행: ${e.message}${건.제품명 ? ' (제품: ' + 건.제품명 + ')' : ''}`);
+      }
     });
+
+    if (건너뛴행.length) {
+      try {
+        ss.getSheetByName(SHEET.로그).appendRow([
+          Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+          파일명, '', '건너뜀',
+          `접수번호 누락 등으로 ${건너뛴행.length}건 미등록 — ${건너뛴행.join(' / ')}`,
+        ]);
+      } catch (e2) {}
+    }
 
     // 2) 기능상세 탭 파싱 → 인공지능기능상세 등록 (접수번호 우선, 없으면 제품명으로 연결)
     if (기능탭) {
@@ -691,6 +709,14 @@ function _엑셀파싱처리(blob, 파일명) {
       try { DriveApp.getFileById(임시파일ID).setTrashed(true); } catch(e) {}
     }
   }
+
+  // 파싱 결과 알림
+  let msg = `엑셀 파싱 완료\n\n등록/갱신: ${등록건수}건`;
+  if (건너뛴행.length) {
+    msg += `\n건너뜀: ${건너뛴행.length}건 (접수번호 누락 등)\n\n` + 건너뛴행.join('\n');
+    msg += `\n\n※ 건너뛴 행은 KOSA 접수번호가 없어 등록되지 않았습니다. 파싱로그를 확인하세요.`;
+  }
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
 }
 
 /**
@@ -1183,9 +1209,12 @@ function _맵값(맵, 후보키들) {
 function _Sheets에등록(건, 파일명) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // 접수번호: 엑셀에 있으면 그대로 키로 사용. 없으면 자체 생성(폴백)
-  const 엑셀접수번호 = String(건.접수번호 || '').trim();
-  const 접수번호 = 엑셀접수번호 || _접수번호생성(ss);
+  // 접수번호는 KOSA가 부여한 신청번호(예: AI202600001)를 그대로 키로 사용.
+  // TTA가 임의 생성하면 KOSA 번호 체계와 어긋나므로, 없으면 오류 처리(폴백 없음).
+  const 접수번호 = String(건.접수번호 || '').trim();
+  if (!접수번호) {
+    throw new Error('접수번호(신청번호)가 없습니다. KOSA가 부여한 접수번호가 있는 행만 등록할 수 있습니다.');
+  }
 
   const 오늘 = new Date();
   const 마감일 = new Date(오늘);
@@ -1300,13 +1329,6 @@ function _Sheets에등록(건, 파일명) {
   return 접수번호;
 }
 
-function _접수번호생성(ss) {
-  const 시트 = ss.getSheetByName(SHEET.접수대장);
-  const 마지막행 = 시트.getLastRow();
-  const 연도 = new Date().getFullYear();
-  const 순번 = String(마지막행).padStart(4, '0'); // 헤더행 포함 → 실제 건수
-  return `AI-${연도}-${순번}`;
-}
 
 function _담당자배분(ss) {
   const 시트 = ss.getSheetByName(SHEET.접수대장);
@@ -1588,7 +1610,7 @@ function 보고서생성() {
   // 트리거는 접수번호 하나. 접수대장·일정관리 어느 탭에서 실행하든 동일 동작.
   const 접수번호 = _활성행접수번호(ss);
   if (!접수번호) {
-    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\n(일정관리 또는 접수대장 탭)');
     return;
   }
 
@@ -1600,7 +1622,7 @@ function 보고서생성() {
 
   const 기능목록 = _AI기능상세조회(ss, 접수번호);
   const doc = _Docs보고서생성(건, 기능목록);
-  SpreadsheetApp.getUi().alert('보고서가 생성되었습니다!\\n\\n' + doc.getUrl());
+  SpreadsheetApp.getUi().alert('보고서가 생성되었습니다!\n\n' + doc.getUrl());
 }
 
 function _AI기능상세조회(ss, 접수번호) {
@@ -2284,12 +2306,12 @@ function 확인서생성() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 접수번호 = _활성행접수번호(ss);
   if (!접수번호) {
-    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\n(일정관리 또는 접수대장 탭)');
     return;
   }
   const res = 확인서생성_byId(접수번호);
   if (res && res.url) {
-    SpreadsheetApp.getUi().alert('확인서가 생성되었습니다.\\n\\n' + res.url);
+    SpreadsheetApp.getUi().alert('확인서가 생성되었습니다.\n\n' + res.url);
   }
 }
 
@@ -2449,14 +2471,14 @@ function 증적명세서생성() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 접수번호 = _활성행접수번호(ss);
   if (!접수번호) {
-    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\n(일정관리 또는 접수대장 탭)');
     return;
   }
   const 건 = _건조회(ss, 접수번호);
   if (!건) { SpreadsheetApp.getUi().alert('접수대장에서 "' + 접수번호 + '" 건을 찾을 수 없습니다.'); return; }
 
   const doc = _증적명세서Docs생성(ss, 건);
-  SpreadsheetApp.getUi().alert('기술심사보고서가 생성되었습니다.\\n\\n' + doc.getUrl());
+  SpreadsheetApp.getUi().alert('기술심사보고서가 생성되었습니다.\n\n' + doc.getUrl());
 }
 
 function 증적명세서생성_byId(접수번호) {
@@ -2809,7 +2831,7 @@ function 증적3종산출() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 접수번호 = _활성행접수번호(ss);
   if (!접수번호) {
-    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\n(일정관리 또는 접수대장 탭)');
     return;
   }
   const 건 = _건조회(ss, 접수번호);
@@ -2817,9 +2839,9 @@ function 증적3종산출() {
 
   const res = _증적3종산출_처리(ss, 건);
   SpreadsheetApp.getUi().alert(
-    '증적 3종 산출 완료\\n\\n' +
-    '폴더: ' + res.folderUrl + '\\n' +
-    'DOCX · PDF · JSON + 구조도 원본 ' + res.구조도복사 + '건\\n\\n' +
+    '증적 3종 산출 완료\n\n' +
+    '폴더: ' + res.folderUrl + '\n' +
+    'DOCX · PDF · JSON + 구조도 원본 ' + res.구조도복사 + '건\n\n' +
     'NAS Cloud Sync가 곧 수거합니다.'
   );
 }
