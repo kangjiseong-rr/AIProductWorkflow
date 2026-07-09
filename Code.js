@@ -2942,9 +2942,8 @@ function _문서번호머리글생성(doc, 문서번호) {
     }
   }
   if (!paragraph) paragraph = header.appendParagraph('');
-  paragraph
-    .setText(`문서번호: ${문서번호}`)
-    .setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  paragraph.setText(`문서번호: ${문서번호}`);
+  paragraph.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
   paragraph.editAsText().setBold(true).setForegroundColor('#3c4043');
 }
 
