@@ -860,6 +860,7 @@ function _엑셀파싱처리(blob, 파일명) {
         if (건.제품명) 제품명별접수번호[String(건.제품명).trim()] = 접수번호;
         // 접수번호 자기참조도 등록 (기능탭에 접수번호 컬럼이 있으면 직접 매칭)
         제품명별접수번호['__접수__' + 접수번호] = 접수번호;
+        try { _보관폴더준비(접수번호); } catch (e2) { Logger.log('접수번호 폴더 생성 실패: ' + e2.message); }
         등록건수++;
       } catch (e) {
         // 접수번호 없는 행 등은 등록하지 않고 건너뜀 (로그에 기록)
@@ -2798,7 +2799,7 @@ function _증적명세서Docs생성(ss, 건) {
   const 종합 = _종합판정계산(결과행.map(r => ({ 판정: r[3] })), 체크맵['C12']);
   const 보고서판정 = _보고서종합판정(종합, 건);
 
-  const 제목문 = `[기술심사보고서] ${접수번호} — ${건['제품명']}`;
+  const 제목문 = `(${접수번호}) 기술심사보고서`;
   const doc = DocumentApp.create(제목문);
   const body = doc.getBody();
   _문서여백설정(body, 1, 2, 2, 2);
@@ -2957,6 +2958,7 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   doc.saveAndClose();
+  _보고서를접수번호폴더로저장_(DriveApp.getFileById(doc.getId()), 접수번호);
   return doc;
 }
 
@@ -3384,6 +3386,26 @@ function _보관폴더준비(접수번호) {
   }
   const 하위 = 루트.getFoldersByName(접수번호);
   return 하위.hasNext() ? 하위.next() : 루트.createFolder(접수번호);
+}
+
+/** 생성된 보고서 파일을 보관루트/접수번호 폴더로 옮김 (동일 이름 이전 파일은 휴지통 처리) */
+function _보고서를접수번호폴더로저장_(file, 접수번호) {
+  try {
+    const 폴더 = _보관폴더준비(접수번호);
+    const 기존 = 폴더.getFilesByName(file.getName());
+    while (기존.hasNext()) {
+      const f = 기존.next();
+      if (f.getId() !== file.getId()) f.setTrashed(true);
+    }
+    const 부모목록 = file.getParents();
+    폴더.addFile(file);
+    while (부모목록.hasNext()) {
+      const 부모 = 부모목록.next();
+      if (부모.getId() !== 폴더.getId()) 부모.removeFile(file);
+    }
+  } catch (e) {
+    Logger.log('보고서 파일 폴더 이동 실패: ' + e.message);
+  }
 }
 
 /** 같은 이름 파일이 있으면 덮어쓰기(이전 휴지통) 후 저장 */
