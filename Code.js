@@ -90,6 +90,9 @@ const SHEET = {
 const 일정관리_헤더색 = '#0f5b5f';
 const 보고서_표헤더색 = '#f1f3f3';
 const 보고서_표헤더글자색 = '#202124';
+// 웹앱(HYPERLINK) 경유 방식은 OAuth/iframe 문제로 실행이 막히므로 쓰지 않음.
+// 이 행을 선택한 뒤 메뉴 "📑 기술심사보고서 생성 (선택 행)"으로 직접 실행한다.
+const 보고서생성안내문구 = '◀ 선택 후 메뉴에서 생성';
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
 // id: 고유키 / 항목: 질문 / 참조: 접수대장·AI기능상세에서 끌어올 값의 출처
@@ -1108,12 +1111,8 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
     // 0) 순번 = 헤더 제외한 현재 행 위치 (새행번호 - 1)
     if (h === '순번') return 새행번호 - 1;
 
-    // 0-1) 보고서생성 = 웹앱에서 해당 접수번호의 기술심사보고서 생성
-    if (h === '보고서생성') {
-      const 건URL = _보고서생성URL_(접수번호);
-      if (!건URL) return '';
-      return `=HYPERLINK("${건URL}","보고서 생성")`;
-    }
+    // 0-1) 보고서생성 = 이 행을 선택한 뒤 메뉴 "기술심사보고서 생성"으로 실행 (웹앱 링크 방식은 사용 안 함)
+    if (h === '보고서생성') return 보고서생성안내문구;
 
     // 1) 직접 입력값 (상태·담당심사원·신청일·심사접수일)
     if (h === '접수번호') return 접수번호;
@@ -2122,16 +2121,9 @@ function 심사폼열기() {
   SpreadsheetApp.getUi().showModalDialog(html, '심사 폼 열기');
 }
 
-function _보고서생성URL_(접수번호) {
-  const url = (CONFIG.심사폼URL || '').trim();
-  if (!url || !접수번호) return '';
-  return url + (url.indexOf('?') >= 0 ? '&' : '?') +
-    'action=report&id=' + encodeURIComponent(접수번호);
-}
-
+// 웹앱 링크가 아니라 안내 문구만 채운다 — 실제 생성은 메뉴 "📑 기술심사보고서 생성 (선택 행)"으로 실행.
 function _일정관리보고서생성링크갱신_(시트) {
-  const url = (CONFIG.심사폼URL || '').trim();
-  if (!url || !시트 || 시트.getLastRow() < 2) return;
+  if (!시트 || 시트.getLastRow() < 2) return;
   const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
   const iNo = 헤더.indexOf('접수번호');
   const iLink = 헤더.indexOf('보고서생성');
@@ -2139,20 +2131,13 @@ function _일정관리보고서생성링크갱신_(시트) {
 
   const n = 시트.getLastRow() - 1;
   const 접수번호값 = 시트.getRange(2, iNo + 1, n, 1).getValues();
-  const 수식 = 접수번호값.map(row => {
-    const 접수번호 = row[0];
-    const 건URL = _보고서생성URL_(접수번호);
-    return [건URL ? `=HYPERLINK("${건URL}","보고서 생성")` : ''];
-  });
-  시트.getRange(2, iLink + 1, n, 1).setValues(수식);
+  const 값 = 접수번호값.map(row => [row[0] ? 보고서생성안내문구 : '']);
+  시트.getRange(2, iLink + 1, n, 1).setValues(값);
 }
 
-// 접수대장 각 행에 "심사" 하이퍼링크를 채워넣기 (메뉴에서 한 번 실행)
-// 일정관리 각 행에 보고서 생성 하이퍼링크를 채워넣습니다.
+// 일정관리 각 행의 "보고서생성" 칸에 안내 문구를 채웁니다.
+// (예전 웹앱 하이퍼링크 방식은 OAuth/iframe 문제로 실행이 막혀 폐기 — 메뉴로 직접 실행)
 function 보고서생성링크채우기() {
-  const url = (CONFIG.심사폼URL || '').trim();
-  if (!url) { SpreadsheetApp.getUi().alert('CONFIG.심사폼URL을 먼저 설정하세요.'); return; }
-
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.일정관리);  // 메인 시트
   _일정관리옛심사링크컬럼삭제_(시트);
@@ -2165,7 +2150,10 @@ function 보고서생성링크채우기() {
       .setHorizontalAlignment('center').setVerticalAlignment('middle');
   }
   _일정관리보고서생성링크갱신_(시트);
-  SpreadsheetApp.getUi().alert('일정관리 시트 각 행에 보고서 생성 링크를 채웠습니다.');
+  SpreadsheetApp.getUi().alert(
+    '일정관리 시트 "보고서생성" 칸에 안내 문구를 채웠습니다.\n\n' +
+    '보고서를 생성하려면 해당 행을 선택한 뒤 메뉴 › 📑 기술심사보고서 생성 (선택 행)을 실행하세요.'
+  );
 }
 
 function 심사링크채우기() {
@@ -2256,7 +2244,6 @@ function 수동직접등록_예시() {
 function doGet(e) {
   const p = e && e.parameter ? e.parameter : {};
   const 접수번호 = p.id ? p.id : '';
-  if (p.action === 'report') return _웹_보고서생성응답_(접수번호);
 
   const t = HtmlService.createTemplateFromFile('심사폼');
   t.초기접수번호 = 접수번호;
@@ -2264,42 +2251,6 @@ function doGet(e) {
     .setTitle('AI 기술심사 체크리스트')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-function _웹_보고서생성응답_(접수번호) {
-  try {
-    if (!접수번호) throw new Error('접수번호가 없습니다.');
-    const 결과 = 증적명세서생성_byId(접수번호);
-    const url = _htmlEscape_(결과.url || '');
-    const name = _htmlEscape_(결과.name || '기술심사보고서');
-    return HtmlService.createHtmlOutput(
-      '<!doctype html><html><head><meta charset="utf-8">' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-      '<script>window.top.location.href=' + JSON.stringify(결과.url || '') + ';</script>' +
-      '</head><body style="font-family:Arial,sans-serif;padding:20px">' +
-      '<p>보고서가 생성되었습니다.</p>' +
-      '<p><a href="' + url + '" target="_top">' + name + ' 열기</a></p>' +
-      '</body></html>'
-    ).setTitle('보고서 생성 완료');
-  } catch (err) {
-    return HtmlService.createHtmlOutput(
-      '<!doctype html><html><head><meta charset="utf-8">' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-      '</head><body style="font-family:Arial,sans-serif;padding:20px">' +
-      '<p>보고서 생성 중 오류가 발생했습니다.</p>' +
-      '<pre style="white-space:pre-wrap">' + _htmlEscape_(err && err.message ? err.message : String(err)) + '</pre>' +
-      '</body></html>'
-    ).setTitle('보고서 생성 오류');
-  }
-}
-
-function _htmlEscape_(value) {
-  return String(value == null ? '' : value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 /** 웹앱: 심사 대상 목록 조회 (드롭다운용) */
