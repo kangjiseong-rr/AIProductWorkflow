@@ -87,6 +87,8 @@ const SHEET = {
   기능확인: '인공지능기능확인',        // 심사폼 기능명세 표의 확인·비고 저장
 };
 
+const 일정관리_헤더색 = '#0f5b5f';
+
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
 // id: 고유키 / 항목: 질문 / 참조: 접수대장·AI기능상세에서 끌어올 값의 출처
 // 심사 체크리스트 항목 정의 — 공식 확인 기준 (AI 제품·서비스 확인제 가이드라인)
@@ -248,7 +250,8 @@ function 헤더마이그레이션() {
       const 시작열 = 기존.filter(v => v !== '').length + 1;
       시트.getRange(1, 시작열, 1, 누락.length).setValues([누락]);
       시트.getRange(1, 시작열, 1, 누락.length)
-        .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+        .setBackground(이름 === SHEET.일정관리 ? 일정관리_헤더색 : '#1a73e8')
+        .setFontColor('#ffffff').setFontWeight('bold');
       추가내역.push(`${이름}: ${누락.join(', ')}`);
       기존 = 시트.getRange(1, 1, 1, 시트.getLastColumn())
         .getValues()[0].map(v => String(v).trim());
@@ -362,11 +365,7 @@ function 초기설정실행() {
   // 대기(무색)는 규칙 없음
   일정시트.setConditionalFormatRules([초과, 완료, 보완, 심사중]);
 
-  // 열 너비 (픽셀) — 22개 컬럼 (순번·심사링크 포함)
-  const 일정너비 = [45, 100, 60, 90, 90, 90, 70, 90, 150, 80, 110, 170, 160, 220, 110, 80, 250, 250, 90, 70, 130, 55];
-  일정너비.forEach((w, i) => { if (i < 일정H.length) 일정시트.setColumnWidth(i + 1, w); });
-  일정시트.setFrozenRows(1);
-  일정시트.setFrozenColumns(2);  // 순번 + 접수번호 고정
+  _일정관리서식적용_(일정시트, true);
 
   // ── 접수대장 상태 드롭다운 ────────────────────────
   // 하드코딩 금지 — 실제 헤더에서 '상태' 위치를 찾아서 설정
@@ -395,6 +394,97 @@ function columnLetter(n) {
   return s;
 }
 
+function 일정관리요약뷰적용() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  if (!시트) { SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.'); return; }
+  _일정관리서식적용_(시트, true);
+  SpreadsheetApp.getUi().alert('일정관리 요약 뷰와 표 서식을 적용했습니다.');
+}
+
+function 일정관리전체뷰적용() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  if (!시트) { SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.'); return; }
+  _일정관리서식적용_(시트, false);
+  SpreadsheetApp.getUi().alert('일정관리 전체 뷰와 표 서식을 적용했습니다.');
+}
+
+function _일정관리서식적용_(시트, 요약뷰) {
+  const lastCol = Math.max(1, 시트.getLastColumn());
+  const lastRow = Math.max(1000, 시트.getLastRow());
+  const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
+
+  시트.setHiddenGridlines(false);
+  시트.setFrozenRows(1);
+  시트.setFrozenColumns(Math.min(2, lastCol));
+
+  시트.getRange(1, 1, 1, lastCol)
+    .setBackground(일정관리_헤더색)
+    .setFontColor('#ffffff')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
+  시트.setRowHeight(1, 34);
+
+  const 전체범위 = 시트.getRange(1, 1, lastRow, lastCol);
+  전체범위
+    .setVerticalAlignment('middle')
+    .setBorder(true, true, true, true, true, true, '#d9e1e3', SpreadsheetApp.BorderStyle.SOLID);
+
+  시트.getRange(2, 1, Math.max(1, lastRow - 1), lastCol)
+    .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+
+  try {
+    const 기존필터 = 시트.getFilter();
+    if (기존필터) 기존필터.remove();
+    시트.getRange(1, 1, Math.max(2, 시트.getMaxRows()), lastCol).createFilter();
+  } catch (e) {
+    Logger.log('일정관리 필터 적용 실패: ' + e.message);
+  }
+
+  try {
+    시트.getBandings().forEach(b => b.remove());
+    const banding = 시트.getRange(1, 1, Math.max(2, 시트.getMaxRows()), lastCol)
+      .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY);
+    banding.setHeaderRowColor(일정관리_헤더색);
+    banding.setFirstRowColor('#ffffff');
+    banding.setSecondRowColor('#f8fbfb');
+  } catch (e) {
+    Logger.log('일정관리 밴딩 적용 실패: ' + e.message);
+  }
+
+  const 너비맵 = {
+    '순번': 45, '접수번호': 115, '심사링크': 70,
+    '신청일': 90, '심사접수일': 95, '마감예정일': 95,
+    '상태': 75, '담당심사원': 95,
+    '기업명': 155, '담당자명': 85, '연락처': 115, '이메일': 180,
+    '제품명': 190, '제품수': 65, '개요': 260,
+    '제공형태': 110, '제품분류': 100,
+    '인공지능적용목적': 260, '인공지능적용범위': 260,
+    '명세서작성방식': 110, '기타제출서류여부': 120, '보유인증': 130,
+    '인공지능기능수': 90,
+  };
+  헤더.forEach((h, idx) => {
+    if (너비맵[h]) 시트.setColumnWidth(idx + 1, 너비맵[h]);
+  });
+
+  시트.showColumns(1, lastCol);
+  if (요약뷰) {
+    const 표시컬럼 = new Set([
+      '순번', '접수번호', '심사링크',
+      '신청일', '심사접수일', '마감예정일',
+      '상태', '담당심사원',
+      '기업명', '담당자명', '연락처',
+      '제품명', '제품수', '제공형태', '제품분류',
+      '인공지능기능수',
+    ]);
+    헤더.forEach((h, idx) => {
+      if (h && !표시컬럼.has(h)) 시트.hideColumns(idx + 1);
+    });
+  }
+}
+
 function _시트초기화(ss, 이름, 헤더배열) {
   let sheet = ss.getSheetByName(이름);
   if (!sheet) {
@@ -411,7 +501,7 @@ function _시트초기화(ss, 이름, 헤더배열) {
   // 빈 시트일 때만 헤더 작성
   sheet.getRange(1, 1, 1, 헤더배열.length).setValues([헤더배열]);
   sheet.getRange(1, 1, 1, 헤더배열.length)
-    .setBackground('#1a73e8')
+    .setBackground(이름 === SHEET.일정관리 ? 일정관리_헤더색 : '#1a73e8')
     .setFontColor('#ffffff')
     .setFontWeight('bold');
   sheet.setFrozenRows(1);
@@ -1848,7 +1938,10 @@ function onOpen() {
     .addItem('📝 심사 폼 열기', '심사폼열기')
     .addSeparator()
     .addItem('📑 기술심사보고서 생성 (선택 행)', '증적명세서생성')
-    .addItem('📦 보고서 3종 산출 (PDF·DOCX·JSON)', '증적3종산출');
+    .addItem('📦 보고서 3종 산출 (PDF·DOCX·JSON)', '증적3종산출')
+    .addSeparator()
+    .addItem('📋 일정관리 요약 뷰 적용', '일정관리요약뷰적용')
+    .addItem('📊 일정관리 전체 뷰 적용', '일정관리전체뷰적용');
 
   // ── 관리자 전용 메뉴 (관리자가 아니면 아예 표시 안 함) ──
   if (관리자) {
