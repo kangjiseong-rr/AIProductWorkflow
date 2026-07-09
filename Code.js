@@ -3003,10 +3003,10 @@ function _증적명세서Docs생성(ss, 건) {
   _명세섹션(body, '붙임 3. 첨부자료 목록');
   _명세표(body, [
     ['기존 인증·시험 결과', _v(건['비고'])],
-    ['구조도 원본 파일', 구조도원본 ? `${구조도원본.split(/[,\n]+/).filter(Boolean).length}건 (Drive→NAS 보관)` : '(없음)'],
   ]);
 
   doc.saveAndClose();
+  _보고서를접수번호폴더로저장_(DriveApp.getFileById(doc.getId()), 접수번호);
   return doc;
 }
 
@@ -3434,6 +3434,26 @@ function _보관폴더준비(접수번호) {
   }
   const 하위 = 루트.getFoldersByName(접수번호);
   return 하위.hasNext() ? 하위.next() : 루트.createFolder(접수번호);
+}
+
+/** 생성된 보고서 파일을 보관루트/접수번호 폴더로 옮김 (동일 이름 이전 파일은 휴지통 처리) */
+function _보고서를접수번호폴더로저장_(file, 접수번호) {
+  try {
+    const 폴더 = _보관폴더준비(접수번호);
+    const 기존 = 폴더.getFilesByName(file.getName());
+    while (기존.hasNext()) {
+      const f = 기존.next();
+      if (f.getId() !== file.getId()) f.setTrashed(true);
+    }
+    const 부모목록 = file.getParents();
+    폴더.addFile(file);
+    while (부모목록.hasNext()) {
+      const 부모 = 부모목록.next();
+      if (부모.getId() !== 폴더.getId()) 부모.removeFile(file);
+    }
+  } catch (e) {
+    Logger.log('보고서 파일 폴더 이동 실패: ' + e.message);
+  }
 }
 
 /** 같은 이름 파일이 있으면 덮어쓰기(이전 휴지통) 후 저장 */
