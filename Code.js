@@ -61,8 +61,6 @@ const CONFIG = {
     심사방법: '제출 기술자료 검토 및 확인 기준에 따른 항목별 적합성 검토',
     보안등급: '대외제한',                 // 표지 표기
     책임자직위: '심사책임자',
-    머리말로고파일ID: '1lJ33DAEyB9slZoDx9TKzqoeCKQ-HTIwl',                 // TTA 로고 Drive 파일 ID (설정 시 보고서 머리말 왼쪽에 삽입)
-    머리말로고URL: '',                    // 파일 ID 대신 공개 이미지 URL을 사용할 경우 입력
   },
 
   // ── 심사 폼 웹앱 URL (배포 후 발급된 URL을 여기에 붙여넣기) ──
@@ -90,7 +88,8 @@ const SHEET = {
 };
 
 const 일정관리_헤더색 = '#0f5b5f';
-const 보고서_표헤더색 = '#6b7280';
+const 보고서_표헤더색 = '#f8f9fa';
+const 보고서_표헤더글자색 = '#202124';
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
 // id: 고유키 / 항목: 질문 / 참조: 접수대장·AI기능상세에서 끌어올 값의 출처
@@ -1983,7 +1982,7 @@ function _표헤더스타일(표) {
       const cell = 헤더행.getCell(i);
       cell.setBackgroundColor(보고서_표헤더색);
       _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
-      cell.getText(); // 접근 확인
+      cell.editAsText().setForegroundColor(보고서_표헤더글자색).setBold(true);
     }
   } catch(e) { /* 스타일 실패는 무시 */ }
 }
@@ -2671,7 +2670,11 @@ function _확인서표스타일(표, 라벨열강조) {
     for (let c = 0; c < 행.getNumCells(); c++) {
       const cell = 행.getCell(c);
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(8).setPaddingRight(8);
-      if (r === 0) _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
+      if (r === 0) {
+        cell.setBackgroundColor(보고서_표헤더색);
+        cell.editAsText().setForegroundColor(보고서_표헤더글자색).setBold(true);
+        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
+      }
     }
     // 라벨열(첫 열) 회색 배경
     if (라벨열강조) {
@@ -2688,7 +2691,8 @@ function _판정색칠(표) {
   for (let c = 0; c < 헤더.getNumCells(); c++) {
     헤더.getCell(c).setBackgroundColor(보고서_표헤더색);
     const txt = 헤더.getCell(c).editAsText();
-    txt.setForegroundColor('#ffffff').setBold(true);
+    txt.setForegroundColor(보고서_표헤더글자색).setBold(true);
+    _셀문단정렬(헤더.getCell(c), DocumentApp.HorizontalAlignment.CENTER);
     if (헤더.getCell(c).getText().trim() === '판정') 판정열 = c;
   }
   // 판정 컬럼 색칠
@@ -2760,8 +2764,8 @@ function _증적명세서Docs생성(ss, 건) {
   const 제목문 = `[기술심사보고서] ${접수번호} — ${건['제품명']}`;
   const doc = DocumentApp.create(제목문);
   const body = doc.getBody();
-  _문서여백설정(body, 2);
-  _보고서머리말생성(doc, 문서번호, R);
+  _문서여백설정(body, 0, 2, 2, 2);
+  _문서번호머리글생성(doc, 문서번호);
 
   // ═══════════════ 표지 ═══════════════
   body.appendParagraph('인공지능 제품·서비스 기술심사보고서')
@@ -2909,6 +2913,7 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ── 붙임 3. 첨부자료 목록 ──
+  body.appendPageBreak();
   _명세섹션(body, '붙임 3. 첨부자료 목록');
   _명세표(body, [
     ['기존 인증·시험 결과', _v(건['비고'])],
@@ -2919,55 +2924,28 @@ function _증적명세서Docs생성(ss, 건) {
   return doc;
 }
 
-function _문서여백설정(body, cm) {
-  const pt = _cm(cm);
-  body.setMarginTop(pt)
-    .setMarginBottom(pt)
-    .setMarginLeft(pt)
-    .setMarginRight(pt);
+function _문서여백설정(body, topCm, bottomCm, leftCm, rightCm) {
+  body.setMarginTop(_cm(topCm))
+    .setMarginBottom(_cm(bottomCm ?? topCm))
+    .setMarginLeft(_cm(leftCm ?? topCm))
+    .setMarginRight(_cm(rightCm ?? leftCm ?? topCm));
 }
 
-function _보고서머리말생성(doc, 문서번호, R) {
+function _문서번호머리글생성(doc, 문서번호) {
   const header = doc.getHeader() || doc.addHeader();
-
-  const table = header.insertTable(0, [['', `문서번호: ${문서번호}`]]);
-  table.setBorderWidth(0);
-  const row = table.getRow(0);
-  const left = row.getCell(0);
-  const right = row.getCell(1);
-  left.setWidth(_cm(5.2));
-  right.setWidth(_cm(11));
-  left.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0);
-  right.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0);
-
-  const logo = _보고서로고Blob(R);
-  if (logo) {
-    const p = left.getChild(0).asParagraph();
-    const img = p.appendInlineImage(logo);
-    img.setWidth(120).setHeight(60);
-    p.setAlignment(DocumentApp.HorizontalAlignment.LEFT);
-  }
-
-  _셀문단정렬(right, DocumentApp.HorizontalAlignment.RIGHT);
-  right.editAsText().setBold(true).setForegroundColor('#3c4043');
-}
-
-function _보고서로고Blob(R) {
-  try {
-    const fileId = String(R.머리말로고파일ID || '').trim();
-    if (fileId) return DriveApp.getFileById(fileId).getBlob();
-
-    const url = String(R.머리말로고URL || '').trim();
-    if (url) {
-      const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-      const code = res.getResponseCode();
-      if (code >= 200 && code < 300) return res.getBlob();
-      Logger.log(`보고서 로고 URL 응답 오류 (${code}): ${url}`);
+  let paragraph = null;
+  for (let i = 0; i < header.getNumChildren(); i++) {
+    const child = header.getChild(i);
+    if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      paragraph = child.asParagraph();
+      break;
     }
-  } catch (e) {
-    Logger.log('보고서 로고 불러오기 실패: ' + e.message);
   }
-  return null;
+  if (!paragraph) paragraph = header.appendParagraph('');
+  paragraph
+    .setText(`문서번호: ${문서번호}`)
+    .setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  paragraph.editAsText().setBold(true).setForegroundColor('#3c4043');
 }
 
 function _구조도표시(건) {
@@ -3001,7 +2979,7 @@ function _심사항목별검토결과표(body, 결과행) {
 }
 
 function _기능세부표스타일(table) {
-  const widths = [_cm(1.2), _cm(3), _cm(9), _cm(3.8)];
+  const widths = [_cm(2), _cm(3), _cm(9), _cm(3)];
   for (let r = 0; r < table.getNumRows(); r++) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
@@ -3149,7 +3127,7 @@ function _명세표헤더(t) {
   const h = t.getRow(0);
   for (let c = 0; c < h.getNumCells(); c++) {
     h.getCell(c).setBackgroundColor(보고서_표헤더색);
-    h.getCell(c).editAsText().setForegroundColor('#ffffff').setBold(true);
+    h.getCell(c).editAsText().setForegroundColor(보고서_표헤더글자색).setBold(true);
     _셀문단정렬(h.getCell(c), DocumentApp.HorizontalAlignment.CENTER);
   }
 }
