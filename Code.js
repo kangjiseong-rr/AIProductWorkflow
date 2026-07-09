@@ -321,28 +321,45 @@ function 초기설정실행() {
     .setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInList(['대기', '심사중', '보완', '완료'], true).build());
 
-  // 조건부서식
+  // ── 조건부서식 (톤다운 색상, 행 전체) ──
+  // 규칙 우선순위: 위에서부터 먼저 적용됨.
+  //   ① 기한 초과(미완료)  → 연빨강   (상태색보다 우선)
+  //   ② 완료               → 연녹색
+  //   ③ 보완               → 머스터드(짙은 노랑)
+  //   ④ 심사중             → 연노랑
+  //   ⑤ 대기               → 무색 (규칙 없음)
   const 마감열문자 = columnLetter(iD마감);
   const 상태열문자 = columnLetter(iD상태);
   const 전체범위 = 일정시트.getRange(`A2:${끝열문자}1000`);
 
-  // 빨강: 마감 초과 & 미완료
-  const 빨강 = SpreadsheetApp.newConditionalFormatRule()
+  // ① 기한 초과 & 미완료
+  const 초과 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(
       `=AND($${마감열문자}2<>"",$${마감열문자}2<TODAY(),$${상태열문자}2<>"완료")`
     )
-    .setBackground('#FDECEA').setFontColor('#C5221F')
+    .setBackground('#F4CCCC').setFontColor('#990000')
     .setRanges([전체범위]).build();
 
-  // 주황: 3일 이내 마감 & 미완료
-  const 주황 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(
-      `=AND($${마감열문자}2<>"",$${마감열문자}2>=TODAY(),$${마감열문자}2-TODAY()<=3,$${상태열문자}2<>"완료")`
-    )
-    .setBackground('#FEF7E0').setFontColor('#E37400')
+  // ② 완료 → 연녹색
+  const 완료 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=$${상태열문자}2="완료"`)
+    .setBackground('#D9EAD3').setFontColor('#38761D')
     .setRanges([전체범위]).build();
 
-  일정시트.setConditionalFormatRules([빨강, 주황]);
+  // ③ 보완 → 머스터드(짙은 노랑)
+  const 보완 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=$${상태열문자}2="보완"`)
+    .setBackground('#F9CB9C').setFontColor('#783F04')
+    .setRanges([전체범위]).build();
+
+  // ④ 심사중 → 연노랑
+  const 심사중 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=$${상태열문자}2="심사중"`)
+    .setBackground('#FCE8B2').setFontColor('#7F6000')
+    .setRanges([전체범위]).build();
+
+  // 대기(무색)는 규칙 없음
+  일정시트.setConditionalFormatRules([초과, 완료, 보완, 심사중]);
 
   // 열 너비 (픽셀) — 22개 컬럼 (순번·심사링크 포함)
   const 일정너비 = [45, 100, 60, 90, 90, 90, 70, 90, 150, 80, 110, 170, 160, 220, 110, 80, 250, 250, 90, 70, 130, 55];
