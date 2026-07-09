@@ -427,7 +427,11 @@ function _일정관리서식적용_(시트, 요약뷰) {
   시트.getRange(2, 1, Math.max(1, 시트.getMaxRows() - 1), lastCol)
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
 
-  _일정관리구글표적용_(시트, 헤더);
+  try {
+    _일정관리구글표적용_(시트, 헤더);
+  } catch (e) {
+    Logger.log('일정관리 Google Sheets 표 적용 실패: ' + e.message);
+  }
 
   const 너비맵 = {
     '순번': 45, '접수번호': 115, '심사링크': 70,
@@ -2925,7 +2929,6 @@ function _문서여백설정(body, cm) {
 
 function _보고서머리말생성(doc, 문서번호, R) {
   const header = doc.getHeader() || doc.addHeader();
-  _문서컨테이너비우기(header);
 
   const table = header.insertTable(0, [['', `문서번호: ${문서번호}`]]);
   table.setBorderWidth(0);
@@ -2950,27 +2953,21 @@ function _보고서머리말생성(doc, 문서번호, R) {
 }
 
 function _보고서로고Blob(R) {
-  const fileId = String(R.머리말로고파일ID || '').trim();
-  if (fileId) return DriveApp.getFileById(fileId).getBlob();
+  try {
+    const fileId = String(R.머리말로고파일ID || '').trim();
+    if (fileId) return DriveApp.getFileById(fileId).getBlob();
 
-  const url = String(R.머리말로고URL || '').trim();
-  if (url) {
-    return UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getBlob();
+    const url = String(R.머리말로고URL || '').trim();
+    if (url) {
+      const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      const code = res.getResponseCode();
+      if (code >= 200 && code < 300) return res.getBlob();
+      Logger.log(`보고서 로고 URL 응답 오류 (${code}): ${url}`);
+    }
+  } catch (e) {
+    Logger.log('보고서 로고 불러오기 실패: ' + e.message);
   }
   return null;
-}
-
-function _문서컨테이너비우기(container) {
-  while (container.getNumChildren() > 1) {
-    container.removeChild(container.getChild(0));
-  }
-
-  if (container.getNumChildren() === 1) {
-    const child = container.getChild(0);
-    if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
-      child.asParagraph().clear();
-    }
-  }
 }
 
 function _구조도표시(건) {
