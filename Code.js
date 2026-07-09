@@ -61,6 +61,8 @@ const CONFIG = {
     심사방법: '제출 기술자료 검토 및 확인 기준에 따른 항목별 적합성 검토',
     보안등급: '대외제한',                 // 표지 표기
     책임자직위: '심사책임자',
+    머리말로고파일ID: '',                 // TTA 로고 Drive 파일 ID (설정 시 보고서 머리말 왼쪽에 삽입)
+    머리말로고URL: 'https://drive.google.com/file/d/1lJ33DAEyB9slZoDx9TKzqoeCKQ-HTIwl/view?usp=drive_link',                    // 파일 ID 대신 공개 이미지 URL을 사용할 경우 입력
   },
 
   // ── 심사 폼 웹앱 URL (배포 후 발급된 URL을 여기에 붙여넣기) ──
@@ -88,6 +90,7 @@ const SHEET = {
 };
 
 const 일정관리_헤더색 = '#0f5b5f';
+const 보고서_표헤더색 = '#6b7280';
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
 // id: 고유키 / 항목: 질문 / 참조: 접수대장·AI기능상세에서 끌어올 값의 출처
@@ -1973,8 +1976,10 @@ function _표헤더스타일(표) {
   try {
     const 헤더행 = 표.getRow(0);
     for (let i = 0; i < 헤더행.getNumCells(); i++) {
-      헤더행.getCell(i).setBackgroundColor('#1a73e8');
-      헤더행.getCell(i).getText(); // 접근 확인
+      const cell = 헤더행.getCell(i);
+      cell.setBackgroundColor(보고서_표헤더색);
+      _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
+      cell.getText(); // 접근 확인
     }
   } catch(e) { /* 스타일 실패는 무시 */ }
 }
@@ -2662,6 +2667,7 @@ function _확인서표스타일(표, 라벨열강조) {
     for (let c = 0; c < 행.getNumCells(); c++) {
       const cell = 행.getCell(c);
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(8).setPaddingRight(8);
+      if (r === 0) _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
     }
     // 라벨열(첫 열) 회색 배경
     if (라벨열강조) {
@@ -2676,7 +2682,7 @@ function _판정색칠(표) {
   const 헤더 = 표.getRow(0);
   let 판정열 = 2;
   for (let c = 0; c < 헤더.getNumCells(); c++) {
-    헤더.getCell(c).setBackgroundColor('#1a73e8');
+    헤더.getCell(c).setBackgroundColor(보고서_표헤더색);
     const txt = 헤더.getCell(c).editAsText();
     txt.setForegroundColor('#ffffff').setBold(true);
     if (헤더.getCell(c).getText().trim() === '판정') 판정열 = c;
@@ -2737,7 +2743,7 @@ function _증적명세서Docs생성(ss, 건) {
   const 제품모델목록 = _제품모델목록조회(ss, 접수번호);
   const 체크맵 = _체크결과조회(ss, 접수번호);
   const R = CONFIG.보고서 || {};
-  const 문서번호 = `${R.문서번호접두 || 'AI심사'}-${접수번호}`;
+  const 문서번호 = `TTA-${접수번호}-01`;
 
   // 종합 판정 미리 계산 (첫 페이지에 필요)
   const 결과행 = 체크항목정의.filter(d => d.id !== 'C12').map(d => {
@@ -2751,6 +2757,7 @@ function _증적명세서Docs생성(ss, 건) {
   const doc = DocumentApp.create(제목문);
   const body = doc.getBody();
   _문서여백설정(body, 2);
+  _보고서머리말생성(doc, 문서번호, R);
 
   // ═══════════════ 표지 ═══════════════
   body.appendParagraph('인공지능 제품·서비스 기술심사보고서')
@@ -2800,23 +2807,27 @@ function _증적명세서Docs생성(ss, 건) {
   // ═══════════════ 4. 핵심 인공지능 기능 명세 ═══════════════
   _명세섹션(body, '4. 핵심 인공지능 기능 명세');
   if (기능목록.length) {
-    const 표 = [['구분'].concat(기능목록.map((_, idx) => `기능 ${idx + 1}`))];
-    [
-      ['번호', f => _v(f['기능번호'])],
-      ['기능명', f => _v(f['기능명'])],
-      ['인공지능 역할', f => _v(f['인공지능역할'])],
-      ['입력', f => _v(f['입력'] || f['입력데이터설명'])],
-      ['출력', f => _v(f['출력'] || f['출력데이터설명'])],
-      ['기타', f => _v(f['설명서참조위치'] || f['기타참고자료파일명'])],
-    ].forEach(rowDef => {
-      표.push([rowDef[0]].concat(기능목록.map(f => rowDef[1](f))));
+    기능목록.forEach((f, idx) => {
+      body.appendParagraph(`<기능 ${idx + 1}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
+      const 표 = [
+        ['구분', '내용'],
+        ['번호', _v(f['기능번호'])],
+        ['기능명', _v(f['기능명'])],
+        ['인공지능 역할', _v(f['인공지능역할'])],
+        ['입력', _v(f['입력'] || f['입력데이터설명'])],
+        ['출력', _v(f['출력'] || f['출력데이터설명'])],
+        ['기타', _v(f['설명서참조위치'] || f['기타참고자료파일명'])],
+      ];
+      const 기능명세표 = body.appendTable(표);
+      _명세표헤더(기능명세표);
+      _두열표스타일(기능명세표, _cm(3), _cm(13));
     });
-    _명세표헤더(body.appendTable(표));
   } else {
     body.appendParagraph('(인공지능 기능 데이터 없음)').editAsText().setForegroundColor('#9aa0a6');
   }
 
   // ═══════════════ 5. 종합 심사 의견 ═══════════════
+  body.appendPageBreak();
   _명세섹션(body, '5. 종합 심사 의견');
   _명세표(body, [
     ['검토 현황', `총 ${결과행.length}개 항목 — 적합 ${종합.적합} · 보완 ${종합.보완} · 부적합 ${종합.부적합} · 해당없음 ${종합.해당없음}`],
@@ -2829,10 +2840,6 @@ function _증적명세서Docs생성(ss, 건) {
 
   // ═══════════════ 붙임 ═══════════════
   body.appendPageBreak();
-  body.appendParagraph('붙임')
-    .setHeading(DocumentApp.ParagraphHeading.HEADING1)
-    .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-
   _명세섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
@@ -2897,8 +2904,8 @@ function _증적명세서Docs생성(ss, 건) {
       .editAsText().setForegroundColor('#9aa0a6');
   }
 
-  // ── 첨부자료 목록 ──
-  _명세섹션(body, '첨부자료 목록');
+  // ── 붙임 3. 첨부자료 목록 ──
+  _명세섹션(body, '붙임 3. 첨부자료 목록');
   _명세표(body, [
     ['기존 인증·시험 결과', _v(건['비고'])],
     ['구조도 원본 파일', 구조도원본 ? `${구조도원본.split(/[,\n]+/).filter(Boolean).length}건 (Drive→NAS 보관)` : '(없음)'],
@@ -2914,6 +2921,49 @@ function _문서여백설정(body, cm) {
     .setMarginBottom(pt)
     .setMarginLeft(pt)
     .setMarginRight(pt);
+}
+
+function _보고서머리말생성(doc, 문서번호, R) {
+  const header = doc.getHeader() || doc.addHeader();
+  _문서컨테이너비우기(header);
+
+  const table = header.appendTable([['', `문서번호: ${문서번호}`]]);
+  table.setBorderWidth(0);
+  const row = table.getRow(0);
+  const left = row.getCell(0);
+  const right = row.getCell(1);
+  left.setWidth(_cm(5.2));
+  right.setWidth(_cm(11));
+  left.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0);
+  right.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0);
+
+  const logo = _보고서로고Blob(R);
+  if (logo) {
+    const p = left.getChild(0).asParagraph();
+    const img = p.appendInlineImage(logo);
+    img.setWidth(120).setHeight(60);
+    p.setAlignment(DocumentApp.HorizontalAlignment.LEFT);
+  }
+
+  _셀문단정렬(right, DocumentApp.HorizontalAlignment.RIGHT);
+  right.editAsText().setBold(true).setForegroundColor('#3c4043');
+}
+
+function _보고서로고Blob(R) {
+  const fileId = String(R.머리말로고파일ID || '').trim();
+  if (fileId) return DriveApp.getFileById(fileId).getBlob();
+
+  const url = String(R.머리말로고URL || '').trim();
+  if (url) {
+    return UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getBlob();
+  }
+  return null;
+}
+
+function _문서컨테이너비우기(container) {
+  while (container.getNumChildren() > 0) {
+    container.removeChild(container.getChild(0));
+  }
 }
 
 function _구조도표시(건) {
@@ -2935,47 +2985,15 @@ function _심사항목별검토결과표(body, 결과행) {
     그룹맵[그룹].push(r);
   });
 
-  const rows = [];
   그룹순서.forEach((그룹, idx) => {
-    rows.push([`${idx + 1}. ${그룹}`, '', '', '']);
-    rows.push(['번호', '심사항목', '판정', '비고']);
-    그룹맵[그룹].forEach(r => rows.push([r[0], r[2], r[3], r[4]]));
+    body.appendParagraph(`<${idx + 1}. ${그룹}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
+    const rows = [['번호', '심사항목', '판정', '비고']]
+      .concat(그룹맵[그룹].map(r => [r[0], r[2], r[3], r[4]]));
+    const table = body.appendTable(rows);
+    _명세표헤더(table);
+    _심사결과표스타일(table);
+    _심사결과판정색칠(table);
   });
-
-  const table = body.appendTable(rows);
-  let rowIndex = 0;
-  그룹순서.forEach(그룹 => {
-    const titleRow = table.getRow(rowIndex);
-    try {
-      titleRow.getCell(3).merge();
-      titleRow.getCell(2).merge();
-      titleRow.getCell(1).merge();
-    } catch (e) {
-      Logger.log('심사항목 그룹 제목 셀 병합 실패: ' + e.message);
-    }
-    const titleCell = titleRow.getCell(0);
-    titleCell.setBackgroundColor('#e8f0fe');
-    _셀문단정렬(titleCell, DocumentApp.HorizontalAlignment.LEFT);
-    titleCell.editAsText().setBold(true);
-
-    const headerRow = table.getRow(rowIndex + 1);
-    for (let c = 0; c < headerRow.getNumCells(); c++) {
-      const cell = headerRow.getCell(c);
-      cell.setBackgroundColor('#1a73e8');
-      cell.editAsText().setForegroundColor('#ffffff').setBold(true);
-      _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
-    }
-    rowIndex += 그룹맵[그룹].length + 2;
-  });
-  const 색 = { '적합': '#137333', '보완': '#e37400', '부적합': '#c5221f', '미검토': '#9aa0a6', '해당없음': '#9aa0a6' };
-  for (let r = 0; r < table.getNumRows(); r++) {
-    const row = table.getRow(r);
-    if (row.getNumCells() < 4) continue;
-    const 판정Cell = row.getCell(2);
-    const 판정 = 판정Cell.getText().trim();
-    if (색[판정]) 판정Cell.editAsText().setForegroundColor(색[판정]).setBold(true);
-  }
-  return table;
 }
 
 function _기능세부표스타일(table) {
@@ -2993,6 +3011,43 @@ function _기능세부표스타일(table) {
         _셀문단정렬(cell, DocumentApp.HorizontalAlignment.LEFT);
       }
     }
+  }
+}
+
+function _두열표스타일(table, firstWidth, secondWidth) {
+  const widths = [firstWidth, secondWidth];
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
+      if (widths[c]) cell.setWidth(widths[c]);
+      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+      _셀문단정렬(cell, c === 0 ? DocumentApp.HorizontalAlignment.CENTER : DocumentApp.HorizontalAlignment.LEFT);
+    }
+  }
+}
+
+function _심사결과표스타일(table) {
+  const widths = [_cm(1.3), _cm(10), _cm(2), _cm(2.7)];
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
+      if (widths[c]) cell.setWidth(widths[c]);
+      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+      _셀문단정렬(cell, c === 1 || c === 3 ? DocumentApp.HorizontalAlignment.LEFT : DocumentApp.HorizontalAlignment.CENTER);
+    }
+  }
+}
+
+function _심사결과판정색칠(table) {
+  const 색 = { '적합': '#137333', '보완': '#e37400', '부적합': '#c5221f', '미검토': '#9aa0a6', '해당없음': '#9aa0a6' };
+  for (let r = 1; r < table.getNumRows(); r++) {
+    const cell = table.getRow(r).getCell(2);
+    const 판정 = cell.getText().trim();
+    if (색[판정]) cell.editAsText().setForegroundColor(색[판정]).setBold(true);
   }
 }
 
@@ -3089,8 +3144,9 @@ function _명세표(body, 행들) {
 function _명세표헤더(t) {
   const h = t.getRow(0);
   for (let c = 0; c < h.getNumCells(); c++) {
-    h.getCell(c).setBackgroundColor('#1a73e8');
+    h.getCell(c).setBackgroundColor(보고서_표헤더색);
     h.getCell(c).editAsText().setForegroundColor('#ffffff').setBold(true);
+    _셀문단정렬(h.getCell(c), DocumentApp.HorizontalAlignment.CENTER);
   }
 }
 
