@@ -399,7 +399,7 @@ function 일정관리요약뷰적용() {
   const 시트 = ss.getSheetByName(SHEET.일정관리);
   if (!시트) { SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.'); return; }
   _일정관리서식적용_(시트, true);
-  SpreadsheetApp.getUi().alert('일정관리 요약 뷰와 표 서식을 적용했습니다.');
+  SpreadsheetApp.getUi().alert('일정관리 표와 요약 뷰를 적용했습니다.');
 }
 
 function 일정관리전체뷰적용() {
@@ -407,52 +407,24 @@ function 일정관리전체뷰적용() {
   const 시트 = ss.getSheetByName(SHEET.일정관리);
   if (!시트) { SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.'); return; }
   _일정관리서식적용_(시트, false);
-  SpreadsheetApp.getUi().alert('일정관리 전체 뷰와 표 서식을 적용했습니다.');
+  SpreadsheetApp.getUi().alert('일정관리 표와 전체 뷰를 적용했습니다.');
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
   const lastCol = Math.max(1, 시트.getLastColumn());
-  const lastRow = Math.max(1000, 시트.getLastRow());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
   시트.setHiddenGridlines(false);
   시트.setFrozenRows(1);
   시트.setFrozenColumns(Math.min(2, lastCol));
 
-  시트.getRange(1, 1, 1, lastCol)
-    .setBackground(일정관리_헤더색)
-    .setFontColor('#ffffff')
-    .setFontWeight('bold')
-    .setHorizontalAlignment('center')
-    .setVerticalAlignment('middle');
   시트.setRowHeight(1, 34);
-
-  const 전체범위 = 시트.getRange(1, 1, lastRow, lastCol);
-  전체범위
-    .setVerticalAlignment('middle')
-    .setBorder(true, true, true, true, true, true, '#d9e1e3', SpreadsheetApp.BorderStyle.SOLID);
-
-  시트.getRange(2, 1, Math.max(1, lastRow - 1), lastCol)
+  시트.getRange(1, 1, Math.max(1, 시트.getMaxRows()), lastCol)
+    .setVerticalAlignment('middle');
+  시트.getRange(2, 1, Math.max(1, 시트.getMaxRows() - 1), lastCol)
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
 
-  try {
-    const 기존필터 = 시트.getFilter();
-    if (기존필터) 기존필터.remove();
-    시트.getRange(1, 1, Math.max(2, 시트.getMaxRows()), lastCol).createFilter();
-  } catch (e) {
-    Logger.log('일정관리 필터 적용 실패: ' + e.message);
-  }
-
-  try {
-    시트.getBandings().forEach(b => b.remove());
-    const banding = 시트.getRange(1, 1, Math.max(2, 시트.getMaxRows()), lastCol)
-      .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY);
-    banding.setHeaderRowColor(일정관리_헤더색);
-    banding.setFirstRowColor('#ffffff');
-    banding.setSecondRowColor('#f8fbfb');
-  } catch (e) {
-    Logger.log('일정관리 밴딩 적용 실패: ' + e.message);
-  }
+  _일정관리구글표적용_(시트, 헤더);
 
   const 너비맵 = {
     '순번': 45, '접수번호': 115, '심사링크': 70,
@@ -483,6 +455,94 @@ function _일정관리서식적용_(시트, 요약뷰) {
       if (h && !표시컬럼.has(h)) 시트.hideColumns(idx + 1);
     });
   }
+}
+
+function _일정관리구글표적용_(시트, 헤더) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheetId = ss.getId();
+  const sheetId = 시트.getSheetId();
+  const tableName = '일정관리_표';
+  const lastCol = 헤더.length;
+  const lastRow = Math.max(2, 시트.getLastRow());
+  const 기존표목록 = _시트표목록조회_(spreadsheetId, sheetId);
+
+  const requests = 기존표목록
+    .filter(t => t.name === tableName || (t.range && t.range.sheetId === sheetId))
+    .map(t => ({ deleteTable: { tableId: t.tableId } }));
+
+  requests.push({
+    addTable: {
+      table: {
+        name: tableName,
+        range: {
+          sheetId: sheetId,
+          startRowIndex: 0,
+          endRowIndex: lastRow,
+          startColumnIndex: 0,
+          endColumnIndex: lastCol,
+        },
+        rowsProperties: {
+          headerColorStyle: { rgbColor: _hexToRgb_(일정관리_헤더색) },
+          firstBandColorStyle: { rgbColor: _hexToRgb_('#ffffff') },
+          secondBandColorStyle: { rgbColor: _hexToRgb_('#f8fbfb') },
+        },
+        columnProperties: 헤더.map((h, idx) => ({
+          columnIndex: idx,
+          columnName: h || `Column ${idx + 1}`,
+          columnType: _일정관리표컬럼타입_(h),
+        })),
+      },
+    },
+  });
+
+  _sheetsBatchUpdate_(spreadsheetId, requests);
+}
+
+function _일정관리표컬럼타입_(헤더명) {
+  if (['순번', '제품수', '인공지능기능수'].indexOf(헤더명) >= 0) return 'DOUBLE';
+  if (['신청일', '심사접수일', '마감예정일'].indexOf(헤더명) >= 0) return 'DATE';
+  return 'TEXT';
+}
+
+function _시트표목록조회_(spreadsheetId, sheetId) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId),tables(tableId,name,range))`;
+  const res = UrlFetchApp.fetch(url, {
+    method: 'get',
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`Sheets API 표 조회 실패 (${code}): ${res.getContentText()}`);
+  }
+  const data = JSON.parse(res.getContentText());
+  const sheet = (data.sheets || []).find(s => s.properties && s.properties.sheetId === sheetId);
+  return sheet && sheet.tables ? sheet.tables : [];
+}
+
+function _sheetsBatchUpdate_(spreadsheetId, requests) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    payload: JSON.stringify({ requests: requests }),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`Sheets API batchUpdate 실패 (${code}): ${res.getContentText()}`);
+  }
+}
+
+function _hexToRgb_(hex) {
+  const value = String(hex || '').replace('#', '');
+  const n = parseInt(value, 16);
+  return {
+    red: ((n >> 16) & 255) / 255,
+    green: ((n >> 8) & 255) / 255,
+    blue: (n & 255) / 255,
+  };
 }
 
 function _시트초기화(ss, 이름, 헤더배열) {
@@ -1052,6 +1112,11 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
   });
 
   일정시트.appendRow(행값);
+  try {
+    _일정관리서식적용_(일정시트, true);
+  } catch (e) {
+    Logger.log('일정관리 표 갱신 실패: ' + e.message);
+  }
 }
 
 /** 접수대장 헤더에서 컬럼의 1-based 번호 반환 (VLOOKUP index용) */
@@ -2685,6 +2750,7 @@ function _증적명세서Docs생성(ss, 건) {
   const 제목문 = `[기술심사보고서] ${접수번호} — ${건['제품명']}`;
   const doc = DocumentApp.create(제목문);
   const body = doc.getBody();
+  _문서여백설정(body, 2);
 
   // ═══════════════ 표지 ═══════════════
   body.appendParagraph('인공지능 제품·서비스 기술심사보고서')
@@ -2707,37 +2773,44 @@ function _증적명세서Docs생성(ss, 건) {
     ['담당심사원', _v(건['담당심사원'])],
   ]);
 
-  // ═══════════════ 2. 심사 대상 제품 ═══════════════
-  _명세섹션(body, '2. 심사 대상 제품');
-  _명세표(body, [
-    ['제품 또는 서비스명', _v(건['제품명'])],
-    ['제품수', _제품수표시(제품모델목록, 건)],
-    ['제품 버전', _v(건['제품버전'])],
-    ['제공 형태', _v(건['제공형태'])],
-    ['인공지능 제품 분류', _v(건['제품분류'])],
-    ['제품명(모델명) / 세부품명번호 / 물품식별번호', _모델번호요약(제품모델목록, 건)],
-    ['번호 연결 확인', _모델번호연결확인(제품모델목록, 건)],
-    ['인공지능 기능 수', _v(건['인공지능기능수'])],
-  ]);
-
-  // ═══════════════ 3. 신청기업 현황 ═══════════════
-  _명세섹션(body, '3. 신청기업 현황');
+  // ═══════════════ 2. 신청기업 현황 ═══════════════
+  _명세섹션(body, '2. 신청기업 현황');
   _명세표(body, [
     ['기업명', _v(건['기업명'])],
     ['사업자등록번호', _v(건['사업자번호'])],
     ['대표자명', _v(건['대표자'])],
-    ['담당자', `${_v(건['담당자명'])} · ${_v(건['연락처'])} · ${_v(건['이메일'])}`],
+    ['담당자', `${_v(건['담당자명'])} / ${_v(건['연락처'])} / ${_v(건['이메일'])}`],
     ['소재지', _v(건['소재지'])],
   ]);
 
-  // ═══════════════ 4. 인공지능 기능 명세 ═══════════════
-  _명세섹션(body, '4. 인공지능 기능 명세');
+  // ═══════════════ 3. 심사 대상 제품 ═══════════════
+  _명세섹션(body, '3. 심사 대상 제품');
+  _명세표(body, [
+    ['제품명 / 세부품명번호 / 물품식별번호', _모델번호요약(제품모델목록, 건)],
+    ['제품 또는 서비스 수', _제품수표시(제품모델목록, 건)],
+    ['제공 형태', _v(건['제공형태'])],
+    ['인공지능 제품 분류', _v(건['제품분류'])],
+    ['제품 개요', _v(건['개요'])],
+    ['인공지능 적용 목적', _v(건['인공지능적용목적'])],
+    ['인공지능 적용 범위', _v(건['인공지능적용범위'])],
+    ['제품 구조도', _구조도표시(건)],
+    ['인공지능 기능 수', _v(건['인공지능기능수'])],
+  ]);
+
+  // ═══════════════ 4. 핵심 인공지능 기능 명세 ═══════════════
+  _명세섹션(body, '4. 핵심 인공지능 기능 명세');
   if (기능목록.length) {
-    const 표 = [['번호', '기능명', '인공지능역할', '구현방식']];
-    기능목록.forEach(f => 표.push([
-      _v(f['기능번호']), _v(f['기능명']),
-      _v(f['인공지능역할']), _구현방식레이블(f['구현방식']),
-    ]));
+    const 표 = [['구분'].concat(기능목록.map((_, idx) => `기능 ${idx + 1}`))];
+    [
+      ['번호', f => _v(f['기능번호'])],
+      ['기능명', f => _v(f['기능명'])],
+      ['인공지능 역할', f => _v(f['인공지능역할'])],
+      ['입력', f => _v(f['입력'] || f['입력데이터설명'])],
+      ['출력', f => _v(f['출력'] || f['출력데이터설명'])],
+      ['기타', f => _v(f['설명서참조위치'] || f['기타참고자료파일명'])],
+    ].forEach(rowDef => {
+      표.push([rowDef[0]].concat(기능목록.map(f => rowDef[1](f))));
+    });
     _명세표헤더(body.appendTable(표));
   } else {
     body.appendParagraph('(인공지능 기능 데이터 없음)').editAsText().setForegroundColor('#9aa0a6');
@@ -2752,20 +2825,22 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   _명세섹션(body, '5.1. 심사 항목별 검토 결과');
-  const 결과표 = [['번호', '구분', '심사 항목', '판정', '검토 의견']].concat(결과행);
-  const t결과 = body.appendTable(결과표);
-  _명세표헤더(t결과);
-  _판정색칠(t결과);
+  _심사항목별검토결과표(body, 결과행);
 
-  // ═══════════════ 기능별 인공지능 구현 세부 ═══════════════
+  // ═══════════════ 붙임 ═══════════════
   body.appendPageBreak();
-  _명세섹션(body, '기능별 인공지능 구현 세부');
+  body.appendParagraph('붙임')
+    .setHeading(DocumentApp.ParagraphHeading.HEADING1)
+    .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+
+  _명세섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
   if (기능목록.length) {
-    const 기능세부표 = [['ID', '구분', '내용', '비고']];
     기능목록.forEach((f, idx) => {
       const n = idx + 1;
+      body.appendParagraph(`<기능 ${n}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
+      const 기능세부표 = [['ID', '구분', '내용', '비고']];
       [
-        ['기능명', _v(f['기능명']), _v(f['기능번호'])],
+        ['기능명', _v(f['기능명']), ''],
         ['구현 방식', _구현방식레이블(f['구현방식']), ''],
         ['인공지능역할', _v(f['인공지능역할']), ''],
         ['입력 데이터', _v(f['입력데이터설명']), ''],
@@ -2783,15 +2858,17 @@ function _증적명세서Docs생성(ss, 건) {
       ].forEach((row, rowIdx) => {
         기능세부표.push([`기능 ${n}-${rowIdx + 1}`, row[0], row[1], row[2]]);
       });
+      const 기능표 = body.appendTable(기능세부표);
+      _명세표헤더(기능표);
+      _기능세부표스타일(기능표);
     });
-    _명세표헤더(body.appendTable(기능세부표));
   } else {
     body.appendParagraph('(데이터 없음)').editAsText().setForegroundColor('#9aa0a6');
   }
 
-  // ── 데이터 구조도 (새 페이지) ──
+  // ── 붙임 2. 데이터 구조도 (새 페이지) ──
   body.appendPageBreak();
-  _명세섹션(body, '데이터 구조도');
+  _명세섹션(body, '붙임 2. 데이터 구조도');
   const 구조도원본 = String(건['구조도파일명'] || '').trim();
   if (구조도원본) {
     const ID목록 = 구조도원본.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
@@ -2829,6 +2906,107 @@ function _증적명세서Docs생성(ss, 건) {
 
   doc.saveAndClose();
   return doc;
+}
+
+function _문서여백설정(body, cm) {
+  const pt = _cm(cm);
+  body.setMarginTop(pt)
+    .setMarginBottom(pt)
+    .setMarginLeft(pt)
+    .setMarginRight(pt);
+}
+
+function _구조도표시(건) {
+  const 구조도 = String(건['구조도파일명'] || '').trim();
+  if (!구조도) return '(미제출)';
+  const count = 구조도.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).length;
+  return `${count}건`;
+}
+
+function _심사항목별검토결과표(body, 결과행) {
+  const 그룹순서 = [];
+  const 그룹맵 = {};
+  결과행.forEach(r => {
+    const 그룹 = r[1] || '기타';
+    if (!그룹맵[그룹]) {
+      그룹맵[그룹] = [];
+      그룹순서.push(그룹);
+    }
+    그룹맵[그룹].push(r);
+  });
+
+  const rows = [];
+  그룹순서.forEach((그룹, idx) => {
+    rows.push([`${idx + 1}. ${그룹}`, '', '', '']);
+    rows.push(['번호', '심사항목', '판정', '비고']);
+    그룹맵[그룹].forEach(r => rows.push([r[0], r[2], r[3], r[4]]));
+  });
+
+  const table = body.appendTable(rows);
+  let rowIndex = 0;
+  그룹순서.forEach(그룹 => {
+    const titleRow = table.getRow(rowIndex);
+    try {
+      titleRow.getCell(3).merge();
+      titleRow.getCell(2).merge();
+      titleRow.getCell(1).merge();
+    } catch (e) {
+      Logger.log('심사항목 그룹 제목 셀 병합 실패: ' + e.message);
+    }
+    const titleCell = titleRow.getCell(0);
+    titleCell.setBackgroundColor('#e8f0fe');
+    _셀문단정렬(titleCell, DocumentApp.HorizontalAlignment.LEFT);
+    titleCell.editAsText().setBold(true);
+
+    const headerRow = table.getRow(rowIndex + 1);
+    for (let c = 0; c < headerRow.getNumCells(); c++) {
+      const cell = headerRow.getCell(c);
+      cell.setBackgroundColor('#1a73e8');
+      cell.editAsText().setForegroundColor('#ffffff').setBold(true);
+      _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
+    }
+    rowIndex += 그룹맵[그룹].length + 2;
+  });
+  const 색 = { '적합': '#137333', '보완': '#e37400', '부적합': '#c5221f', '미검토': '#9aa0a6', '해당없음': '#9aa0a6' };
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    if (row.getNumCells() < 4) continue;
+    const 판정Cell = row.getCell(2);
+    const 판정 = 판정Cell.getText().trim();
+    if (색[판정]) 판정Cell.editAsText().setForegroundColor(색[판정]).setBold(true);
+  }
+  return table;
+}
+
+function _기능세부표스타일(table) {
+  const widths = [_cm(1.2), _cm(3), _cm(9), _cm(3.8)];
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
+      if (widths[c]) cell.setWidth(widths[c]);
+      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+      if (c === 0 || c === 1) {
+        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
+      } else {
+        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.LEFT);
+      }
+    }
+  }
+}
+
+function _셀문단정렬(cell, alignment) {
+  for (let i = 0; i < cell.getNumChildren(); i++) {
+    const child = cell.getChild(i);
+    if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      child.asParagraph().setAlignment(alignment);
+    }
+  }
+}
+
+function _cm(value) {
+  return value * 28.3464567;
 }
 
 // 텍스트 요약 (길면 잘라서 …)
