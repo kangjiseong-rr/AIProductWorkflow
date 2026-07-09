@@ -61,8 +61,8 @@ const CONFIG = {
     심사방법: '제출 기술자료 검토 및 확인 기준에 따른 항목별 적합성 검토',
     보안등급: '대외제한',                 // 표지 표기
     책임자직위: '심사책임자',
-    머리말로고파일ID: '',                 // TTA 로고 Drive 파일 ID (설정 시 보고서 머리말 왼쪽에 삽입)
-    머리말로고URL: 'https://drive.google.com/file/d/1lJ33DAEyB9slZoDx9TKzqoeCKQ-HTIwl/view?usp=drive_link',                    // 파일 ID 대신 공개 이미지 URL을 사용할 경우 입력
+    머리말로고파일ID: '1lJ33DAEyB9slZoDx9TKzqoeCKQ-HTIwl',                 // TTA 로고 Drive 파일 ID (설정 시 보고서 머리말 왼쪽에 삽입)
+    머리말로고URL: '',                    // 파일 ID 대신 공개 이미지 URL을 사용할 경우 입력
   },
 
   // ── 심사 폼 웹앱 URL (배포 후 발급된 URL을 여기에 붙여넣기) ──
