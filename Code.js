@@ -90,9 +90,6 @@ const SHEET = {
 const 일정관리_헤더색 = '#0f5b5f';
 const 보고서_표헤더색 = '#f1f3f3';
 const 보고서_표헤더글자색 = '#202124';
-// 웹앱(HYPERLINK) 경유 방식은 OAuth/iframe 문제로 실행이 막히므로 쓰지 않음.
-// 이 행을 선택한 뒤 메뉴 "📑 기술심사보고서 생성 (선택 행)"으로 직접 실행한다.
-const 보고서생성안내문구 = '◀ 선택 후 메뉴에서 생성';
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
 // id: 고유키 / 항목: 질문 / 참조: 접수대장·AI기능상세에서 끌어올 값의 출처
@@ -182,7 +179,6 @@ const 시트헤더정의 = {
     // ── 일정·기한 ─────────────────────────────────
     '순번',          // 표시용 일련번호 (자동)
     '접수번호',
-    '보고서생성',    // 기술심사보고서 생성 바로가기
     '신청일',        // 기산일 (신청서 원본)
     '심사접수일',    // TTA 인수일
     '마감예정일',    // 신청일 + 15일 (수식 자동 생성)
@@ -236,7 +232,6 @@ const 컬럼값이관맵 = {
   [SHEET.일정관리]: {
     '마감일': '마감예정일',
     '착수일': '심사접수일',
-    '심사링크': '보고서생성',
   },
   [SHEET.AI기능상세]: {
     '역할': '인공지능역할',
@@ -272,14 +267,6 @@ function 헤더마이그레이션() {
     if (!시트 || 시트.getLastRow() < 1) return;
     let 기존 = 시트.getRange(1, 1, 1, Math.max(1, 시트.getLastColumn()))
       .getValues()[0].map(v => String(v).trim());
-    if (이름 === SHEET.일정관리) {
-      const iOld = 기존.indexOf('심사링크');
-      const iNew = 기존.indexOf('보고서생성');
-      if (iOld >= 0 && iNew < 0) {
-        시트.getRange(1, iOld + 1).setValue('보고서생성');
-        기존[iOld] = '보고서생성';
-      }
-    }
     const 누락 = 시트헤더정의[이름].filter(h => !기존.includes(h));
     if (누락.length) {
       const 시작열 = 기존.filter(v => v !== '').length + 1;
@@ -311,7 +298,7 @@ function 헤더마이그레이션() {
         if (변경) 시트.getRange(2, iNew + 1, n, 1).setValues(새값);
       });
     }
-    if (이름 === SHEET.일정관리) _일정관리옛심사링크컬럼삭제_(시트);
+    if (이름 === SHEET.일정관리) _일정관리레거시컬럼삭제_(시트);
   });
   if (추가내역.length) {
     try {
@@ -322,17 +309,15 @@ function 헤더마이그레이션() {
   return 추가내역;
 }
 
-function _일정관리옛심사링크컬럼삭제_(시트) {
-  const lastCol = 시트.getLastColumn();
-  if (lastCol < 1) return;
-  const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
-  const iOld = 헤더.indexOf('심사링크');
-  if (iOld < 0) return;
-  if (헤더.indexOf('보고서생성') < 0) {
-    시트.getRange(1, iOld + 1).setValue('보고서생성');
-    return;
-  }
-  시트.deleteColumn(iOld + 1);
+/** 더 이상 쓰지 않는 옛 컬럼(심사링크, 보고서생성)이 남아있으면 완전히 삭제 */
+function _일정관리레거시컬럼삭제_(시트) {
+  ['심사링크', '보고서생성'].forEach(옛컬럼명 => {
+    const lastCol = 시트.getLastColumn();
+    if (lastCol < 1) return;
+    const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
+    const iOld = 헤더.indexOf(옛컬럼명);
+    if (iOld >= 0) 시트.deleteColumn(iOld + 1);
+  });
 }
 
 function 초기설정실행() {
@@ -460,7 +445,7 @@ function 일정관리전체뷰적용() {
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
-  _일정관리옛심사링크컬럼삭제_(시트);
+  _일정관리레거시컬럼삭제_(시트);
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
@@ -481,7 +466,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
   }
 
   const 너비맵 = {
-    '순번': 45, '접수번호': 115, '보고서생성': 90,
+    '순번': 45, '접수번호': 115,
     '신청일': 90, '심사접수일': 95, '마감예정일': 95,
     '상태': 75, '담당심사원': 95,
     '기업명': 155, '담당자명': 85, '연락처': 115, '이메일': 180,
@@ -498,7 +483,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
   시트.showColumns(1, lastCol);
   if (요약뷰) {
     const 표시컬럼 = new Set([
-      '순번', '접수번호', '보고서생성',
+      '순번', '접수번호',
       '신청일', '심사접수일', '마감예정일',
       '상태', '담당심사원',
       '기업명', '담당자명', '연락처',
@@ -509,7 +494,6 @@ function _일정관리서식적용_(시트, 요약뷰) {
       if (h && !표시컬럼.has(h)) 시트.hideColumns(idx + 1);
     });
   }
-  _일정관리보고서생성링크갱신_(시트);
 }
 
 function _일정관리구글표적용_(시트, 헤더) {
@@ -710,7 +694,7 @@ function _컬럼매핑시트확보(ss) {
   const 기본값 = [
     ['내부키', '별칭 (쉼표 구분 — 엑셀 헤더가 바뀌면 여기만 수정)'],
     ['접수번호', '접수번호, 접수 번호, 관리번호, 심사번호, 신청번호'],
-    ['제품명', '제품 또는 서비스명, 제품·서비스 모델명, 제품명, 서비스명'],
+    ['제품명', '제품 또는 서비스 모델명, 제품 또는 서비스명, 제품·서비스 모델명, 제품명, 서비스명'],
     ['제공형태', '제공 형태, 제공형태'],
     ['제품분류', '인공지능 제품·서비스 분류, 제품분류'],
     ['기업명', '상호(사업자명), 기업명'],
@@ -743,7 +727,7 @@ function _컬럼매핑시트확보(ss) {
     ['추론런타임', '추론 런타임, 추론런타임, 배포포맷정밀도'],
     ['혼합구성설명', '혼합 구성 설명, 혼합구성설명'],
     ['모델별역할및입출력흐름', '모델별 역할 및 입출력 흐름, 모델별역할및입출력흐름, 세부구성요소별설명'],
-    ['모델명', '제품·서비스 모델명, 모델명'],
+    ['모델명', '제품 또는 서비스 모델명, 제품·서비스 모델명, 모델명'],
   ];
   시트.getRange(1, 1, 기본값.length, 2).setValues(기본값);
   시트.getRange(1, 1, 1, 2)
@@ -852,6 +836,7 @@ function _엑셀파싱처리(blob, 파일명) {
   const 제목 = '__임시파싱__' + new Date().getTime();
   let 임시파일ID;
   let 등록건수 = 0;
+  let 이미존재건수 = 0;
   const 건너뛴행 = [];
 
   try {
@@ -885,12 +870,17 @@ function _엑셀파싱처리(blob, 파일명) {
     const 건목록 = 세로형여부 ? [_파싱_세로형(기본데이터)] : _파싱_가로형(기본데이터);
     건목록.forEach((건, idx) => {
       try {
-        const 접수번호 = _Sheets에등록(건, 파일명);
+        const 결과 = _Sheets에등록(건, 파일명);
+        const 접수번호 = 결과.접수번호;
         if (건.제품명) 제품명별접수번호[String(건.제품명).trim()] = 접수번호;
         // 접수번호 자기참조도 등록 (기능탭에 접수번호 컬럼이 있으면 직접 매칭)
         제품명별접수번호['__접수__' + 접수번호] = 접수번호;
-        try { _보관폴더준비(접수번호); } catch (e2) { Logger.log('접수번호 폴더 생성 실패: ' + e2.message); }
-        등록건수++;
+        if (결과.신규) {
+          try { _보관폴더준비(접수번호); } catch (e2) { Logger.log('접수번호 폴더 생성 실패: ' + e2.message); }
+          등록건수++;
+        } else {
+          이미존재건수++;  // append-only 정책 — 기존 데이터는 덮어쓰지 않고 건너뜀
+        }
       } catch (e) {
         // 접수번호 없는 행 등은 등록하지 않고 건너뜀 (로그에 기록)
         건너뛴행.push(`${idx + 1}행: ${e.message}${건.제품명 ? ' (제품: ' + 건.제품명 + ')' : ''}`);
@@ -926,7 +916,10 @@ function _엑셀파싱처리(blob, 파일명) {
   }
 
   // 파싱 결과 알림
-  let msg = `엑셀 파싱 완료\n\n등록/갱신: ${등록건수}건`;
+  let msg = `엑셀 파싱 완료\n\n신규 등록: ${등록건수}건`;
+  if (이미존재건수) {
+    msg += `\n이미 등록됨(건너뜀): ${이미존재건수}건 — append-only 정책으로 기존 데이터 유지`;
+  }
   if (건너뛴행.length) {
     msg += `\n건너뜀: ${건너뛴행.length}건 (접수번호 누락 등)\n\n` + 건너뛴행.join('\n');
     msg += `\n\n※ 건너뛴 행은 KOSA 접수번호가 없어 등록되지 않았습니다. 파싱로그를 확인하세요.`;
@@ -960,7 +953,7 @@ function _기능탭파싱등록(데이터, 제품명별접수번호) {
   };
   const I = {
     접수번호: idx('접수번호', ['접수번호', '접수 번호', '관리번호', '심사번호']),
-    제품명: idx('제품명', ['제품명', '제품 또는 서비스명', '서비스명']),
+    제품명: idx('제품명', ['제품 또는 서비스 모델명', '제품명', '제품 또는 서비스명', '서비스명']),
     기능번호: idx('기능번호', ['기능번호', '번호']),
     기능명: idx('기능명', ['기능명']),
     역할: idx('인공지능역할', ['인공지능역할', '인공지능 역할', '역할', 'AI 역할']),
@@ -1032,10 +1025,10 @@ function _기능탭파싱등록(데이터, 제품명별접수번호) {
     (묶음[접수번호] = 묶음[접수번호] || []).push(기능);
   }
 
-  // 접수번호별로 기능상세 등록 + 접수대장 기능수 갱신
+  // 접수번호별로 기능상세 등록 + 접수대장 기능수 갱신 (이미 등록된 접수번호는 건너뜀)
   Object.keys(묶음).forEach(접수번호 => {
-    AI기능상세등록(접수번호, 묶음[접수번호]);
-    _접수대장기능수갱신(접수번호, 묶음[접수번호]);
+    const 등록됨 = AI기능상세등록(접수번호, 묶음[접수번호]);
+    if (등록됨) _접수대장기능수갱신(접수번호, 묶음[접수번호]);
   });
 }
 
@@ -1060,9 +1053,9 @@ function _제품모델탭파싱등록(데이터, 제품명별접수번호) {
   };
   const I = {
     접수번호: idx('접수번호', ['접수번호', '접수 번호', '관리번호', '심사번호']),
-    제품명: idx('제품명', ['제품명', '제품 또는 서비스명', '서비스명']),
+    제품명: idx('제품명', ['제품 또는 서비스 모델명', '제품명', '제품 또는 서비스명', '서비스명']),
     연번: idx('연번', ['연번']),
-    모델명: idx('모델명', ['모델명', '제품·서비스 모델명']),
+    모델명: idx('모델명', ['제품 또는 서비스 모델명', '모델명', '제품·서비스 모델명']),
     세부품명번호: idx('세부품명번호', ['세부품명번호']),
     물품식별번호: idx('물품식별번호', ['물품식별번호']),
   };
@@ -1143,9 +1136,6 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
     // 0) 순번 = 헤더 제외한 현재 행 위치 (새행번호 - 1)
     if (h === '순번') return 새행번호 - 1;
 
-    // 0-1) 보고서생성 = 이 행을 선택한 뒤 메뉴 "기술심사보고서 생성"으로 실행 (웹앱 링크 방식은 사용 안 함)
-    if (h === '보고서생성') return 보고서생성안내문구;
-
     // 1) 직접 입력값 (상태·담당심사원·신청일·심사접수일)
     if (h === '접수번호') return 접수번호;
     if (h === '상태') return '대기';
@@ -1193,13 +1183,14 @@ function 제품모델등록(접수번호, 모델목록) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.제품모델);
 
+  // 이미 등록된 접수번호는 건너뜀 (append-only 정책 — 기존 제품모델 행을 지우고 다시 쓰지 않음)
   const D = 시트.getDataRange().getValues();
   if (D.length > 1) {
     const iNo = D[0].indexOf('접수번호');
-    for (let r = D.length - 1; r >= 1; r--) {
-      if (String(D[r][iNo]).trim() === String(접수번호).trim()) {
-        시트.deleteRow(r + 1);
-      }
+    const 이미존재 = D.slice(1).some(행 => String(행[iNo]).trim() === String(접수번호).trim());
+    if (이미존재) {
+      Logger.log(`제품모델 이미 등록됨 - 건너뜀: ${접수번호}`);
+      return false;
     }
   }
 
@@ -1217,9 +1208,15 @@ function 제품모델등록(접수번호, 모델목록) {
   });
 
   _접수대장제품모델요약갱신(ss, 접수번호, 모델목록);
+  return true;
 }
 
-/** 제품모델 반복행 기준으로 접수대장의 대표 제품명(1번 모델명)과 제품수를 갱신 */
+/**
+ * 제품모델 반복행 기준으로 접수대장의 제품수를 갱신합니다.
+ * 제품명은 더 이상 여기서 덮어쓰지 않습니다 — 신청 엑셀에는 원래부터 '제품명'이라는
+ * 별도 항목이 없고 '제품 또는 서비스 모델명'(조달청 기준 모델명)이 유일한 기준값이라,
+ * 기본정보 탭 파싱 시 채운 값이 이미 최종값입니다.
+ */
 function _접수대장제품모델요약갱신(ss, 접수번호, 모델목록) {
   const 대장시트 = ss.getSheetByName(SHEET.접수대장);
   if (!대장시트 || !모델목록 || !모델목록.length) return;
@@ -1227,17 +1224,12 @@ function _접수대장제품모델요약갱신(ss, 접수번호, 모델목록) {
   const D = 대장시트.getDataRange().getValues();
   const H = D[0].map(v => String(v).trim());
   const iNo = H.indexOf('접수번호');
-  const i제품명 = H.indexOf('제품명');
   const i제품수 = H.indexOf('제품수');
-  if (iNo < 0) return;
-
-  const 정렬목록 = 모델목록.slice().sort((a, b) => Number(a.연번 || 0) - Number(b.연번 || 0));
-  const 대표모델명 = String(정렬목록[0].모델명 || '').trim();
+  if (iNo < 0 || i제품수 < 0) return;
 
   for (let r = 1; r < D.length; r++) {
     if (String(D[r][iNo]).trim() !== String(접수번호).trim()) continue;
-    if (i제품명 >= 0 && 대표모델명) 대장시트.getRange(r + 1, i제품명 + 1).setValue(대표모델명);
-    if (i제품수 >= 0) 대장시트.getRange(r + 1, i제품수 + 1).setValue(모델목록.length);
+    대장시트.getRange(r + 1, i제품수 + 1).setValue(모델목록.length);
     break;
   }
 }
@@ -1416,7 +1408,7 @@ function _파싱_세로형(데이터) {
     이메일:         V('이메일', ['담당자 이메일주소', '이메일', 'email', 'e-mail']),
     // 제품·서비스 정보
     접수번호:       V('접수번호', ['접수번호', '접수 번호', '관리번호', '관리 번호', '심사번호']),
-    제품명:         V('제품명', ['제품 또는 서비스명', '제품·서비스명', '제품명', '서비스명']),
+    제품명:         V('제품명', ['제품 또는 서비스 모델명', '제품 또는 서비스명', '제품·서비스명', '제품명', '서비스명']),
     제공형태:       V('제공형태', ['제품 또는 서비스 제공 형태', '제공 형태', '제공형태']),
     제품분류:       V('제품분류', ['인공지능 제품·서비스 분류', 'AI 제품 분류', 'AI제품분류', '제품분류']),
     개요:           V('개요', ['개요']),
@@ -1498,37 +1490,31 @@ function _Sheets에등록(건, 파일명) {
   const H = D[0];
   const iNo = H.indexOf('접수번호');
 
-  // 기존 행 찾기 (같은 접수번호면 갱신)
-  let 기존행번호 = -1;
-  for (let r = 1; r < D.length; r++) {
-    if (String(D[r][iNo]).trim() === 접수번호) { 기존행번호 = r + 1; break; }
+  // 이미 등록된 접수번호는 절대 덮어쓰지 않고 무조건 건너뜀 (append-only 정책).
+  // 재파싱·중복 파일 업로드로 같은 접수번호가 다시 들어와도 기존 데이터는 그대로 유지됩니다.
+  const 이미존재 = D.slice(1).some(행 => String(행[iNo]).trim() === 접수번호);
+  if (이미존재) {
+    try {
+      ss.getSheetByName(SHEET.로그).appendRow([
+        Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+        파일명, 접수번호, '건너뜀',
+        `이미 등록된 접수번호 — append-only 정책으로 덮어쓰지 않음 (${건.제품명 || ''})`,
+      ]);
+    } catch (e2) {}
+    Logger.log(`이미 등록됨 - 건너뜀: ${접수번호}`);
+    return { 접수번호, 신규: false };
   }
-  const 신규 = (기존행번호 === -1);
 
-  // 담당자: 신규면 새로 배분, 갱신이면 기존 담당자 유지
-  let 담당자, 착수일, 상태;
-  if (신규) {
-    담당자 = _담당자배분(ss);
-    착수일 = Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd');
-    상태 = '접수';
-  } else {
-    const i담당 = H.indexOf('담당심사원');
-    const i착수 = H.indexOf('심사착수일');
-    const i상태 = H.indexOf('상태');
-    담당자 = D[기존행번호 - 1][i담당] || _담당자배분(ss);
-    착수일 = D[기존행번호 - 1][i착수] || Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd');
-    상태 = D[기존행번호 - 1][i상태] || '접수';  // 기존 상태 보존
-  }
+  const 담당자 = _담당자배분(ss);
+  const 착수일 = Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd');
+  const 상태 = '접수';
 
   // ── 헤더 이름 기반 쓰기 ──
   // 컬럼 순서가 바뀌거나 시트에 컬럼이 추가/삽입돼도 값이 밀리지 않습니다.
-  // 값맵에 없는 컬럼은 갱신 시 기존 값을 보존합니다.
   const 값맵 = {
     // TTA 관리
     '접수번호': 접수번호,
-    '심사접수일': 신규 ? Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd')
-                   : (H.indexOf('심사접수일') >= 0 ? D[기존행번호 - 1][H.indexOf('심사접수일')]
-                      : Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd')),
+    '심사접수일': Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd'),
     '상태': 상태,
     // 기업 정보
     '기업명': 건.기업명, '사업자번호': 건.사업자번호, '대표자': 건.대표자, '소재지': 건.소재지,
@@ -1557,49 +1543,33 @@ function _Sheets에등록(건, 파일명) {
     '비고': 건.비고,
   };
 
-  const 행값 = H.map((h, i) => {
-    if (Object.prototype.hasOwnProperty.call(값맵, h)) {
-      return 값맵[h] ?? '';
-    }
-    // 값맵에 정의되지 않은 컬럼: 신규는 빈칸, 갱신은 기존 값 보존
-    return 신규 ? '' : D[기존행번호 - 1][i];
-  });
+  const 행값 = H.map(h => 값맵[h] ?? '');
+  대장시트.appendRow(행값);
 
-  if (신규) {
-    대장시트.appendRow(행값);
-  } else {
-    대장시트.getRange(기존행번호, 1, 1, 행값.length).setValues([행값]);
-  }
-
-  // ── 일정관리: 신규만 추가 ──
+  // ── 일정관리 추가 ──
   // 하이브리드 싱크:
   //   · 신청정보(회사·연락처·제품 등) = 접수대장 VLOOKUP 수식 참조 (접수대장이 원본)
   //   · 상태·담당심사원 = 일정관리에서 직접 편집 (일정관리가 원본)
   //   · 마감예정일 = 신청일 + 15 수식
-  if (신규) {
-    _일정관리행추가(ss, 접수번호, {
-      신청일: 건.신청일 || '',
-      심사접수일: Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd'),
-      담당심사원: 담당자,   // 최초 배분값 (이후 일정관리에서 직접 수정 가능)
-    });
-  }
+  _일정관리행추가(ss, 접수번호, {
+    신청일: 건.신청일 || '',
+    심사접수일: Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd'),
+    담당심사원: 담당자,   // 최초 배분값 (이후 일정관리에서 직접 수정 가능)
+  });
 
   // ── 로그 ──
   ss.getSheetByName(SHEET.로그).appendRow([
     Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
-    파일명, 접수번호,
-    신규 ? '신규등록' : '갱신',
-    `${건.기업명} / ${건.제품명} ${신규 ? '등록' : '갱신'} → 담당: ${담당자}`,
+    파일명, 접수번호, '신규등록',
+    `${건.기업명} / ${건.제품명} 등록 → 담당: ${담당자}`,
   ]);
 
-  // ── 알림: 신규일 때만 ──
-  if (신규) {
-    if (CONFIG.알림이메일) _이메일발송(CONFIG.알림이메일, 접수번호, 건, 담당자, 마감일);
-    _챗알림발송(접수번호, 건, 담당자, 마감일);
-  }
+  // ── 알림 ──
+  if (CONFIG.알림이메일) _이메일발송(CONFIG.알림이메일, 접수번호, 건, 담당자, 마감일);
+  _챗알림발송(접수번호, 건, 담당자, 마감일);
 
-  Logger.log(`${신규 ? '등록' : '갱신'}: ${접수번호} / ${건.제품명}`);
-  return 접수번호;
+  Logger.log(`등록: ${접수번호} / ${건.제품명}`);
+  return { 접수번호, 신규: true };
 }
 
 
@@ -1785,14 +1755,14 @@ function AI기능상세등록(접수번호, 기능목록) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.AI기능상세);
 
-  // 같은 접수번호의 기존 기능 행 삭제 (재파싱 시 중복 방지)
+  // 이미 등록된 접수번호는 건너뜀 (append-only 정책 — 기존 기능상세 행을 지우고 다시 쓰지 않음)
   const D = 시트.getDataRange().getValues();
   if (D.length > 1) {
     const iNo = D[0].indexOf('접수번호');
-    for (let r = D.length - 1; r >= 1; r--) {
-      if (String(D[r][iNo]).trim() === String(접수번호).trim()) {
-        시트.deleteRow(r + 1);
-      }
+    const 이미존재 = D.slice(1).some(행 => String(행[iNo]).trim() === String(접수번호).trim());
+    if (이미존재) {
+      Logger.log(`AI기능상세 이미 등록됨 - 건너뜀: ${접수번호}`);
+      return false;
     }
   }
 
@@ -1827,6 +1797,7 @@ function AI기능상세등록(접수번호, 기능목록) {
     };
     시트.appendRow(헤더행.map(h => 값맵[h] ?? ''));
   });
+  return true;
 }
 
 
@@ -1995,7 +1966,6 @@ function onOpen() {
   // ── 관리자 전용 메뉴 (관리자가 아니면 아예 표시 안 함) ──
   if (관리자) {
     menu.addSeparator()
-      .addItem('📑 보고서 생성 링크 채우기', '보고서생성링크채우기')
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
       .addSeparator()
       .addItem('⚙️ 초기 설정 (최초 1회)', '초기설정실행')
@@ -2073,46 +2043,6 @@ function 심사폼열기() {
   SpreadsheetApp.getUi().showModalDialog(html, '심사 폼 열기');
 }
 
-// 웹앱 링크가 아니라 안내 문구만 채운다 — 실제 생성은 메뉴 "📑 기술심사보고서 생성 (선택 행)"으로 실행.
-function _일정관리보고서생성링크갱신_(시트) {
-  if (!시트 || 시트.getLastRow() < 2) return;
-  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
-  const iNo = 헤더.indexOf('접수번호');
-  const iLink = 헤더.indexOf('보고서생성');
-  if (iNo < 0 || iLink < 0) return;
-
-  const n = 시트.getLastRow() - 1;
-  const 접수번호값 = 시트.getRange(2, iNo + 1, n, 1).getValues();
-  const 값 = 접수번호값.map(row => [row[0] ? 보고서생성안내문구 : '']);
-  시트.getRange(2, iLink + 1, n, 1).setValues(값);
-}
-
-// 일정관리 각 행의 "보고서생성" 칸에 안내 문구를 채웁니다.
-// (예전 웹앱 하이퍼링크 방식은 OAuth/iframe 문제로 실행이 막혀 폐기 — 메뉴로 직접 실행)
-function 보고서생성링크채우기() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getSheetByName(SHEET.일정관리);  // 메인 시트
-  _일정관리옛심사링크컬럼삭제_(시트);
-  const H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
-  let i링크 = H.indexOf('보고서생성');
-  if (i링크 < 0) {
-    i링크 = H.length;
-    시트.getRange(1, i링크 + 1).setValue('보고서생성')
-      .setBackground(일정관리_헤더색).setFontColor('#ffffff').setFontWeight('bold')
-      .setHorizontalAlignment('center').setVerticalAlignment('middle');
-  }
-  _일정관리보고서생성링크갱신_(시트);
-  SpreadsheetApp.getUi().alert(
-    '일정관리 시트 "보고서생성" 칸에 안내 문구를 채웠습니다.\n\n' +
-    '보고서를 생성하려면 해당 행을 선택한 뒤 메뉴 › 📑 기술심사보고서 생성 (선택 행)을 실행하세요.'
-  );
-}
-
-function 심사링크채우기() {
-  보고서생성링크채우기();
-}
-
-
 // ─────────────────────────────────────────────
 // 7. 수동 직접 입력 (엑셀 없이 테스트/긴급 등록)
 // ─────────────────────────────────────────────
@@ -2141,8 +2071,11 @@ function 수동직접등록_예시() {
     비고: '',
   };
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 접수번호 = _Sheets에등록(건, '수동입력');
+  const { 접수번호, 신규 } = _Sheets에등록(건, '수동입력');
+  if (!신규) {
+    SpreadsheetApp.getUi().alert(`이미 등록된 접수번호입니다 (건너뜀): ${접수번호}`);
+    return;
+  }
 
   // 인공지능 기능 상세도 함께 등록
   AI기능상세등록(접수번호, [
