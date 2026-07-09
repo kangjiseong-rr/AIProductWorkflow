@@ -1546,33 +1546,61 @@ function AI기능상세등록(접수번호, 기능목록) {
  *  1. 접수대장 시트에서 보고서를 생성할 행 클릭
  *  2. 메뉴 > 인공지능심사관리 > 보고서 생성 (또는 아래 함수 직접 실행)
  */
+/**
+ * 활성 행에서 접수번호를 추출한다 (접수대장·일정관리 어느 탭이든 동작).
+ * 트리거는 접수번호 하나이므로, 시트 종류와 무관하게 '접수번호' 컬럼 값만 읽는다.
+ * @return {string|null} 접수번호 (없으면 null)
+ */
+function _활성행접수번호(ss) {
+  const 시트 = ss.getActiveSheet();
+  const 행 = 시트.getActiveRange().getRow();
+  if (행 <= 1) return null;
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0]
+    .map(v => String(v).trim());
+  const iNo = 헤더.indexOf('접수번호');
+  if (iNo < 0) return null;
+  const 접수번호 = 시트.getRange(행, iNo + 1).getValue();
+  return 접수번호 ? String(접수번호).trim() : null;
+}
+
+/**
+ * 접수번호로 접수대장에서 건 데이터(원본)를 조회해 객체로 반환.
+ * 어느 탭에서 실행하든 항상 접수대장의 정본 데이터를 사용하게 한다.
+ */
+function _건조회(ss, 접수번호) {
+  const 시트 = ss.getSheetByName(SHEET.접수대장);
+  const D = 시트.getDataRange().getValues();
+  const H = D[0];
+  const iNo = H.indexOf('접수번호');
+  for (let r = 1; r < D.length; r++) {
+    if (String(D[r][iNo]).trim() === String(접수번호).trim()) {
+      const 건 = {};
+      H.forEach((h, i) => { 건[h] = D[r][i]; });
+      return 건;
+    }
+  }
+  return null;
+}
+
 function 보고서생성() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getActiveSheet();
 
-  if (시트.getName() !== SHEET.접수대장) {
-    SpreadsheetApp.getUi().alert('접수대장 시트에서 실행해주세요.');
+  // 트리거는 접수번호 하나. 접수대장·일정관리 어느 탭에서 실행하든 동일 동작.
+  const 접수번호 = _활성행접수번호(ss);
+  if (!접수번호) {
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
     return;
   }
 
-  const 행번호 = 시트.getActiveRange().getRow();
-  if (행번호 <= 1) {
-    SpreadsheetApp.getUi().alert('데이터 행을 선택해주세요.');
+  const 건 = _건조회(ss, 접수번호);
+  if (!건) {
+    SpreadsheetApp.getUi().alert('접수대장에서 "' + 접수번호 + '" 건을 찾을 수 없습니다.');
     return;
   }
 
-  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const 데이터 = 시트.getRange(행번호, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const 건 = {};
-  헤더.forEach((h, i) => { 건[h] = 데이터[i]; });
-
-  const 접수번호 = 건['접수번호'];
   const 기능목록 = _AI기능상세조회(ss, 접수번호);
-
   const doc = _Docs보고서생성(건, 기능목록);
-  SpreadsheetApp.getUi().alert(
-    `보고서가 생성되었습니다!\n\n${doc.getUrl()}`
-  );
+  SpreadsheetApp.getUi().alert('보고서가 생성되었습니다!\\n\\n' + doc.getUrl());
 }
 
 function _AI기능상세조회(ss, 접수번호) {
@@ -2254,23 +2282,15 @@ function _상태업데이트(ss, 접수번호, 상태) {
 
 function 확인서생성() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getActiveSheet();
-  if (시트.getName() !== SHEET.접수대장) {
-    SpreadsheetApp.getUi().alert('접수대장 시트에서 행을 선택한 뒤 실행해주세요.');
+  const 접수번호 = _활성행접수번호(ss);
+  if (!접수번호) {
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
     return;
   }
-  const 행번호 = 시트.getActiveRange().getRow();
-  if (행번호 <= 1) {
-    SpreadsheetApp.getUi().alert('데이터 행을 선택해주세요.');
-    return;
+  const res = 확인서생성_byId(접수번호);
+  if (res && res.url) {
+    SpreadsheetApp.getUi().alert('확인서가 생성되었습니다.\\n\\n' + res.url);
   }
-  const H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const D = 시트.getRange(행번호, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const 건 = {};
-  H.forEach((h, i) => { 건[h] = D[i]; });
-
-  const doc = _확인서Docs생성(ss, 건);
-  SpreadsheetApp.getUi().alert(`확인서가 생성되었습니다.\n\n${doc.getUrl()}`);
 }
 
 /** 웹앱/메뉴 공용: 접수번호로 확인서 생성하고 URL 반환 */
@@ -2427,21 +2447,16 @@ function _판정색칠(표) {
 
 function 증적명세서생성() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getActiveSheet();
-  if (시트.getName() !== SHEET.접수대장) {
-    SpreadsheetApp.getUi().alert('접수대장 시트에서 행을 선택한 뒤 실행해주세요.');
+  const 접수번호 = _활성행접수번호(ss);
+  if (!접수번호) {
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
     return;
   }
-  const 행번호 = 시트.getActiveRange().getRow();
-  if (행번호 <= 1) { SpreadsheetApp.getUi().alert('데이터 행을 선택해주세요.'); return; }
-
-  const H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const D = 시트.getRange(행번호, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const 건 = {};
-  H.forEach((h, i) => { 건[h] = D[i]; });
+  const 건 = _건조회(ss, 접수번호);
+  if (!건) { SpreadsheetApp.getUi().alert('접수대장에서 "' + 접수번호 + '" 건을 찾을 수 없습니다.'); return; }
 
   const doc = _증적명세서Docs생성(ss, 건);
-  SpreadsheetApp.getUi().alert(`기술심사보고서가 생성되었습니다.\n\n${doc.getUrl()}`);
+  SpreadsheetApp.getUi().alert('기술심사보고서가 생성되었습니다.\\n\\n' + doc.getUrl());
 }
 
 function 증적명세서생성_byId(접수번호) {
@@ -2792,25 +2807,20 @@ function 구조도원본정리(접수번호) {
 
 function 증적3종산출() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getActiveSheet();
-  if (시트.getName() !== SHEET.접수대장) {
-    SpreadsheetApp.getUi().alert('접수대장 시트에서 행을 선택한 뒤 실행해주세요.');
+  const 접수번호 = _활성행접수번호(ss);
+  if (!접수번호) {
+    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\\n(일정관리 또는 접수대장 탭)');
     return;
   }
-  const 행번호 = 시트.getActiveRange().getRow();
-  if (행번호 <= 1) { SpreadsheetApp.getUi().alert('데이터 행을 선택해주세요.'); return; }
-
-  const H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const D = 시트.getRange(행번호, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const 건 = {};
-  H.forEach((h, i) => { 건[h] = D[i]; });
+  const 건 = _건조회(ss, 접수번호);
+  if (!건) { SpreadsheetApp.getUi().alert('접수대장에서 "' + 접수번호 + '" 건을 찾을 수 없습니다.'); return; }
 
   const res = _증적3종산출_처리(ss, 건);
   SpreadsheetApp.getUi().alert(
-    `증적 3종 산출 완료\n\n` +
-    `폴더: ${res.folderUrl}\n` +
-    `DOCX · PDF · JSON + 구조도 원본 ${res.구조도복사}건\n\n` +
-    `NAS Cloud Sync가 곧 수거합니다.`
+    '증적 3종 산출 완료\\n\\n' +
+    '폴더: ' + res.folderUrl + '\\n' +
+    'DOCX · PDF · JSON + 구조도 원본 ' + res.구조도복사 + '건\\n\\n' +
+    'NAS Cloud Sync가 곧 수거합니다.'
   );
 }
 
