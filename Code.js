@@ -2927,7 +2927,7 @@ function _보고서머리말생성(doc, 문서번호, R) {
   const header = doc.getHeader() || doc.addHeader();
   _문서컨테이너비우기(header);
 
-  const table = header.appendTable([['', `문서번호: ${문서번호}`]]);
+  const table = header.insertTable(0, [['', `문서번호: ${문서번호}`]]);
   table.setBorderWidth(0);
   const row = table.getRow(0);
   const left = row.getCell(0);
@@ -2961,8 +2961,15 @@ function _보고서로고Blob(R) {
 }
 
 function _문서컨테이너비우기(container) {
-  while (container.getNumChildren() > 0) {
+  while (container.getNumChildren() > 1) {
     container.removeChild(container.getChild(0));
+  }
+
+  if (container.getNumChildren() === 1) {
+    const child = container.getChild(0);
+    if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      child.asParagraph().clear();
+    }
   }
 }
 
