@@ -167,7 +167,7 @@ const 시트헤더정의 = {
     // ── 일정·기한 ─────────────────────────────────
     '순번',          // 표시용 일련번호 (자동)
     '접수번호',
-    '심사링크',      // 심사폼 바로가기 (이 시트가 워크플로우 허브)
+    '보고서생성',    // 기술심사보고서 생성 바로가기
     '신청일',        // 기산일 (신청서 원본)
     '심사접수일',    // TTA 인수일
     '마감예정일',    // 신청일 + 15일 (수식 자동 생성)
@@ -221,6 +221,7 @@ const 컬럼값이관맵 = {
   [SHEET.일정관리]: {
     '마감일': '마감예정일',
     '착수일': '심사접수일',
+    '심사링크': '보고서생성',
   },
   [SHEET.AI기능상세]: {
     '역할': '인공지능역할',
@@ -247,6 +248,14 @@ function 헤더마이그레이션() {
     if (!시트 || 시트.getLastRow() < 1) return;
     let 기존 = 시트.getRange(1, 1, 1, Math.max(1, 시트.getLastColumn()))
       .getValues()[0].map(v => String(v).trim());
+    if (이름 === SHEET.일정관리) {
+      const iOld = 기존.indexOf('심사링크');
+      const iNew = 기존.indexOf('보고서생성');
+      if (iOld >= 0 && iNew < 0) {
+        시트.getRange(1, iOld + 1).setValue('보고서생성');
+        기존[iOld] = '보고서생성';
+      }
+    }
     const 누락 = 시트헤더정의[이름].filter(h => !기존.includes(h));
     if (누락.length) {
       const 시작열 = 기존.filter(v => v !== '').length + 1;
@@ -278,6 +287,7 @@ function 헤더마이그레이션() {
         if (변경) 시트.getRange(2, iNew + 1, n, 1).setValues(새값);
       });
     }
+    if (이름 === SHEET.일정관리) _일정관리옛심사링크컬럼삭제_(시트);
   });
   if (추가내역.length) {
     try {
@@ -286,6 +296,19 @@ function 헤더마이그레이션() {
   }
   _전체제품모델요약갱신(ss);
   return 추가내역;
+}
+
+function _일정관리옛심사링크컬럼삭제_(시트) {
+  const lastCol = 시트.getLastColumn();
+  if (lastCol < 1) return;
+  const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
+  const iOld = 헤더.indexOf('심사링크');
+  if (iOld < 0) return;
+  if (헤더.indexOf('보고서생성') < 0) {
+    시트.getRange(1, iOld + 1).setValue('보고서생성');
+    return;
+  }
+  시트.deleteColumn(iOld + 1);
 }
 
 function 초기설정실행() {
@@ -413,6 +436,7 @@ function 일정관리전체뷰적용() {
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
+  _일정관리옛심사링크컬럼삭제_(시트);
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
@@ -433,7 +457,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
   }
 
   const 너비맵 = {
-    '순번': 45, '접수번호': 115, '심사링크': 70,
+    '순번': 45, '접수번호': 115, '보고서생성': 90,
     '신청일': 90, '심사접수일': 95, '마감예정일': 95,
     '상태': 75, '담당심사원': 95,
     '기업명': 155, '담당자명': 85, '연락처': 115, '이메일': 180,
@@ -450,7 +474,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
   시트.showColumns(1, lastCol);
   if (요약뷰) {
     const 표시컬럼 = new Set([
-      '순번', '접수번호', '심사링크',
+      '순번', '접수번호', '보고서생성',
       '신청일', '심사접수일', '마감예정일',
       '상태', '담당심사원',
       '기업명', '담당자명', '연락처',
@@ -461,6 +485,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
       if (h && !표시컬럼.has(h)) 시트.hideColumns(idx + 1);
     });
   }
+  _일정관리보고서생성링크갱신_(시트);
 }
 
 function _일정관리구글표적용_(시트, 헤더) {
@@ -1083,12 +1108,11 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
     // 0) 순번 = 헤더 제외한 현재 행 위치 (새행번호 - 1)
     if (h === '순번') return 새행번호 - 1;
 
-    // 0-1) 심사링크 = 심사폼 URL + 접수번호 (CONFIG.심사폼URL 있을 때만)
-    if (h === '심사링크') {
-      const url = (CONFIG.심사폼URL || '').trim();
-      if (!url) return '';
-      const 건URL = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(접수번호);
-      return `=HYPERLINK("${건URL}","▶ 심사")`;
+    // 0-1) 보고서생성 = 웹앱에서 해당 접수번호의 기술심사보고서 생성
+    if (h === '보고서생성') {
+      const 건URL = _보고서생성URL_(접수번호);
+      if (!건URL) return '';
+      return `=HYPERLINK("${건URL}","보고서 생성")`;
     }
 
     // 1) 직접 입력값 (상태·담당심사원·신청일·심사접수일)
@@ -2020,7 +2044,7 @@ function onOpen() {
   // ── 관리자 전용 메뉴 (관리자가 아니면 아예 표시 안 함) ──
   if (관리자) {
     menu.addSeparator()
-      .addItem('🔗 심사 링크 채우기', '심사링크채우기')
+      .addItem('📑 보고서 생성 링크 채우기', '보고서생성링크채우기')
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
       .addSeparator()
       .addItem('⚙️ 초기 설정 (최초 1회)', '초기설정실행')
@@ -2098,32 +2122,54 @@ function 심사폼열기() {
   SpreadsheetApp.getUi().showModalDialog(html, '심사 폼 열기');
 }
 
+function _보고서생성URL_(접수번호) {
+  const url = (CONFIG.심사폼URL || '').trim();
+  if (!url || !접수번호) return '';
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') +
+    'action=report&id=' + encodeURIComponent(접수번호);
+}
+
+function _일정관리보고서생성링크갱신_(시트) {
+  const url = (CONFIG.심사폼URL || '').trim();
+  if (!url || !시트 || 시트.getLastRow() < 2) return;
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const iNo = 헤더.indexOf('접수번호');
+  const iLink = 헤더.indexOf('보고서생성');
+  if (iNo < 0 || iLink < 0) return;
+
+  const n = 시트.getLastRow() - 1;
+  const 접수번호값 = 시트.getRange(2, iNo + 1, n, 1).getValues();
+  const 수식 = 접수번호값.map(row => {
+    const 접수번호 = row[0];
+    const 건URL = _보고서생성URL_(접수번호);
+    return [건URL ? `=HYPERLINK("${건URL}","보고서 생성")` : ''];
+  });
+  시트.getRange(2, iLink + 1, n, 1).setValues(수식);
+}
+
 // 접수대장 각 행에 "심사" 하이퍼링크를 채워넣기 (메뉴에서 한 번 실행)
-// 마지막 열 다음에 '심사링크' 열을 만들고 건별 링크를 HYPERLINK 수식으로 넣습니다.
-function 심사링크채우기() {
+// 일정관리 각 행에 보고서 생성 하이퍼링크를 채워넣습니다.
+function 보고서생성링크채우기() {
   const url = (CONFIG.심사폼URL || '').trim();
   if (!url) { SpreadsheetApp.getUi().alert('CONFIG.심사폼URL을 먼저 설정하세요.'); return; }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.일정관리);  // 메인 시트
-  const D = 시트.getDataRange().getValues();
-  const H = D[0];
-  let i링크 = H.indexOf('심사링크');
+  _일정관리옛심사링크컬럼삭제_(시트);
+  const H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  let i링크 = H.indexOf('보고서생성');
   if (i링크 < 0) {
     i링크 = H.length;
-    시트.getRange(1, i링크 + 1).setValue('심사링크')
-      .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+    시트.getRange(1, i링크 + 1).setValue('보고서생성')
+      .setBackground(일정관리_헤더색).setFontColor('#ffffff').setFontWeight('bold')
+      .setHorizontalAlignment('center').setVerticalAlignment('middle');
   }
-  const iNo = H.indexOf('접수번호');
+  _일정관리보고서생성링크갱신_(시트);
+  SpreadsheetApp.getUi().alert('일정관리 시트 각 행에 보고서 생성 링크를 채웠습니다.');
+}
 
-  for (let r = 1; r < D.length; r++) {
-    const 접수번호 = D[r][iNo];
-    if (!접수번호) continue;
-    const 건URL = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(접수번호);
-    시트.getRange(r + 1, i링크 + 1)
-      .setFormula(`=HYPERLINK("${건URL}","▶ 심사")`);
-  }
-  SpreadsheetApp.getUi().alert('일정관리 시트 각 행에 "심사" 링크를 채웠습니다. 클릭하면 해당 건 심사 폼이 열립니다.');
+function 심사링크채우기() {
+  보고서생성링크채우기();
 }
 
 
@@ -2208,13 +2254,52 @@ function 수동직접등록_예시() {
 // '심사체크결과' 시트에만 기록됩니다. 원본은 절대 수정되지 않습니다.
 
 function doGet(e) {
-  const 접수번호 = e && e.parameter && e.parameter.id ? e.parameter.id : '';
+  const p = e && e.parameter ? e.parameter : {};
+  const 접수번호 = p.id ? p.id : '';
+  if (p.action === 'report') return _웹_보고서생성응답_(접수번호);
+
   const t = HtmlService.createTemplateFromFile('심사폼');
   t.초기접수번호 = 접수번호;
   return t.evaluate()
     .setTitle('AI 기술심사 체크리스트')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function _웹_보고서생성응답_(접수번호) {
+  try {
+    if (!접수번호) throw new Error('접수번호가 없습니다.');
+    const 결과 = 증적명세서생성_byId(접수번호);
+    const url = _htmlEscape_(결과.url || '');
+    const name = _htmlEscape_(결과.name || '기술심사보고서');
+    return HtmlService.createHtmlOutput(
+      '<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<script>window.top.location.href=' + JSON.stringify(결과.url || '') + ';</script>' +
+      '</head><body style="font-family:Arial,sans-serif;padding:20px">' +
+      '<p>보고서가 생성되었습니다.</p>' +
+      '<p><a href="' + url + '" target="_top">' + name + ' 열기</a></p>' +
+      '</body></html>'
+    ).setTitle('보고서 생성 완료');
+  } catch (err) {
+    return HtmlService.createHtmlOutput(
+      '<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '</head><body style="font-family:Arial,sans-serif;padding:20px">' +
+      '<p>보고서 생성 중 오류가 발생했습니다.</p>' +
+      '<pre style="white-space:pre-wrap">' + _htmlEscape_(err && err.message ? err.message : String(err)) + '</pre>' +
+      '</body></html>'
+    ).setTitle('보고서 생성 오류');
+  }
+}
+
+function _htmlEscape_(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /** 웹앱: 심사 대상 목록 조회 (드롭다운용) */
