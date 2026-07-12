@@ -10,7 +10,6 @@
  *  3. 인공지능기능상세  — 기능별 업무설명 + 구현방식 세부 정보
  *  4. 일정관리          — 스케줄/배정 확인용 메인 뷰 (최소 필드만)
  *  5. 파싱로그          — 자동 파싱 이력
- *  6. 인공지능심사체크결과 — 심사폼 판정 결과 (원본과 완전 분리)
  *
  *  [사용 방법]
  *  1. Google Sheets 새 파일 생성
@@ -63,9 +62,6 @@ const CONFIG = {
     책임자직위: '심사책임자',
   },
 
-  // ── 심사 폼 웹앱 URL (배포 후 발급된 URL을 여기에 붙여넣기) ──
-  심사폼URL: 'https://script.google.com/a/macros/tta.or.kr/s/AKfycbwRhb_TXMfVAGOWlm8Vnh819grCD70hDyR6hGMp-TsNdA7MWjDuyID7VUDhcO1hw_Zo/exec',   // 예: 'https://script.google.com/a/macros/tta.or.kr/s/XXXX/exec'
-
   // ── 관리자 이메일 목록 (초기화·재생성 등 위험 메뉴를 볼 수 있는 계정) ──
   // 여기에 없는 계정은 위험 메뉴가 화면에 표시되지 않음.
   // ※ 주의: 이건 메뉴 숨김(편의)일 뿐 완전한 보안이 아닙니다.
@@ -83,8 +79,6 @@ const SHEET = {
   AI기능상세: '인공지능기능상세',      // 표시명만 변경 (코드상 키는 호환 유지)
   일정관리: '일정관리',
   로그: '파싱로그',
-  체크결과: '인공지능심사체크결과',    // 체크 폼 결과 저장 (원본과 완전 분리)
-  기능확인: '인공지능기능확인',        // 심사폼 기능명세 표의 확인·비고 저장
 };
 
 const 일정관리_헤더색 = '#0f5b5f';
@@ -185,7 +179,7 @@ const 시트헤더정의 = {
     '상태',          // 대기 / 심사중 / 보완 / 완료
     '담당심사원',
     // ── 신청기업 ──────────────────────────────────
-    '기업명', '담당자명', '연락처', '이메일',
+    '기업명', '담당자명', '연락처', '이메일', '소재지',
     // ── 제품·서비스 핵심 정보 ─────────────────────
     '제품명', '제품수', '개요', '제공형태', '제품분류',
     '인공지능적용목적', '인공지능적용범위',
@@ -197,19 +191,11 @@ const 시트헤더정의 = {
   [SHEET.로그]: [
     '일시', '파일명', '접수번호', '결과', '메시지',
   ],
-  [SHEET.체크결과]: [
-    '접수번호', '항목ID', '항목번호', '체크항목',
-    '판정', '사유', '심사원', '검토일시',
-  ],
-  [SHEET.기능확인]: [
-    '접수번호', 'ID', '기능번호', '기능명', '확인', '비고', '심사원', '검토일시',
-  ],
 };
 
 // 구버전 시트명 → 신버전 시트명 (탭 이름만 바꿔서 기존 데이터 그대로 보존)
 const 시트이름마이그레이션맵 = {
   'AI기능상세': SHEET.AI기능상세,
-  '심사체크결과': SHEET.체크결과,
 };
 
 /** 구버전 이름의 시트가 있고 신버전 이름이 아직 없으면 탭 이름만 변경 (데이터 보존) */
@@ -428,22 +414,6 @@ function columnLetter(n) {
   return s;
 }
 
-function 일정관리요약뷰적용() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getSheetByName(SHEET.일정관리);
-  if (!시트) { SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.'); return; }
-  _일정관리서식적용_(시트, true);
-  SpreadsheetApp.getUi().alert('일정관리 표와 요약 뷰를 적용했습니다.');
-}
-
-function 일정관리전체뷰적용() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getSheetByName(SHEET.일정관리);
-  if (!시트) { SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.'); return; }
-  _일정관리서식적용_(시트, false);
-  SpreadsheetApp.getUi().alert('일정관리 표와 전체 뷰를 적용했습니다.');
-}
-
 function _일정관리서식적용_(시트, 요약뷰) {
   _일정관리레거시컬럼삭제_(시트);
   const lastCol = Math.max(1, 시트.getLastColumn());
@@ -469,7 +439,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
     '순번': 45, '접수번호': 115,
     '신청일': 90, '심사접수일': 95, '마감예정일': 95,
     '상태': 75, '담당심사원': 95,
-    '기업명': 155, '담당자명': 85, '연락처': 115, '이메일': 180,
+    '기업명': 155, '담당자명': 85, '연락처': 115, '이메일': 180, '소재지': 200,
     '제품명': 190, '제품수': 65, '개요': 260,
     '제공형태': 110, '제품분류': 100,
     '인공지능적용목적': 260, '인공지능적용범위': 260,
@@ -486,7 +456,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
       '순번', '접수번호',
       '신청일', '심사접수일', '마감예정일',
       '상태', '담당심사원',
-      '기업명', '담당자명', '연락처',
+      '기업명', '담당자명', '연락처', '소재지',
       '제품명', '제품수', '제공형태', '제품분류',
       '인공지능기능수',
     ]);
@@ -603,67 +573,6 @@ function _시트초기화(ss, 이름, 헤더배열) {
     .setBackground(이름 === SHEET.일정관리 ? 일정관리_헤더색 : '#1a73e8')
     .setFontColor('#ffffff')
     .setFontWeight('bold');
-  sheet.setFrozenRows(1);
-  return sheet;
-}
-
-// 강제 재생성용 (정말 처음부터 다시 만들 때만 메뉴에서 호출)
-/**
- * 헤더만 재설정 — 데이터는 유지하고 1행 헤더만 표준으로 덮어씀
- * 기존 시트 컬럼 순서가 틀어진 경우 사용 (데이터 날아가지 않음)
- * ※ 단, 컬럼 순서 자체를 바꾸지는 않음 — 헤더 이름만 교정
- * 컬럼 순서까지 맞추려면 '시트 재생성'을 사용 (데이터 소실 주의)
- */
-function 헤더만재설정() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi();
-  const res = ui.alert(
-    '헤더 재설정',
-    '각 시트의 1행(헤더)을 표준 컬럼명으로 덮어씁니다.\n데이터 행은 건드리지 않습니다.\n\n계속하시겠습니까?',
-    ui.ButtonSet.OK_CANCEL
-  );
-  if (res !== ui.Button.OK) return;
-
-  Object.keys(시트헤더정의).forEach(이름 => {
-    const 시트 = ss.getSheetByName(이름);
-    if (!시트) return;
-    const 헤더 = 시트헤더정의[이름];
-    시트.getRange(1, 1, 1, 헤더.length).setValues([헤더]);
-    시트.getRange(1, 1, 1, 헤더.length)
-      .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
-  });
-
-  // 드롭다운·수식도 헤더 기준으로 재설정
-  try { 초기설정실행(); } catch (e) { /* 이미 시트 있으면 무시 */ }
-  ui.alert('헤더 재설정 완료. 드롭다운·수식도 갱신했습니다.');
-}
-
-/**
- * 접수대장·일정관리 시트를 완전히 비우고 표준 헤더로 재생성
- * ⚠️ 기존 데이터가 모두 삭제됩니다. 테스트/리셋 용도로만 사용하세요.
- */
-function 시트재생성_데이터초기화() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi();
-  const res = ui.alert(
-    '⚠️ 데이터 초기화',
-    '모든 시트의 데이터가 삭제되고 표준 헤더로 재생성됩니다.\n되돌릴 수 없습니다.\n\n정말 진행하시겠습니까?',
-    ui.ButtonSet.OK_CANCEL
-  );
-  if (res !== ui.Button.OK) return;
-
-  Object.keys(시트헤더정의).forEach(이름 => _시트강제초기화(ss, 이름, 시트헤더정의[이름]));
-  초기설정실행();
-  ui.alert('재생성 완료.');
-}
-
-function _시트강제초기화(ss, 이름, 헤더배열) {
-  let sheet = ss.getSheetByName(이름);
-  if (!sheet) { sheet = ss.insertSheet(이름); }
-  else { sheet.clear(); }
-  sheet.getRange(1, 1, 1, 헤더배열.length).setValues([헤더배열]);
-  sheet.getRange(1, 1, 1, 헤더배열.length)
-    .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
   sheet.setFrozenRows(1);
   return sheet;
 }
@@ -1114,6 +1023,7 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
     '담당자명': '담당자명',
     '연락처': '연락처',
     '이메일': '이메일',
+    '소재지': '소재지',
     '제품명': '제품명',
     '제품수': '제품수',
     '개요': '개요',
@@ -1962,13 +1872,7 @@ function onOpen() {
 
   const menu = ui.createMenu('🔍 인공지능심사관리')
     // ── 심사원 공통 메뉴 ──
-    .addItem('📝 심사 폼 열기', '심사폼열기')
-    .addSeparator()
-    .addItem('📑 기술심사보고서 생성 (선택 행)', '증적명세서생성')
-    .addItem('📦 보고서 3종 산출 (PDF·DOCX·JSON)', '증적3종산출')
-    .addSeparator()
-    .addItem('📋 일정관리 요약 뷰 적용', '일정관리요약뷰적용')
-    .addItem('📊 일정관리 전체 뷰 적용', '일정관리전체뷰적용');
+    .addItem('📑 기술심사보고서 생성 (선택 행)', '증적명세서생성');
 
   // ── 관리자 전용 메뉴 (관리자가 아니면 아예 표시 안 함) ──
   if (관리자) {
@@ -1976,8 +1880,6 @@ function onOpen() {
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
       .addSeparator()
       .addItem('⚙️ 초기 설정 (최초 1회)', '초기설정실행')
-      .addItem('🔧 헤더만 재설정 (데이터 유지)', '헤더만재설정')
-      .addItem('⚠️ 시트 재생성 (데이터 초기화)', '시트재생성_데이터초기화')
       .addItem('💬 Chat 알림 테스트', '챗알림테스트');
   }
 
@@ -2009,45 +1911,6 @@ function _관리자여부() {
 
   // 판정 불가(도메인 밖 계정 등)면 안전하게 비관리자 처리
   return false;
-}
-
-// 심사 폼 웹앱을 새 탭에서 열기 (CONFIG.심사폼URL 사용)
-function 심사폼열기() {
-  const url = (CONFIG.심사폼URL || '').trim();
-  if (!url) {
-    SpreadsheetApp.getUi().alert(
-      '심사 폼 URL이 설정되지 않았습니다.\n\n' +
-      'Apps Script 편집기에서 CONFIG.심사폼URL 칸에 ' +
-      '배포된 웹앱 URL을 붙여넣어 주세요.'
-    );
-    return;
-  }
-  // 선택된 행이 있으면 그 접수번호를 URL에 붙여 바로 해당 건 열기
-  let 최종URL = url;
-  try {
-    const 시트 = SpreadsheetApp.getActiveSheet();
-    const 시트명 = 시트.getName();
-    // 메인 시트(일정관리) 또는 접수대장에서 활성 행의 접수번호를 읽음
-    if (시트명 === SHEET.일정관리 || 시트명 === SHEET.접수대장) {
-      const 행 = 시트.getActiveRange().getRow();
-      if (행 > 1) {
-        // 두 시트 모두 접수번호가 있는 열을 헤더에서 찾아서 사용
-        const H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0];
-        const iNo = H.indexOf('접수번호');
-        if (iNo >= 0) {
-          const 접수번호 = 시트.getRange(행, iNo + 1).getValue();
-          if (접수번호) 최종URL = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(접수번호);
-        }
-      }
-    }
-  } catch (e) {}
-
-  const html = HtmlService.createHtmlOutput(
-    `<script>window.open('${최종URL}', '_blank'); google.script.host.close();</script>` +
-    `<p style="font-family:sans-serif;font-size:13px">심사 폼을 새 탭에서 엽니다…<br>` +
-    `열리지 않으면 <a href="${최종URL}" target="_blank">여기를 클릭</a>하세요.</p>`
-  ).setWidth(360).setHeight(120);
-  SpreadsheetApp.getUi().showModalDialog(html, '심사 폼 열기');
 }
 
 // ─────────────────────────────────────────────
@@ -2120,528 +1983,13 @@ function 수동직접등록_예시() {
 }
 
 // ═════════════════════════════════════════════════════════
-// 8. 체크 전용 심사 폼 — 웹앱 (우선순위 1)
-// ═════════════════════════════════════════════════════════
-//
-// [배포 방법]
-// 1. Apps Script 편집기 > 배포 > 새 배포
-// 2. 유형: 웹앱
-// 3. 실행 계정: 나 / 액세스: 도메인 내 모든 사용자(또는 본인만)
-// 4. 배포 → 생성된 웹앱 URL을 심사원에게 공유
-//
-// 심사원은 URL 끝에 ?id=접수번호 를 붙이거나, 목록에서 선택해 들어갑니다.
-// 원본 데이터(접수대장/AI기능상세)는 읽기만 하고, 체크 결과는
-// '심사체크결과' 시트에만 기록됩니다. 원본은 절대 수정되지 않습니다.
-
-function doGet(e) {
-  const p = e && e.parameter ? e.parameter : {};
-  const 접수번호 = p.id ? p.id : '';
-
-  const t = HtmlService.createTemplateFromFile('심사폼');
-  t.초기접수번호 = 접수번호;
-  return t.evaluate()
-    .setTitle('AI 기술심사 체크리스트')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-/** 웹앱: 심사 대상 목록 조회 (드롭다운용) */
-function 웹_접수목록조회() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = ss.getSheetByName(SHEET.접수대장);
-  if (!시트 || 시트.getLastRow() < 2) return [];
-
-  const 데이터 = 시트.getDataRange().getValues();
-  const 헤더 = 데이터[0];
-  const iNo = 헤더.indexOf('접수번호');
-  const iProd = 헤더.indexOf('제품명');
-  const iComp = 헤더.indexOf('기업명');
-  const iOwner = 헤더.indexOf('담당심사원');
-  const iStat = 헤더.indexOf('상태');
-
-  return 데이터.slice(1)
-    .filter(r => r[iNo])
-    .map(r => ({
-      접수번호: r[iNo],
-      제품명: r[iProd],
-      기업명: r[iComp],
-      담당심사원: r[iOwner],
-      상태: r[iStat],
-    }));
-}
-
-/** 웹앱: 특정 건의 체크 폼 데이터 조회 (원본은 읽기 전용) */
-function 웹_체크폼데이터(접수번호) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  // 1) 접수대장에서 기본 정보 읽기
-  const 대장 = ss.getSheetByName(SHEET.접수대장);
-  const D = 대장.getDataRange().getValues();
-  const H = D[0];
-  const 행 = D.slice(1).find(r => r[H.indexOf('접수번호')] === 접수번호);
-  if (!행) return { error: '접수번호를 찾을 수 없습니다: ' + 접수번호 };
-
-  const 건 = {};
-  H.forEach((h, i) => { 건[h] = 행[i]; });
-
-  // 2) AI기능상세에서 해당 건 기능 목록
-  const 상세시트 = ss.getSheetByName(SHEET.AI기능상세);
-  let 기능목록 = [];
-  if (상세시트 && 상세시트.getLastRow() >= 2) {
-    const SD = 상세시트.getDataRange().getValues();
-    const SH = SD[0];
-    기능목록 = SD.slice(1)
-      .filter(r => r[SH.indexOf('접수번호')] === 접수번호)
-      .map(r => {
-        const o = {};
-        SH.forEach((h, i) => { o[h] = r[i]; });
-        return o;
-      });
-  }
-
-  // 3) 기존 체크 결과 불러오기 (이어서 검토 가능)
-  const 기존체크 = _체크결과조회(ss, 접수번호);
-  const 제품모델목록 = _제품모델목록조회(ss, 접수번호);
-
-  // 4) 항목별로 "엑셀에서 채워진 값" 매핑
-  const 항목들 = 체크항목정의.map(정의 => ({
-    id: 정의.id,
-    no: 정의.no,
-    구분: 정의.구분 || '',
-    방법: 정의.방법 || '',
-    항목: 정의.항목,
-    채워진값: _참조값생성(정의.참조, 건, 기능목록, 제품모델목록),
-    기존판정: 기존체크[정의.id] ? 기존체크[정의.id].판정 : '',
-    기존사유: 기존체크[정의.id] ? 기존체크[정의.id].사유 : '',
-  }));
-
-  // 5) 기능명세 표용 데이터 (ID = 접수번호-기능번호, 증빙 캡처 파일명으로 사용)
-  const 기존기능확인 = 웹_기능확인조회(접수번호);
-  const 기능표 = 기능목록.map((f, idx) => {
-    const ID = `${접수번호}-F${String(f['기능번호'] || (idx + 1)).padStart(2, '0')}`;
-    return {
-      ID: ID,
-      기능번호: f['기능번호'] || (idx + 1),
-      기능명: f['기능명'] || '',
-      인공지능역할: f['인공지능역할'] || '',
-      입력: f['입력'] || '',
-      출력: f['출력'] || '',
-      구현방식: f['구현방식'] || '',
-      레퍼런스참조위치: f['레퍼런스참조위치'] || '',
-      확인: 기존기능확인[ID] ? (기존기능확인[ID].확인 === 'Y') : false,
-      비고: 기존기능확인[ID] ? 기존기능확인[ID].비고 : '',
-    };
-  });
-  // 기타 행 (ID = 접수번호-ETC)
-  const 기타ID = `${접수번호}-ETC`;
-  const 기타행 = {
-    ID: 기타ID,
-    기능번호: '',
-    기능명: '기타',
-    인공지능역할: '', 입력: '', 출력: '', 구현방식: '', 레퍼런스참조위치: '',
-    확인: 기존기능확인[기타ID] ? (기존기능확인[기타ID].확인 === 'Y') : false,
-    비고: 기존기능확인[기타ID] ? 기존기능확인[기타ID].비고 : '',
-    기타: true,
-  };
-  기능표.push(기타행);
-
-  return {
-    접수번호: 접수번호,
-    제품명: 건['제품명'],
-    기업명: 건['기업명'],
-    담당심사원: 건['담당심사원'],
-    상태: 건['상태'],
-    항목들: 항목들,
-    기능표: 기능표,
-  };
-}
-
-/** 참조 출처에 따라 화면에 보여줄 "제출값" 문자열 생성 */
-function _참조값생성(참조, 건, 기능목록, 제품모델목록) {
-  switch (참조) {
-    case '입출력': {
-      const io = 기능목록.map(f => `${f['기능명'] || '기능'}: 입력[${f['입력'] || '-'}] → 출력[${f['출력'] || '-'}]`);
-      return io.length ? io.join('  |  ') : '입출력 정보 없음';
-    }
-    case '구조도':
-      return `구조도 파일: ${건['구조도파일명'] || '(미제출)'}`;
-    case '적용목적범위':
-      return `목적: ${건['인공지능적용목적'] || '-'}\n범위: ${건['인공지능적용범위'] || '-'}`;
-    case '구현방식': {
-      const 방식 = [...new Set(기능목록.map(f => f['구현방식']).filter(Boolean))];
-      const 학습 = 기능목록.map(f => f['학습데이터사양'] || f['BaseModel명칭']).filter(Boolean);
-      return `구현방식: ${방식.join(', ') || '-'}${학습.length ? ' · 모델/학습: ' + 학습.join('; ') : ''}`;
-    }
-    case '제공형태+제품분류':
-      return `제공형태: ${건['제공형태'] || '-'} · 분류: ${건['제품분류'] || '-'}`;
-    case '제품명':
-      return `제품: ${건['제품명'] || '-'} (${건['제품버전'] || '-'})`;
-    case '인공지능기능수': {
-      const 이름들 = 기능목록.map(f => f['기능명']).filter(Boolean).join(', ');
-      return `기능 ${기능목록.length}개${이름들 ? ' — ' + 이름들 : ''}`;
-    }
-    case '외부API정보': {
-      const api = 기능목록.map(f => f['외부API정보']).filter(Boolean);
-      return api.length ? `외부 API: ${api.join(', ')}` : '외부 API 사용 기능 없음';
-    }
-    case '기업명':
-      return `${건['기업명'] || '-'} · 사업자 ${건['사업자번호'] || '-'} · 대표 ${건['대표자'] || '-'} · ${건['연락처'] || '-'}`;
-    case '세부품명번호+물품식별번호':
-      return _모델번호요약(제품모델목록 || [], 건);
-    case '비고':
-      return 건['비고'] || '(비고 없음)';
-    case '종합':
-      return '전체 항목 검토 후 종합 판정';
-    default:
-      return 건[참조] || '-';
-  }
-}
-
-// 체크결과 시트가 없으면 만들어서 반환 (없을 때 에러 방지)
-function _체크결과시트확보(ss) {
-  let 시트 = ss.getSheetByName(SHEET.체크결과);
-  if (!시트) {
-    시트 = ss.insertSheet(SHEET.체크결과);
-    const 헤더 = ['접수번호', '항목ID', '항목번호', '체크항목', '판정', '사유', '심사원', '검토일시'];
-    시트.getRange(1, 1, 1, 헤더.length).setValues([헤더])
-      .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
-    시트.setFrozenRows(1);
-  }
-  return 시트;
-}
-
-function _체크결과조회(ss, 접수번호) {
-  const 시트 = _체크결과시트확보(ss);
-  const out = {};
-  if (시트.getLastRow() < 2) return out;
-  const D = 시트.getDataRange().getValues();
-  const H = D[0];
-  D.slice(1).forEach(r => {
-    if (r[H.indexOf('접수번호')] === 접수번호) {
-      out[r[H.indexOf('항목ID')]] = {
-        판정: r[H.indexOf('판정')],
-        사유: r[H.indexOf('사유')],
-      };
-    }
-  });
-  return out;
-}
-
-/**
- * 웹앱: 체크 결과 저장 (원본 미수정, 체크결과 시트에만 upsert)
- * results = [{ id, no, 항목, 판정, 사유 }, ...]
- */
-function 웹_체크결과저장(접수번호, results, 심사원) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);  // 동시 저장 충돌 방지
-
-  try {
-    const 시트 = _체크결과시트확보(ss);
-    const D = 시트.getDataRange().getValues();
-    const H = D[0];
-    const iNo = H.indexOf('접수번호');
-    const iId = H.indexOf('항목ID');
-
-    // 기존 (접수번호+항목ID) → 행번호 매핑
-    const 기존행 = {};
-    for (let r = 1; r < D.length; r++) {
-      if (D[r][iNo] === 접수번호) {
-        기존행[D[r][iId]] = r + 1; // 시트 행번호 (1-base)
-      }
-    }
-
-    const 시각 = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
-
-    results.forEach(res => {
-      const 행값 = [접수번호, res.id, res.no, res.항목, res.판정, res.사유 || '', 심사원 || '', 시각];
-      if (기존행[res.id]) {
-        // 업데이트 (덮어쓰기지만 '체크결과' 시트 내에서만 — 원본 불변)
-        시트.getRange(기존행[res.id], 1, 1, 행값.length).setValues([행값]);
-      } else {
-        시트.appendRow(행값);
-      }
-    });
-
-    // 접수대장 상태를 '심사중'으로 (완료 판정이 아니면)
-    _상태업데이트(ss, 접수번호, '심사중');
-
-    return { ok: true, saved: results.length, time: 시각 };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/** 기능확인 시트 확보 */
-function _기능확인시트확보(ss) {
-  let 시트 = ss.getSheetByName(SHEET.기능확인);
-  if (!시트) {
-    시트 = ss.insertSheet(SHEET.기능확인);
-    const 헤더 = 시트헤더정의[SHEET.기능확인];
-    시트.getRange(1, 1, 1, 헤더.length).setValues([헤더])
-      .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
-    시트.setFrozenRows(1);
-  }
-  return 시트;
-}
-
-/** 웹앱: 기능명세 표의 확인·비고 조회 (이어서 검토 가능) */
-function 웹_기능확인조회(접수번호) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 시트 = _기능확인시트확보(ss);
-  const out = {};
-  if (시트.getLastRow() < 2) return out;
-  const D = 시트.getDataRange().getValues();
-  const H = D[0];
-  D.slice(1).forEach(r => {
-    if (r[H.indexOf('접수번호')] === 접수번호) {
-      out[r[H.indexOf('ID')]] = {
-        확인: r[H.indexOf('확인')],
-        비고: r[H.indexOf('비고')],
-      };
-    }
-  });
-  return out;
-}
-
-/**
- * 웹앱: 기능명세 표 확인·비고 저장 (기타 행 포함)
- * items = [{ ID, 기능번호, 기능명, 확인(true/false), 비고 }, ...]
- * '기타' 항목은 ID = 접수번호 + '-ETC' 로 저장됨
- */
-function 웹_기능확인저장(접수번호, items, 심사원) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    const 시트 = _기능확인시트확보(ss);
-    const D = 시트.getDataRange().getValues();
-    const H = D[0];
-    const iNo = H.indexOf('접수번호');
-    const iId = H.indexOf('ID');
-
-    const 기존행 = {};
-    for (let r = 1; r < D.length; r++) {
-      if (D[r][iNo] === 접수번호) 기존행[D[r][iId]] = r + 1;
-    }
-
-    const 시각 = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
-    (items || []).forEach(it => {
-      const 행값 = [
-        접수번호, it.ID, it.기능번호 || '', it.기능명 || '',
-        it.확인 ? 'Y' : '', it.비고 || '', 심사원 || '', 시각,
-      ];
-      if (기존행[it.ID]) {
-        시트.getRange(기존행[it.ID], 1, 1, 행값.length).setValues([행값]);
-      } else {
-        시트.appendRow(행값);
-      }
-    });
-
-    return { ok: true, saved: (items || []).length, time: 시각 };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function _상태업데이트(ss, 접수번호, 상태) {
-  const 시트 = ss.getSheetByName(SHEET.접수대장);
-  const D = 시트.getDataRange().getValues();
-  const H = D[0];
-  const iNo = H.indexOf('접수번호');
-  const iStat = H.indexOf('상태');
-  for (let r = 1; r < D.length; r++) {
-    if (D[r][iNo] === 접수번호) {
-      const 현재 = D[r][iStat];
-      // 이미 완료/반려면 건드리지 않음
-      if (현재 !== '완료' && 현재 !== '반려') {
-        시트.getRange(r + 1, iStat + 1).setValue(상태);
-      }
-      return;
-    }
-  }
-}
-
-// ═════════════════════════════════════════════════════════
-// 9. 확인서 자동 생성 (우선순위 2)
-// ═════════════════════════════════════════════════════════
-//
-// 체크 폼에서 저장된 '심사체크결과'를 끌어와 확인서 Docs를 생성합니다.
-// 접수대장에서 행을 선택한 뒤 메뉴 > 확인서 생성 을 실행하거나,
-// 웹앱 저장 직후 자동 호출할 수도 있습니다.
-
-function 확인서생성() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 접수번호 = _활성행접수번호(ss);
-  if (!접수번호) {
-    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\n(일정관리 또는 접수대장 탭)');
-    return;
-  }
-  const res = 확인서생성_byId(접수번호);
-  if (res && res.url) {
-    SpreadsheetApp.getUi().alert('확인서가 생성되었습니다.\n\n' + res.url);
-  }
-}
-
-/** 웹앱/메뉴 공용: 접수번호로 확인서 생성하고 URL 반환 */
-function 확인서생성_byId(접수번호) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 대장 = ss.getSheetByName(SHEET.접수대장);
-  const D = 대장.getDataRange().getValues();
-  const H = D[0];
-  const 행 = D.slice(1).find(r => r[H.indexOf('접수번호')] === 접수번호);
-  if (!행) throw new Error('접수번호를 찾을 수 없습니다: ' + 접수번호);
-  const 건 = {};
-  H.forEach((h, i) => { 건[h] = 행[i]; });
-  const doc = _확인서Docs생성(ss, 건);
-  return { url: doc.getUrl(), name: doc.getName() };
-}
-
-function _확인서Docs생성(ss, 건) {
-  const 접수번호 = 건['접수번호'];
-
-  // 1) 체크 결과 조회 (항목ID → {판정, 사유})
-  const 체크맵 = _체크결과조회(ss, 접수번호);
-
-  // 2) 항목 정의 순서대로 결과 행 구성
-  const 결과행 = 체크항목정의
-    .filter(d => d.id !== 'C12') // 종합은 별도 처리
-    .map(d => {
-      const c = 체크맵[d.id] || {};
-      return { no: d.no, 항목: d.항목, 판정: c.판정 || '미검토', 사유: c.사유 || '' };
-    });
-
-  // 3) 종합 판정 자동 계산
-  const 종합 = _종합판정계산(결과행, 체크맵['C12']);
-
-  // 4) Docs 생성
-  const 제목 = `[기술심사확인서] ${접수번호} — ${건['제품명']}`;
-  const doc = DocumentApp.create(제목);
-  const body = doc.getBody();
-  const 오늘 = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy년 MM월 dd일');
-
-  // 제목
-  body.appendParagraph('인공지능 제품 기술심사 확인서')
-    .setHeading(DocumentApp.ParagraphHeading.TITLE)
-    .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  body.appendParagraph(`접수번호 ${접수번호} · ${오늘}`)
-    .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
-    .editAsText().setForegroundColor('#5f6368');
-  body.appendParagraph('');
-
-  // 1. 심사 대상
-  body.appendParagraph('1. 심사 대상').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  const t1 = body.appendTable([
-    ['제품명', `${건['제품명'] || '-'} (${건['제품버전'] || '-'})`],
-    ['신청기업', `${건['기업명'] || '-'} (사업자 ${건['사업자번호'] || '-'})`],
-    ['제공형태', `${건['제공형태'] || '-'} · ${건['제품분류'] || '-'}`],
-    ['담당심사원', 건['담당심사원'] || '-'],
-  ]);
-  _확인서표스타일(t1, true);
-
-  // 2. 항목별 심사 결과
-  body.appendParagraph('2. 항목별 심사 결과').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  const 헤더 = ['번호', '심사 항목', '판정', '사유'];
-  const 표데이터 = [헤더].concat(
-    결과행.map(r => [r.no, r.항목, r.판정, r.사유 || '-'])
-  );
-  const t2 = body.appendTable(표데이터);
-  _확인서표스타일(t2, false);
-  _판정색칠(t2);
-
-  // 3. 종합 의견
-  body.appendParagraph('3. 종합 의견').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  const t3 = body.appendTable([
-    ['검토 현황', `총 ${결과행.length}개 항목 중 적합 ${종합.적합}건, 보완 ${종합.보완}건, 부적합 ${종합.부적합}건, 미검토 ${종합.미검토}건`],
-    ['종합 판정', 종합.판정],
-    ['종합 의견', (체크맵['C12'] && 체크맵['C12'].사유) ? 체크맵['C12'].사유 : ''],
-  ]);
-  _확인서표스타일(t3, true);
-
-  // 서명란
-  body.appendParagraph('');
-  const sign = body.appendParagraph(`심사일: ${오늘}`);
-  sign.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
-  const sign2 = body.appendParagraph(`담당심사원: ${건['담당심사원'] || ''}　(인)`);
-  sign2.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
-
-  doc.saveAndClose();
-  return doc;
-}
-
-/** 종합 판정 자동 계산 */
-function _종합판정계산(결과행, 종합체크) {
-  const 적합 = 결과행.filter(r => r.판정 === '적합').length;
-  const 보완 = 결과행.filter(r => r.판정 === '보완').length;
-  const 부적합 = 결과행.filter(r => r.판정 === '부적합').length;
-  const 해당없음 = 결과행.filter(r => r.판정 === '해당없음' || r.판정 === '미검토').length;
-
-  // 심사원이 종합(C12)을 직접 판정했으면 그 값 우선
-  let 판정;
-  if (종합체크 && 종합체크.판정 && 종합체크.판정 !== '미검토' && 종합체크.판정 !== '해당없음') {
-    판정 = { '적합': '적합', '보완': '조건부 적합 (보완 후 재확인)', '부적합': '부적합' }[종합체크.판정];
-  } else if (부적합 > 0) {
-    판정 = '부적합';
-  } else if (보완 > 0) {
-    판정 = '조건부 적합 (보완 후 재확인)';
-  } else if (해당없음 > 0) {
-    판정 = '적합';
-  } else {
-    판정 = '적합';
-  }
-  return { 적합, 보완, 부적합, 미검토: 해당없음, 해당없음, 판정 };
-}
-
-function _확인서표스타일(표, 라벨열강조) {
-  const 행수 = 표.getNumRows();
-  for (let r = 0; r < 행수; r++) {
-    const 행 = 표.getRow(r);
-    for (let c = 0; c < 행.getNumCells(); c++) {
-      const cell = 행.getCell(c);
-      cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(8).setPaddingRight(8);
-      if (r === 0) {
-        cell.setBackgroundColor(보고서_표헤더색);
-        cell.editAsText().setForegroundColor(보고서_표헤더글자색).setBold(true);
-        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
-      }
-    }
-    // 라벨열(첫 열) 회색 배경
-    if (라벨열강조) {
-      행.getCell(0).setBackgroundColor('#f1f3f4');
-    }
-  }
-}
-
-/** 항목별 결과표: 헤더 파랑 + 판정 컬럼 색칠 */
-function _판정색칠(표) {
-  // 헤더행
-  const 헤더 = 표.getRow(0);
-  let 판정열 = 2;
-  for (let c = 0; c < 헤더.getNumCells(); c++) {
-    헤더.getCell(c).setBackgroundColor(보고서_표헤더색);
-    const txt = 헤더.getCell(c).editAsText();
-    txt.setForegroundColor(보고서_표헤더글자색).setBold(true);
-    _셀문단정렬(헤더.getCell(c), DocumentApp.HorizontalAlignment.CENTER);
-    if (헤더.getCell(c).getText().trim() === '판정') 판정열 = c;
-  }
-  // 판정 컬럼 색칠
-  const 색 = { '적합': '#137333', '보완': '#e37400', '부적합': '#c5221f', '미검토': '#9aa0a6', '해당없음': '#9aa0a6' };
-  for (let r = 1; r < 표.getNumRows(); r++) {
-    const cell = 표.getRow(r).getCell(판정열);
-    const 판정 = cell.getText().trim();
-    if (색[판정]) {
-      cell.editAsText().setForegroundColor(색[판정]).setBold(true);
-    }
-  }
-}
-
-// ═════════════════════════════════════════════════════════
 // 10. 증적 명세서 자동 생성 (증적자료용 — 신청서 전 항목 + 구조도 + 심사결과)
 // ═════════════════════════════════════════════════════════
 //
-// 확인서(요약본)와 달리, 증적 명세서는 신청서의 모든 데이터 항목을
-// 누락 없이 수록합니다. 데이터 구조도 이미지는 접수대장의
-// '구조도파일명' 칸에 Drive 파일 ID가 있으면 끌어와 삽입합니다.
+// 증적 명세서는 신청서의 모든 데이터 항목을 누락 없이 수록합니다.
+// 데이터 구조도 이미지는 접수대장의 '구조도파일명' 칸에 Drive 파일 ID가
+// 있으면 끌어와 삽입합니다. 심사 판정·의견은 심사원이 생성된 문서에서
+// 직접 기입합니다 (별도 체크리스트 웹앱 없음).
 
 function 증적명세서생성() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2678,17 +2026,11 @@ function _증적명세서Docs생성(ss, 건) {
   // 데이터 수집
   const 기능목록 = _AI기능상세조회(ss, 접수번호);
   const 제품모델목록 = _제품모델목록조회(ss, 접수번호);
-  const 체크맵 = _체크결과조회(ss, 접수번호);
   const R = CONFIG.보고서 || {};
   const 문서번호 = `TTA-${접수번호}-01`;
 
-  // 종합 판정 미리 계산 (첫 페이지에 필요)
-  const 결과행 = 체크항목정의.filter(d => d.id !== 'C12').map(d => {
-    const c = 체크맵[d.id] || {};
-    return [d.no, d.구분 || '', d.항목, c.판정 || '해당없음', c.사유 || '-'];
-  });
-  const 종합 = _종합판정계산(결과행.map(r => ({ 판정: r[3] })), 체크맵['C12']);
-  const 보고서판정 = _보고서종합판정(종합, 건);
+  // 심사 항목 체크리스트 — 판정·사유는 심사원이 문서 생성 후 Docs에서 직접 기입
+  const 결과행 = 체크항목정의.filter(d => d.id !== 'C12').map(d => [d.no, d.구분 || '', d.항목, '', '']);
 
   const 제목문 = `(${접수번호}) 기술심사보고서`;
   const doc = DocumentApp.create(제목문);
@@ -2763,13 +2105,12 @@ function _증적명세서Docs생성(ss, 건) {
     body.appendParagraph('(인공지능 기능 데이터 없음)').editAsText().setForegroundColor('#9aa0a6');
   }
 
-  // ═══════════════ 5. 종합 심사 의견 ═══════════════
+  // ═══════════════ 5. 종합 심사 의견 (심사원이 문서에서 직접 기입) ═══════════════
   body.appendPageBreak();
   _명세섹션(body, '5. 종합 심사 의견');
   _명세표(body, [
-    ['검토 현황', `총 ${결과행.length}개 항목 — 적합 ${종합.적합} · 보완 ${종합.보완} · 부적합 ${종합.부적합} · 해당없음 ${종합.해당없음}`],
-    ['종합 판정', 보고서판정],
-    ['특이사항', _보완요약(결과행)],
+    ['종합 판정', '□ 적합   □ 조건부 적합   □ 부적합'],
+    ['특이사항', ''],
   ]);
 
   _명세섹션(body, '5.1. 심사 항목별 검토 결과');
@@ -3004,19 +2345,6 @@ function _모델번호연결확인(제품모델목록, 건) {
   return 누락 ? `확인 필요 (${누락}건 번호 누락)` : `연결 확인 (${rows.length}건)`;
 }
 
-function _보고서종합판정(종합, 건) {
-  if (종합.부적합 > 0 || String(종합.판정 || '').indexOf('부적합') >= 0) return '부적합';
-  const 분류 = `${건['제품분류'] || ''} ${건['제공형태'] || ''} ${건['제품명'] || ''}`;
-  return 분류.indexOf('서비스') >= 0 ? '인공지능 서비스 적합' : '인공지능 제품 적합';
-}
-
-// 보완·부적합 항목만 모아 요약
-function _보완요약(결과행) {
-  const 보완들 = 결과행.filter(r => r[3] === '보완' || r[3] === '부적합');
-  if (!보완들.length) return '없음';
-  return 보완들.map(r => `[${r[0]}] ${r[4]}`).join('\n');
-}
-
 // 빈 값은 "(미기재)"로 — 증적 문서이므로 누락을 명시
 function _v(val) {
   const s = String(val == null ? '' : val).trim();
@@ -3154,101 +2482,6 @@ function 구조도원본정리(접수번호) {
   return { ok: true, folder: 하위.getUrl(), copied: 복사수 };
 }
 
-// ═════════════════════════════════════════════════════════
-// 12. 증적 3종 산출 (DOCX + PDF + JSON) → 보관 폴더 정리
-// ═════════════════════════════════════════════════════════
-//
-// 명세서 Docs를 생성한 뒤 docx/pdf로 변환하고, 신청서 전 항목 +
-// 심사 결과를 담은 JSON을 만들어, 접수번호별 보관 폴더에 모읍니다.
-// 구조도 원본도 같은 폴더로 복사하여 NAS Cloud Sync가 한 번에 수거하게 합니다.
-
-function 증적3종산출() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 접수번호 = _활성행접수번호(ss);
-  if (!접수번호) {
-    SpreadsheetApp.getUi().alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\n(일정관리 또는 접수대장 탭)');
-    return;
-  }
-  const 건 = _건조회(ss, 접수번호);
-  if (!건) { SpreadsheetApp.getUi().alert('접수대장에서 "' + 접수번호 + '" 건을 찾을 수 없습니다.'); return; }
-
-  const res = _증적3종산출_처리(ss, 건);
-  SpreadsheetApp.getUi().alert(
-    '증적 3종 산출 완료\n\n' +
-    '폴더: ' + res.folderUrl + '\n' +
-    'DOCX · PDF · JSON + 구조도 원본 ' + res.구조도복사 + '건\n\n' +
-    'NAS Cloud Sync가 곧 수거합니다.'
-  );
-}
-
-function 증적3종산출_byId(접수번호) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const 대장 = ss.getSheetByName(SHEET.접수대장);
-  const D = 대장.getDataRange().getValues();
-  const H = D[0];
-  const 행 = D.slice(1).find(r => r[H.indexOf('접수번호')] === 접수번호);
-  if (!행) throw new Error('접수번호를 찾을 수 없습니다: ' + 접수번호);
-  const 건 = {};
-  H.forEach((h, i) => { 건[h] = 행[i]; });
-  return _증적3종산출_처리(ss, 건);
-}
-
-function _증적3종산출_처리(ss, 건) {
-  const 접수번호 = 건['접수번호'];
-
-  // 1) 보관 폴더 준비: 보관루트 / 접수번호 /
-  const 폴더 = _보관폴더준비(접수번호);
-
-  // 2) 명세서 Docs 생성 (앞서 만든 함수 재사용)
-  const doc = _증적명세서Docs생성(ss, 건);
-  const docId = doc.getId();
-  const 기본이름 = `증적명세서_${접수번호}`;
-
-  const token = ScriptApp.getOAuthToken();
-
-  // 3) DOCX 변환 (편집용)
-  try {
-    const docxUrl = `https://www.googleapis.com/drive/v3/files/${docId}/export?mimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document`;
-    const docxBlob = UrlFetchApp.fetch(docxUrl, {
-      headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true,
-    }).getBlob().setName(기본이름 + '.docx');
-    _폴더에저장(폴더, docxBlob);
-  } catch (e) { Logger.log('DOCX 변환 실패: ' + e.message); }
-
-  // 4) PDF 변환 (확정 증적본)
-  try {
-    const pdfBlob = doc.getAs('application/pdf').setName(기본이름 + '.pdf');
-    _폴더에저장(폴더, pdfBlob);
-  } catch (e) { Logger.log('PDF 변환 실패: ' + e.message); }
-
-  // 5) JSON 생성 (재활용·체크앱 연동용)
-  const json = _증적JSON생성(ss, 건);
-  const jsonBlob = Utilities.newBlob(
-    JSON.stringify(json, null, 2), 'application/json', 기본이름 + '.json'
-  );
-  _폴더에저장(폴더, jsonBlob);
-
-  // 6) 명세서 Docs 원본은 임시 — 변환 후 휴지통으로 (편집은 docx로)
-  //    편집 가능한 Docs를 남기고 싶으면 아래 줄을 주석 처리하세요.
-  DriveApp.getFileById(docId).setTrashed(true);
-
-  // 7) 구조도 원본 복사
-  let 구조도복사 = 0;
-  const 원본ID들 = String(건['구조도파일명'] || '')
-    .split(/[,\n]+/).map(s => _드라이브ID추출(s.trim())).filter(Boolean);
-  원본ID들.forEach(id => {
-    try {
-      const f = DriveApp.getFileById(id);
-      if (!폴더.getFilesByName(f.getName()).hasNext()) {
-        f.makeCopy(f.getName(), 폴더);
-        구조도복사++;
-      }
-    } catch (e) { Logger.log('구조도 복사 실패: ' + id + ' / ' + e.message); }
-  });
-
-  return { folderUrl: 폴더.getUrl(), 구조도복사: 구조도복사 };
-}
-
 /** 보관루트/접수번호 폴더 준비 */
 function _보관폴더준비(접수번호) {
   let 루트;
@@ -3283,98 +2516,3 @@ function _보고서를접수번호폴더로저장_(file, 접수번호) {
   }
 }
 
-/** 같은 이름 파일이 있으면 덮어쓰기(이전 휴지통) 후 저장 */
-function _폴더에저장(폴더, blob) {
-  const 이름 = blob.getName();
-  const 기존 = 폴더.getFilesByName(이름);
-  while (기존.hasNext()) { 기존.next().setTrashed(true); }
-  폴더.createFile(blob);
-}
-
-/**
- * 증적 JSON 생성 — 신청서 전 항목 + AI 기능 + 심사 체크 결과
- * (원래 체크 앱이 받던 구조와 호환되도록 구성)
- */
-function _증적JSON생성(ss, 건) {
-  const 접수번호 = 건['접수번호'];
-  const 기능목록 = _AI기능상세조회(ss, 접수번호);
-  const 체크맵 = _체크결과조회(ss, 접수번호);
-
-  // 심사 결과 배열
-  const 심사결과 = 체크항목정의.map(d => {
-    const c = 체크맵[d.id] || {};
-    return {
-      항목ID: d.id,
-      항목번호: d.no,
-      항목: d.항목,
-      판정: c.판정 || '미검토',
-      사유: c.사유 || '',
-    };
-  });
-  const 종합 = _종합판정계산(
-    심사결과.filter(r => r.항목ID !== 'C12'),
-    체크맵['C12']
-  );
-
-  return {
-    schemaVersion: '1.1',
-    generatedAt: new Date().toISOString(),
-    접수번호: 접수번호,
-    상태: 건['상태'] || '',
-
-    제품정보: {
-      제품명: 건['제품명'] || '',
-      제품버전: 건['제품버전'] || '',
-      제공형태: 건['제공형태'] || '',
-      인공지능기능수: 건['인공지능기능수'] || '',
-    },
-    기업정보: {
-      기업명: 건['기업명'] || '',
-      사업자번호: 건['사업자번호'] || '',
-      대표자: 건['대표자'] || '',
-      담당자명: 건['담당자명'] || '',
-      연락처: 건['연락처'] || '',
-      이메일: 건['이메일'] || '',
-      소재지: 건['소재지'] || '',
-    },
-    제품분류: {
-      제품분류: 건['제품분류'] || '',
-      세부품명번호: 건['세부품명번호'] || '',
-      물품식별번호: 건['물품식별번호'] || '',
-    },
-    인공지능기능: 기능목록.map(f => ({
-      기능번호: f['기능번호'] || '',
-      기능명: f['기능명'] || '',
-      인공지능역할: f['인공지능역할'] || '',
-      입력: f['입력'] || '',
-      출력: f['출력'] || '',
-      레퍼런스참조위치: f['레퍼런스참조위치'] || '',
-      구현방식: f['구현방식'] || '',
-      연산자원요약: f['연산자원요약'] || '',
-      실행환경요약: f['실행환경요약'] || '',
-      학습데이터사양: f['학습데이터사양'] || '',
-      개발환경라이브러리알고리즘: f['개발환경라이브러리알고리즘'] || '',
-      BaseModel명칭: f['BaseModel명칭'] || '',
-      튜닝방법: f['튜닝방법'] || '',
-      튜닝데이터셋: f['튜닝데이터셋'] || '',
-      외부API정보: f['외부API정보'] || '',
-      타겟HW_OS: f['타겟HW_OS'] || '',
-      추론런타임: f['추론런타임'] || '',
-      혼합구성설명: f['혼합구성설명'] || '',
-      모델별역할및입출력흐름: f['모델별역할및입출력흐름'] || '',
-      입력데이터설명: f['입력데이터설명'] || '',
-      출력데이터설명: f['출력데이터설명'] || '',
-      기타참고자료파일명: f['기타참고자료파일명'] || '',
-    })),
-    기존인증시험: 건['비고'] || '',
-    구조도파일명: 건['구조도파일명'] || '',
-
-    심사결과: 심사결과,
-    종합판정: {
-      적합: 종합.적합, 보완: 종합.보완, 부적합: 종합.부적합, 미검토: 종합.미검토,
-      판정: 종합.판정,
-      종합의견: (체크맵['C12'] && 체크맵['C12'].사유) ? 체크맵['C12'].사유 : '',
-    },
-    담당심사원: 건['담당심사원'] || '',
-  };
-}
