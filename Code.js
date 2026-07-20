@@ -22,55 +22,85 @@
 // ─────────────────────────────────────────────
 // 0. 설정값 (환경에 맞게 수정)
 // ─────────────────────────────────────────────
-const CONFIG = {
-  // 담당자 목록 (라운드로빈 자동 배분)
-  담당자목록: ['홍길동', '김심사', '이검토', '박분석'],
+function loadConfig() {
+  const baseConfig = {
+    // 담당자 목록 (라운드로빈 자동 배분)
+    담당자목록: ['홍길동', '김심사', '이검토', '박분석'],
 
-  // 기본 심사 기간 (일)
-  기본심사기간: 14,
+    // 기본 심사 기간 (일)
+    기본심사기간: 14,
 
-  // 알림 이메일 (담당자 배분 시 발송, 빈 문자열이면 발송 안 함)
-  알림이메일: '',   // 예: 'manager@yourorg.kr'
+    // 알림 이메일 (담당자 배분 시 발송, 빈 문자열이면 발송 안 함)
+    알림이메일: '',   // 예: 'manager@yourorg.kr'
 
-  // Google Drive 폴더 ID (엑셀 파일을 업로드할 폴더, 빈 문자열이면 루트)
-  드라이브폴더ID: '',
+    // Google Drive 폴더 ID (엑셀 파일을 업로드할 폴더, 빈 문자열이면 루트)
+    드라이브폴더ID: '',
 
-  // ── Google Chat Webhook ──────────────────────
-  // Space별 Webhook URL을 설정합니다.
-  // Google Chat > 스페이스 > 앱 및 통합 > Webhook > URL 복사
-  //
-  // 공통 알림 채널 (전체 접수 알림)
-  챗_공통Webhook: '',
-  // 예: 'https://chat.googleapis.com/v1/spaces/XXXXX/messages?key=...&token=...'
+    // ── Google Chat Webhook ──────────────────────
+    // Space별 Webhook URL을 설정합니다.
+    챗_공통Webhook: '',
 
-  // 담당자별 개인 Webhook (담당자 이름을 키로 설정, 없으면 공통 채널로 발송)
-  // DM Webhook: Google Chat > 앱 > Incoming Webhook 추가 > 개인 스페이스에 설치
-  챗_담당자Webhook: {
-    '홍길동': '',   // 개인 DM Webhook URL
-    '김심사': '',
-    '이검토': '',
-    '박분석': '',
-  },
+    // 담당자별 개인 Webhook (담당자 이름을 키로 설정, 없으면 공통 채널로 발송)
+    챗_담당자Webhook: {
+      '홍길동': '',   // 개인 DM Webhook URL
+      '김심사': '',
+      '이검토': '',
+      '박분석': '',
+    },
 
-  // ── 기술심사보고서 — 기관 정보 (한 번 설정하면 모든 보고서에 적용) ──
-  보고서: {
-    작성기관: '한국정보통신기술협회(TTA)',
-    문서번호접두: 'TTA-AI심사',          // 예: TTA-AI심사-2026-0003
-    심사근거: '',                         // 예: 'OOO법 제O조, OOO지침 제O조' (없으면 빈칸 유지)
-    심사방법: '제출 기술자료 검토 및 확인 기준에 따른 항목별 적합성 검토',
-    보안등급: '대외제한',                 // 표지 표기
-    책임자직위: '심사책임자',
-  },
+    // ── 기술심사보고서 — 기관 정보 (한 번 설정하면 모든 보고서에 적용) ──
+    보고서: {
+      작성기관: '한국정보통신기술협회(TTA)',
+      문서번호접두: 'TTA-AI심사',          // 예: TTA-AI심사-2026-0003
+      심사근거: '',                         // 예: 'OOO법 제O조, OOO지침 제O조' (없으면 빈칸 유지)
+      심사방법: '제출 기술자료 검토 및 확인 기준에 따른 항목별 적합성 검토',
+      보안등급: '대외제한',                 // 표지 표기
+      책임자직위: '심사책임자',
+    },
 
-  // ── 관리자 이메일 목록 (초기화·재생성 등 위험 메뉴를 볼 수 있는 계정) ──
-  // 여기에 없는 계정은 위험 메뉴가 화면에 표시되지 않음.
-  // ※ 주의: 이건 메뉴 숨김(편의)일 뿐 완전한 보안이 아닙니다.
-  //   스크립트 편집기 접근 권한 자체를 관리자에게만 부여해야 실질적으로 막힙니다.
-  관리자이메일: [
-    // 'admin@tta.or.kr',
-    // 'manager@tta.or.kr',
-  ],
-};
+    // ── 관리자 이메일 목록 (초기화·재생성 등 위험 메뉴를 볼 수 있는 계정) ──
+    관리자이메일: [],
+  };
+
+  try {
+    // Google Apps Script 스크립트 속성에서 동적으로 로드
+    const properties = PropertiesService.getScriptProperties().getProperties();
+    
+    if (properties.DRIVE_FOLDER_ID) {
+      baseConfig.드라이브폴더ID = properties.DRIVE_FOLDER_ID;
+    }
+    if (properties.NOTIFICATION_EMAIL) {
+      baseConfig.알림이메일 = properties.NOTIFICATION_EMAIL;
+    }
+    if (properties.CHAT_COMMON_WEBHOOK) {
+      baseConfig.챗_공통Webhook = properties.CHAT_COMMON_WEBHOOK;
+    }
+    if (properties.ASSIGNEES) {
+      // 쉼표로 구분된 담당자 목록 파싱
+      baseConfig.담당자목록 = properties.ASSIGNEES.split(',').map(function(s) { return s.trim(); });
+    }
+    if (properties.ADMIN_EMAILS) {
+      // 쉼표로 구분된 관리자 이메일 목록 파싱
+      baseConfig.관리자이메일 = properties.ADMIN_EMAILS.split(',').map(function(s) { return s.trim(); });
+    }
+
+    // 담당자별 Webhook 파싱 (속성 키 예: CHAT_MEMBER_WEBHOOK_홍길동)
+    for (const key in baseConfig.챗_담당자Webhook) {
+      const propKey = 'CHAT_MEMBER_WEBHOOK_' + key;
+      if (properties[propKey]) {
+        baseConfig.챗_담당자Webhook[key] = properties[propKey];
+      }
+    }
+  } catch (e) {
+    if (typeof Logger !== 'undefined') {
+      Logger.log("설정 로드 실패 (로컬 디버깅 또는 권한 부족): " + e.toString());
+    }
+  }
+
+  return baseConfig;
+}
+
+const CONFIG = loadConfig();
 
 // 시트 이름 상수
 const SHEET = {

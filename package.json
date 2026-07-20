@@ -1,0 +1,19 @@
+{
+  "name": "aiproductworkflow",
+  "version": "1.0.0",
+  "description": "AI 제품/서비스 기술심사 관리 시스템 Google Apps Script 프로젝트",
+  "main": "Code.js",
+  "scripts": {
+    "push:dev": "clasp push -c .clasp-dev.json",
+    "push:prod": "clasp push -c .clasp-prod.json",
+    "pull:dev": "clasp pull -c .clasp-dev.json",
+    "pull:prod": "clasp pull -c .clasp-prod.json",
+    "watch:dev": "clasp push -w -c .clasp-dev.json"
+  },
+  "keywords": [
+    "google-apps-script",
+    "clasp"
+  ],
+  "author": "",
+  "license": "ISC"
+}
