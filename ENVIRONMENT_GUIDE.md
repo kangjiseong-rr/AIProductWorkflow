@@ -1,0 +1,72 @@
+# 개발 및 운영 환경 분리 배포/사용 가이드
+
+이 문서는 본 Google Apps Script 프로젝트를 개발 환경(Dev)과 운영 환경(Prod)으로 나누어 배포하고 관리하는 방법에 대해 설명합니다.
+
+---
+
+## 1. 프로젝트 구조 및 파일 역할
+
+* `package.json`: 환경별 배포 및 동기화 스크립트가 정의되어 있습니다.
+* `.clasp.json`: 기본 `clasp` 설정 파일입니다. 실수 방지를 위해 기본 타겟이 **개발용(Dev) 스크립트**로 세팅되어 있습니다.
+* `.clasp-dev.json`: 개발용 Apps Script 프로젝트 연동 설정입니다.
+* `.clasp-prod.json`: 운영용 Apps Script 프로젝트 연동 설정입니다.
+
+---
+
+## 2. CLI 배포 명령어 사용법
+
+로컬 터미널(VS Code 터미널 등)에서 아래 명령어를 실행하여 각 구글 프로젝트에 코드를 업로드할 수 있습니다:
+
+### 개발 환경 (Dev)
+* **개발 서버 푸시**:
+  ```bash
+  npm run push:dev
+  ```
+* **로컬 수정사항 실시간 동기화**:
+  ```bash
+  npm run watch:dev
+  ```
+  *(코드를 수정하고 저장할 때마다 자동으로 개발용 구글 시트에 즉시 반영되어 빠른 테스트가 가능합니다.)*
+
+### 운영 환경 (Prod)
+* **운영 서버 배포 (검증 완료 후)**:
+  ```bash
+  npm run push:prod
+  ```
+
+---
+
+## 3. 스크립트 속성(Script Properties) 설정법 (필수)
+
+`Code.js`는 이제 하드코딩된 설정값 대신 각 구글 프로젝트의 **Script Properties**에서 환경 변수를 동적으로 읽어서 동작합니다. 아래 표의 속성값들을 각 스프레드시트에 연결된 Apps Script 온라인 편집기에서 설정해 주셔야 합니다.
+
+### 설정 순서
+1. 각 구글 스프레드시트에서 **[확장 프로그램] -> [Apps Script]**를 클릭해 진입합니다.
+2. 좌측 메뉴에서 **⚙️ [프로젝트 설정] (톱니바퀴 아이콘)**을 클릭합니다.
+3. 아래로 스크롤하여 **[스크립트 속성 (Script Properties)]** 메뉴에서 **[스크립트 속성 편집]** 버튼을 누릅니다.
+4. 아래 키-값 목록을 환경에 맞게 추가하고 저장합니다.
+
+| 속성 이름 (Key) | 예시 값 (Value) | 설명 |
+| :--- | :--- | :--- |
+| `DRIVE_FOLDER_ID` | `1Ah_yqZ...` | 심사보고서 및 증빙이 저장될 드라이브 폴더 ID |
+| `CHAT_COMMON_WEBHOOK` | `https://chat.googleapis.com/...` | 전체 접수 알림이 전송될 Google Chat Webhook URL |
+| `NOTIFICATION_EMAIL` | `manager@example.com` | 담당자 배분 알림 수신 이메일 주소 (선택) |
+| `ASSIGNEES` | `홍길동, 김심사, 이검토, 박분석` | 쉼표 `,`로 구분된 담당 심사원 목록 (기본값 제공됨) |
+| `ADMIN_EMAILS` | `admin@example.com, manager@example.com` | 쉼표 `,`로 구분된 관리자 메뉴 권한 이메일 목록 |
+| `CHAT_MEMBER_WEBHOOK_홍길동` | `https://chat.googleapis.com/...` | 개별 심사원 전용 Webhook URL (필요 시 등록) |
+
+---
+
+## 4. 로컬 초기 설치 가이드 (새 기기나 다른 개발자용)
+
+깃허브 저장소를 새로 Clone 받은 기기에서는 아래 순서로 연동을 시작합니다:
+
+1. **의존성 모듈 설치**:
+   ```bash
+   npm install
+   ```
+2. **Google clasp 계정 로그인 (최초 1회)**:
+   ```bash
+   npx clasp login
+   ```
+   *(구글 계정 인증 브라우저가 열리면 개발자 계정으로 로그인해 줍니다.)*
