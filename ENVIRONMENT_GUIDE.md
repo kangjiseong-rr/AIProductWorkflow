@@ -54,6 +54,7 @@
 | `ADMIN_EMAILS` | `admin@example.com, manager@example.com` | 쉼표 `,`로 구분된 관리자 메뉴 권한 이메일 목록 |
 
 심사원별 이메일·활성여부·배정순서·Chat 사용자 ID는 Script Properties가 아니라 `심사원관리` 시트에서 관리합니다.
+`Chat사용자ID`는 직접 찾을 필요 없이 관리자 메뉴의 **👥 심사원 Chat ID 일괄 갱신**으로 이메일 기준 자동 조회합니다. 최초 실행 시 Admin SDK Directory 권한 승인이 필요합니다.
 
 ---
 

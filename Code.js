@@ -754,6 +754,47 @@ function _활성심사원목록_(ss) {
     .sort((a, b) => a.배정순서 - b.배정순서 || a.심사원명.localeCompare(b.심사원명));
 }
 
+/** 심사원 이메일을 Workspace Directory에서 조회해 Chat 멘션용 사용자 ID를 일괄 입력 */
+function 심사원Chat사용자ID일괄갱신() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.심사원관리);
+  if (!시트 || 시트.getLastRow() < 2) throw new Error('심사원관리 시트에 심사원을 먼저 등록하세요.');
+
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 이름열 = 헤더.indexOf('심사원명');
+  const 이메일열 = 헤더.indexOf('이메일');
+  const ID열 = 헤더.indexOf('Chat사용자ID');
+  if (이름열 < 0 || 이메일열 < 0 || ID열 < 0) throw new Error('심사원관리 시트의 표준 헤더를 확인하세요.');
+
+  const 행수 = 시트.getLastRow() - 1;
+  const 값 = 시트.getRange(2, 1, 행수, 헤더.length).getValues();
+  const 기존ID = 값.map(행 => [행[ID열]]);
+  const 실패 = [];
+  let 성공 = 0;
+  let 건너뜀 = 0;
+
+  값.forEach((행, i) => {
+    const 이름 = String(행[이름열] || '').trim();
+    const 이메일 = String(행[이메일열] || '').trim();
+    if (!이름 && !이메일) { 건너뜀++; return; }
+    if (!이메일) { 실패.push(`${이름 || (i + 2) + '행'}: 이메일 없음`); return; }
+    try {
+      const 사용자 = AdminDirectory.Users.get(이메일);
+      if (!사용자 || !사용자.id) throw new Error('사용자 ID 없음');
+      기존ID[i][0] = String(사용자.id);
+      성공++;
+    } catch (e) {
+      실패.push(`${이름 || 이메일}: ${e.message || e}`);
+    }
+  });
+
+  시트.getRange(2, ID열 + 1, 행수, 1).setValues(기존ID);
+  const 결과문 = [`Chat 사용자 ID 갱신 완료: ${성공}건`];
+  if (건너뜀) 결과문.push(`빈 행 건너뜀: ${건너뜀}건`);
+  if (실패.length) 결과문.push(`실패: ${실패.length}건`, '', 실패.slice(0, 10).join('\n'));
+  SpreadsheetApp.getUi().alert(결과문.join('\n'));
+}
+
 // 테이블 친화 행 추가
 // appendRow는 시트 맨 끝에 붙어 테이블 범위 밖으로 나갈 수 있으므로,
 // 마지막 데이터 행 바로 아래(= 테이블 확장 영역)에 값을 써서 테이블이 자동 흡수하게 합니다.
@@ -2200,6 +2241,7 @@ function onOpen() {
     menu.addSeparator()
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
       .addSeparator()
+      .addItem('👥 심사원 Chat ID 일괄 갱신', '심사원Chat사용자ID일괄갱신')
       .addItem('🔄 선택 행 라운드로빈 추천', '선택행라운드로빈추천')
       .addItem('📨 선택 행 배정 확정·알림 발송', '선택행배정확정알림발송')
       .addItem('🔁 선택 행 배정 알림 재발송', '선택행배정알림재발송')
