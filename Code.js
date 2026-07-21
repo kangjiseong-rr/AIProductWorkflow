@@ -405,10 +405,16 @@ function 초기설정실행() {
   일정시트.getRange(2, iD상태, 999, 1)
     .setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInList(['대기', '심사중', '보완', '완료'], true).build());
+  const 날짜입력규칙 = SpreadsheetApp.newDataValidation()
+    .requireDate()
+    .setAllowInvalid(false)
+    .setHelpText('날짜를 직접 입력하거나 캘린더에서 선택하세요.')
+    .build();
   [iD보완요청, iD연장마감].filter(i => i > 0).forEach(i => {
     // 상태 열 오른쪽에 삽입될 때 복제된 상태 드롭다운을 제거하고 날짜 열로 재설정
     일정시트.getRange(2, i, 999, 1)
       .clearDataValidations()
+      .setDataValidation(날짜입력규칙)
       .setNumberFormat('yyyy-mm-dd');
   });
 
