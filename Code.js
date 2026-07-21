@@ -343,7 +343,10 @@ function 헤더마이그레이션() {
         if (변경) 시트.getRange(2, iNew + 1, n, 1).setValues(새값);
       });
     }
-    if (이름 === SHEET.일정관리) _일정관리레거시컬럼삭제_(시트);
+    if (이름 === SHEET.일정관리) {
+      _일정관리레거시컬럼삭제_(시트);
+      _일정관리헤더색적용_(시트);
+    }
   });
   if (추가내역.length) {
     try {
@@ -507,6 +510,25 @@ function columnLetter(n) {
   return s;
 }
 
+function _일정관리헤더색적용_(시트) {
+  const lastCol = Math.max(1, 시트.getLastColumn());
+  const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
+
+  // 기존 시트도 갱신 시 전체 헤더를 남색으로 통일하고, 특이사항만 연한 톤으로 구분합니다.
+  시트.getRange(1, 1, 1, lastCol)
+    .setBackground(일정관리_헤더색)
+    .setFontColor('#ffffff')
+    .setFontWeight('bold');
+
+  const 특이사항열 = 헤더.indexOf('특이사항') + 1;
+  if (특이사항열 > 0) {
+    시트.getRange(1, 특이사항열)
+      .setBackground(일정관리_특이사항헤더색)
+      .setFontColor(일정관리_특이사항헤더글자색)
+      .setFontWeight('bold');
+  }
+}
+
 function _일정관리서식적용_(시트, 요약뷰) {
   _일정관리레거시컬럼삭제_(시트);
   const lastCol = Math.max(1, 시트.getLastColumn());
@@ -534,14 +556,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
     Logger.log('일정관리 Google Sheets 표 적용 실패: ' + e.message);
   }
 
-  // 공용 자유 입력 컬럼은 다른 헤더와 구분되는 연한 톤으로 표시
-  const 특이사항열 = 헤더.indexOf('특이사항') + 1;
-  if (특이사항열 > 0) {
-    시트.getRange(1, 특이사항열)
-      .setBackground(일정관리_특이사항헤더색)
-      .setFontColor(일정관리_특이사항헤더글자색)
-      .setFontWeight('bold');
-  }
+  _일정관리헤더색적용_(시트);
 
   const 너비맵 = {
     '순번': 45, '접수번호': 115,
