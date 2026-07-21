@@ -49,11 +49,11 @@
 | 속성 이름 (Key) | 예시 값 (Value) | 설명 |
 | :--- | :--- | :--- |
 | `DRIVE_FOLDER_ID` | `1Ah_yqZ...` | 심사보고서 및 증빙이 저장될 드라이브 폴더 ID |
-| `CHAT_COMMON_WEBHOOK` | `https://chat.googleapis.com/...` | 전체 접수 알림이 전송될 Google Chat Webhook URL |
-| `NOTIFICATION_EMAIL` | `manager@example.com` | 담당자 배분 알림 수신 이메일 주소 (선택) |
-| `ASSIGNEES` | `홍길동, 김심사, 이검토, 박분석` | 쉼표 `,`로 구분된 담당 심사원 목록 (기본값 제공됨) |
+| `CHAT_COMMON_WEBHOOK` | `https://chat.googleapis.com/...` | 관리자가 확정한 선택 행이 전송될 공용 Google Chat Webhook URL |
+| `ASSIGNEES` | `홍길동, 김심사, 이검토, 박분석` | `심사원관리` 시트 최초 생성 시 사용할 기본 심사원명 목록 |
 | `ADMIN_EMAILS` | `admin@example.com, manager@example.com` | 쉼표 `,`로 구분된 관리자 메뉴 권한 이메일 목록 |
-| `CHAT_MEMBER_WEBHOOK_홍길동` | `https://chat.googleapis.com/...` | 개별 심사원 전용 Webhook URL (필요 시 등록) |
+
+심사원별 이메일·활성여부·배정순서·Chat 사용자 ID는 Script Properties가 아니라 `심사원관리` 시트에서 관리합니다.
 
 ---
 

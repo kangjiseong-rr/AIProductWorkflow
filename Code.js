@@ -30,23 +30,12 @@ function loadConfig() {
     // 기본 심사 기간 (일)
     기본심사기간: 14,
 
-    // 알림 이메일 (담당자 배분 시 발송, 빈 문자열이면 발송 안 함)
-    알림이메일: '',   // 예: 'manager@yourorg.kr'
-
     // Google Drive 폴더 ID (엑셀 파일을 업로드할 폴더, 빈 문자열이면 루트)
     드라이브폴더ID: '',
 
     // ── Google Chat Webhook ──────────────────────
     // Space별 Webhook URL을 설정합니다.
     챗_공통Webhook: '',
-
-    // 담당자별 개인 Webhook (담당자 이름을 키로 설정, 없으면 공통 채널로 발송)
-    챗_담당자Webhook: {
-      '홍길동': '',   // 개인 DM Webhook URL
-      '김심사': '',
-      '이검토': '',
-      '박분석': '',
-    },
 
     // ── 기술심사보고서 — 기관 정보 (한 번 설정하면 모든 보고서에 적용) ──
     보고서: {
@@ -69,9 +58,6 @@ function loadConfig() {
     if (properties.DRIVE_FOLDER_ID) {
       baseConfig.드라이브폴더ID = properties.DRIVE_FOLDER_ID;
     }
-    if (properties.NOTIFICATION_EMAIL) {
-      baseConfig.알림이메일 = properties.NOTIFICATION_EMAIL;
-    }
     if (properties.CHAT_COMMON_WEBHOOK) {
       baseConfig.챗_공통Webhook = properties.CHAT_COMMON_WEBHOOK;
     }
@@ -82,14 +68,6 @@ function loadConfig() {
     if (properties.ADMIN_EMAILS) {
       // 쉼표로 구분된 관리자 이메일 목록 파싱
       baseConfig.관리자이메일 = properties.ADMIN_EMAILS.split(',').map(function(s) { return s.trim(); });
-    }
-
-    // 담당자별 Webhook 파싱 (속성 키 예: CHAT_MEMBER_WEBHOOK_홍길동)
-    for (const key in baseConfig.챗_담당자Webhook) {
-      const propKey = 'CHAT_MEMBER_WEBHOOK_' + key;
-      if (properties[propKey]) {
-        baseConfig.챗_담당자Webhook[key] = properties[propKey];
-      }
     }
   } catch (e) {
     if (typeof Logger !== 'undefined') {
@@ -109,6 +87,8 @@ const SHEET = {
   AI기능상세: '인공지능기능상세',      // 표시명만 변경 (코드상 키는 호환 유지)
   일정관리: '일정관리',
   로그: '파싱로그',
+  심사원관리: '심사원관리',
+  배정알림로그: '배정알림로그',
 };
 
 const 일정관리_헤더색 = '#1f3a5f';
@@ -229,6 +209,12 @@ const 시트헤더정의 = {
   ],
   [SHEET.로그]: [
     '일시', '파일명', '접수번호', '결과', '메시지',
+  ],
+  [SHEET.심사원관리]: [
+    '심사원명', '이메일', '활성여부', '배정순서', 'Chat사용자ID',
+  ],
+  [SHEET.배정알림로그]: [
+    '발송일시', '접수번호', '담당심사원', '이메일', '발송결과', '실행자',
   ],
 };
 
@@ -391,6 +377,7 @@ function 초기설정실행() {
 
   // 3) 컬럼매핑 메타 시트 (엑셀 헤더 별칭을 코드 수정 없이 관리)
   _컬럼매핑시트확보(ss);
+  _심사원관리설정_(ss);
 
   // ── 일정관리 시트 후처리 ─────────────────────────────
   const 일정시트 = ss.getSheetByName(SHEET.일정관리);
@@ -400,6 +387,7 @@ function 초기설정실행() {
   const iD상태 = 일정H.indexOf('상태') + 1;
   const iD보완요청 = 일정H.indexOf('보완요청일') + 1;
   const iD연장마감 = 일정H.indexOf('연장마감일') + 1;
+  const iD담당심사원 = 일정H.indexOf('담당심사원') + 1;
   const 끝열문자 = columnLetter(일정H.length);
 
   // 마감예정일 수식은 _일정관리행추가()에서 행별로 설정
@@ -412,6 +400,15 @@ function 초기설정실행() {
   상태범위
     .setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInList(['대기', '심사중', '보완', '완료(적합)', '종료(부적합)'], true).build());
+  const 활성심사원명 = _활성심사원목록_(ss).map(심사원 => 심사원.심사원명);
+  if (iD담당심사원 > 0 && 활성심사원명.length) {
+    일정시트.getRange(2, iD담당심사원, 999, 1)
+      .setDataValidation(SpreadsheetApp.newDataValidation()
+        .requireValueInList(활성심사원명, true)
+        .setAllowInvalid(false)
+        .setHelpText('심사원관리 시트에서 활성화된 심사원을 선택하세요.')
+        .build());
+  }
   const 날짜입력규칙 = SpreadsheetApp.newDataValidation()
     .requireDate()
     .setAllowInvalid(false)
@@ -505,7 +502,7 @@ function 초기설정실행() {
     대장판정범위.setDataValidation(대장판정규칙);
   }
 
-  SpreadsheetApp.getUi().alert('초기설정 완료! 시트 7개가 생성되었습니다.');
+  SpreadsheetApp.getUi().alert('초기설정 완료! 심사원관리·배정알림로그를 포함한 시트 구성이 갱신되었습니다.');
 }
 
 /** 열 번호(1-based) → 알파벳 열 문자 (1→A, 27→AA) */
@@ -707,6 +704,54 @@ function _시트초기화(ss, 이름, 헤더배열) {
     .setFontWeight('bold');
   sheet.setFrozenRows(1);
   return sheet;
+}
+
+/** 심사원관리 시트 기본값·표시 형식 설정 */
+function _심사원관리설정_(ss) {
+  const 시트 = ss.getSheetByName(SHEET.심사원관리);
+  if (!시트) return;
+
+  if (시트.getLastRow() < 2) {
+    const 기본심사원 = (CONFIG.담당자목록 || []).map((이름, i) => [이름, '', 'Y', i + 1, '']);
+    if (기본심사원.length) 시트.getRange(2, 1, 기본심사원.length, 5).setValues(기본심사원);
+  }
+
+  시트.setFrozenRows(1);
+  시트.setColumnWidth(1, 110);
+  시트.setColumnWidth(2, 210);
+  시트.setColumnWidth(3, 85);
+  시트.setColumnWidth(4, 85);
+  시트.setColumnWidth(5, 170);
+  시트.getRange(2, 3, Math.max(1, 시트.getMaxRows() - 1), 1)
+    .setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInList(['Y', 'N'], true).setAllowInvalid(false).build());
+
+  const 로그시트 = ss.getSheetByName(SHEET.배정알림로그);
+  if (로그시트) {
+    로그시트.setFrozenRows(1);
+    [145, 120, 110, 210, 100, 210].forEach((너비, i) => 로그시트.setColumnWidth(i + 1, 너비));
+  }
+}
+
+/** 심사원관리 시트의 활성 심사원을 배정순서대로 반환 */
+function _활성심사원목록_(ss) {
+  const 시트 = ss.getSheetByName(SHEET.심사원관리);
+  if (!시트 || 시트.getLastRow() < 2) {
+    return (CONFIG.담당자목록 || []).filter(Boolean).map((이름, i) => ({
+      심사원명: String(이름).trim(), 이메일: '', 활성여부: 'Y', 배정순서: i + 1, Chat사용자ID: '',
+    }));
+  }
+
+  const 값 = 시트.getRange(2, 1, 시트.getLastRow() - 1, 5).getValues();
+  return 값.map((행, i) => ({
+    심사원명: String(행[0] || '').trim(),
+    이메일: String(행[1] || '').trim(),
+    활성여부: String(행[2] || '').trim().toUpperCase(),
+    배정순서: Number(행[3]) || (i + 1),
+    Chat사용자ID: String(행[4] || '').trim(),
+  }))
+    .filter(심사원 => 심사원.심사원명 && 심사원.활성여부 === 'Y')
+    .sort((a, b) => a.배정순서 - b.배정순서 || a.심사원명.localeCompare(b.심사원명));
 }
 
 // 테이블 친화 행 추가
@@ -1753,139 +1798,152 @@ function _Sheets에등록(건, 파일명) {
     `${건.기업명} / ${건.제품명} 등록 → 담당: ${담당자}`,
   ]);
 
-  // ── 알림 ──
-  if (CONFIG.알림이메일) _이메일발송(CONFIG.알림이메일, 접수번호, 건, 담당자, 마감일);
-  _챗알림발송(접수번호, 건, 담당자, 마감일);
-
   Logger.log(`등록: ${접수번호} / ${건.제품명}`);
   return { 접수번호, 신규: true };
 }
 
 
 function _담당자배분(ss) {
+  const 심사원목록 = _활성심사원목록_(ss);
+  if (!심사원목록.length) throw new Error('심사원관리 시트에 활성 심사원이 없습니다.');
   const 시트 = ss.getSheetByName(SHEET.접수대장);
   const 마지막행 = 시트.getLastRow() - 1; // 헤더 제외
-  const idx = 마지막행 % CONFIG.담당자목록.length;
-  return CONFIG.담당자목록[idx];
+  const idx = 마지막행 % 심사원목록.length;
+  return 심사원목록[idx].심사원명;
 }
 
 // ─────────────────────────────────────────────
-// Google Chat 알림
+// 심사원 배정 확정 및 Google Chat 알림
 // ─────────────────────────────────────────────
 
-/**
- * 신규 접수 시 Google Chat으로 알림 발송
- *  - 담당자 개인 Webhook이 설정되어 있으면 → DM 발송
- *  - 없으면 → 공통 채널에 발송
- *  - 둘 다 없으면 → 조용히 스킵
- */
-function _챗알림발송(접수번호, 건, 담당자, 마감일) {
-  const 마감문자열 = Utilities.formatDate(마감일, 'Asia/Seoul', 'yyyy-MM-dd');
-  const 시트URL = SpreadsheetApp.getActiveSpreadsheet().getUrl();
+/** 일정관리에서 선택한 데이터 행을 헤더 기반 객체로 반환 */
+function _선택일정행목록_(ss) {
+  const 시트 = ss.getActiveSheet();
+  if (시트.getName() !== SHEET.일정관리) throw new Error('일정관리 시트에서 데이터 행을 선택하세요.');
+  const 선택 = 시트.getActiveRange();
+  const 시작행 = Math.max(2, 선택.getRow());
+  const 끝행 = 선택.getLastRow();
+  if (끝행 < 2) throw new Error('헤더가 아닌 데이터 행을 선택하세요.');
+  if (끝행 - 시작행 + 1 > 50) throw new Error('한 번에 최대 50개 행까지 발송할 수 있습니다.');
 
-  // Card v2 형식 메시지 (Google Chat 기본 카드)
-  const payload = {
-    cardsV2: [{
-      cardId: 접수번호,
-      card: {
-        header: {
-          title: '🔔 AI 기술심사 신규 접수',
-          subtitle: `${접수번호}  ·  담당: ${담당자}`,
-          imageUrl: 'https://fonts.gstatic.com/s/i/googlematerialicons/assignment/v11/black-48dp/1x/gm_assignment_black_48dp.png',
-          imageType: 'CIRCLE',
-        },
-        sections: [
-          {
-            header: '접수 정보',
-            widgets: [
-              { decoratedText: { topLabel: '제품명',   text: `<b>${건.제품명}</b> (${건.제품버전 || '-'})` } },
-              { decoratedText: { topLabel: '기업명',   text: 건.기업명 } },
-              { decoratedText: { topLabel: '분류',     text: 건.제품분류 || '-' } },
-              { decoratedText: { topLabel: '기능 수',  text: `${건.AI기능명_원본 ? 건.AI기능명_원본.split('/').length : '-'}개` } },
-            ],
-          },
-          {
-            header: '심사 일정',
-            widgets: [
-              { decoratedText: { topLabel: '담당심사원', text: `<b>${담당자}</b>` } },
-              { decoratedText: {
-                topLabel: '심사 마감일',
-                text: `<b>${마감문자열}</b>`,
-                startIcon: { knownIcon: 'CLOCK' },
-              }},
-            ],
-          },
-          {
-            widgets: [{
-              buttonList: { buttons: [{
-                text: '접수대장 바로가기',
-                onClick: { openLink: { url: 시트URL } },
-              }]},
-            }],
-          },
-        ],
-      },
-    }],
-  };
-
-  // 발송 대상 결정
-  const 개인Webhook = CONFIG.챗_담당자Webhook?.[담당자];
-  const 대상URL = 개인Webhook || CONFIG.챗_공통Webhook;
-
-  if (!대상URL) return; // Webhook 미설정 시 스킵
-
-  _챗POST(대상URL, payload);
-
-  // 공통 채널이 따로 있고 개인 DM도 보냈다면 → 공통 채널에도 요약 발송
-  if (개인Webhook && CONFIG.챗_공통Webhook && 개인Webhook !== CONFIG.챗_공통Webhook) {
-    const 요약payload = {
-      text: `✅ *${접수번호}* 접수 완료 — ${건.기업명} / ${건.제품명}\n담당: *${담당자}* · 마감: ${마감문자열}`,
-    };
-    _챗POST(CONFIG.챗_공통Webhook, 요약payload);
-  }
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 값 = 시트.getRange(시작행, 1, 끝행 - 시작행 + 1, 헤더.length).getDisplayValues();
+  return 값.map((행값, i) => {
+    const 건 = { _행번호: 시작행 + i };
+    헤더.forEach((h, j) => { 건[h] = 행값[j]; });
+    return 건;
+  }).filter(건 => String(건['접수번호'] || '').trim());
 }
 
-/**
- * 상태 변경 시 담당자에게 알림
- * 사용 예: 접수대장에서 상태 셀을 바꾼 뒤 이 함수 호출
- */
-function 상태변경알림() {
+/** 선택 행 중 담당심사원이 비어 있는 행에만 라운드로빈 초안을 입력 */
+function 선택행라운드로빈추천() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getActiveSheet();
-  if (시트.getName() !== SHEET.접수대장) return;
-
-  const 행 = 시트.getActiveRange().getRow();
-  if (행 <= 1) return;
-
-  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const 데이터 = 시트.getRange(행, 1, 1, 시트.getLastColumn()).getValues()[0];
-  const 건 = {};
-  헤더.forEach((h, i) => { 건[h] = 데이터[i]; });
-
-  const 상태이모지 = {
-    '접수': '📥', '심사중': '🔍', '보완요청': '🔄', '완료': '✅', '반려': '❌',
-  };
-  const 이모지 = 상태이모지[건['상태']] || '📋';
-
-  const payload = {
-    text: `${이모지} *[${건['접수번호']}] 상태 변경 → ${건['상태']}*\n${건['제품명']} (${건['기업명']})\n담당: ${건['담당심사원']}`,
-  };
-
-  const 대상URL = CONFIG.챗_담당자Webhook?.[건['담당심사원']] || CONFIG.챗_공통Webhook;
-  if (대상URL) _챗POST(대상URL, payload);
+  const 건목록 = _선택일정행목록_(ss);
+  const 심사원목록 = _활성심사원목록_(ss);
+  if (!심사원목록.length) throw new Error('심사원관리 시트에 활성 심사원이 없습니다.');
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 담당열 = 헤더.indexOf('담당심사원') + 1;
+  let 입력수 = 0;
+  const 시작순서 = Math.max(0, ss.getSheetByName(SHEET.접수대장).getLastRow() - 1);
+  건목록.forEach(건 => {
+    if (String(건['담당심사원'] || '').trim()) return;
+    const 심사원 = 심사원목록[(시작순서 + 입력수) % 심사원목록.length];
+    시트.getRange(건._행번호, 담당열).setValue(심사원.심사원명);
+    입력수++;
+  });
+  SpreadsheetApp.getUi().alert(`라운드로빈 추천 완료: ${입력수}건\n기존 담당심사원 값은 변경하지 않았습니다.`);
 }
+
+function _성공발송키목록_(ss) {
+  const 시트 = ss.getSheetByName(SHEET.배정알림로그);
+  if (!시트 || 시트.getLastRow() < 2) return new Set();
+  return new Set(
+    시트.getRange(2, 1, 시트.getLastRow() - 1, 6).getValues()
+      .filter(행 => String(행[4]).trim() === '발송완료')
+      .map(행 => `${String(행[1]).trim()}|${String(행[2]).trim()}`)
+  );
+}
+
+function _Chat멘션_(사용자ID, 심사원명) {
+  const id = String(사용자ID || '').trim();
+  if (!id) return `*${심사원명}*`;
+  return `<${id.indexOf('users/') === 0 ? id : 'users/' + id}>`;
+}
+
+/** 선택 행을 담당자별로 묶어 공용 Chat에 한 번 발송 */
+function _선택행배정알림발송_(재발송) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const 건목록 = _선택일정행목록_(ss);
+  if (!건목록.length) throw new Error('발송할 접수 건이 없습니다.');
+  if (!CONFIG.챗_공통Webhook) throw new Error('Script Properties의 CHAT_COMMON_WEBHOOK을 먼저 설정하세요.');
+
+  const 심사원맵 = {};
+  _활성심사원목록_(ss).forEach(심사원 => { 심사원맵[심사원.심사원명] = 심사원; });
+  const 누락 = 건목록.filter(건 => !심사원맵[String(건['담당심사원'] || '').trim()]);
+  if (누락.length) {
+    throw new Error('활성 심사원이 지정되지 않은 행이 있습니다: ' + 누락.map(건 => 건['접수번호']).join(', '));
+  }
+  const 이메일누락 = Array.from(new Set(건목록.map(건 => String(건['담당심사원']).trim())))
+    .filter(이름 => !심사원맵[이름].이메일);
+  if (이메일누락.length) throw new Error('심사원관리 시트에 이메일을 입력하세요: ' + 이메일누락.join(', '));
+
+  if (!재발송) {
+    const 성공키 = _성공발송키목록_(ss);
+    const 중복 = 건목록.filter(건 => 성공키.has(`${건['접수번호']}|${건['담당심사원']}`));
+    if (중복.length) {
+      throw new Error('이미 발송된 건이 있습니다: ' + 중복.map(건 => 건['접수번호']).join(', ') + '\n재발송 메뉴를 사용하세요.');
+    }
+  }
+
+  const 그룹 = {};
+  건목록.forEach(건 => {
+    const 이름 = String(건['담당심사원']).trim();
+    if (!그룹[이름]) 그룹[이름] = [];
+    그룹[이름].push(건);
+  });
+  const 요약 = Object.keys(그룹).map(이름 => `${이름} ${그룹[이름].length}건`).join(', ');
+  if (ui.alert('배정 알림 발송 확인', `${요약}\n\n선택한 ${건목록.length}건을 공용 Google Chat 방에 발송할까요?`, ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+
+  const 본문 = ['📨 *AI 기술심사 배정 확정*'];
+  Object.keys(그룹).forEach(이름 => {
+    const 심사원 = 심사원맵[이름];
+    본문.push('', `${_Chat멘션_(심사원.Chat사용자ID, 이름)} — ${그룹[이름].length}건`);
+    그룹[이름].forEach(건 => {
+      본문.push(`• *${건['접수번호']}* | ${건['기업명'] || '-'} | ${건['제품명'] || '-'} | 마감 ${건['마감예정일'] || '-'}`);
+    });
+  });
+  본문.push('', `<${ss.getUrl()}|일정관리 바로가기>`);
+
+  const 결과 = _챗POST(CONFIG.챗_공통Webhook, { text: 본문.join('\n') });
+  const 실행자 = (() => { try { return Session.getActiveUser().getEmail() || ''; } catch (e) { return ''; } })();
+  const 발송일시 = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+  const 로그값 = 건목록.map(건 => {
+    const 이름 = String(건['담당심사원']).trim();
+    const 심사원 = 심사원맵[이름];
+    return [발송일시, 건['접수번호'], 이름, 심사원.이메일, 결과.success ? '발송완료' : '발송실패', 실행자];
+  });
+  const 로그시트 = ss.getSheetByName(SHEET.배정알림로그);
+  로그시트.getRange(로그시트.getLastRow() + 1, 1, 로그값.length, 6).setValues(로그값);
+  if (!결과.success) throw new Error(`Google Chat 발송 실패 (${결과.code}): ${결과.message}`);
+  ui.alert(`배정 알림 발송 완료: ${건목록.length}건`);
+}
+
+function 선택행배정확정알림발송() { _선택행배정알림발송_(false); }
+function 선택행배정알림재발송() { _선택행배정알림발송_(true); }
 
 /** Webhook POST 공통 함수 */
 function _챗POST(url, payload) {
   try {
-    UrlFetchApp.fetch(url, {
-      method: 'POST',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
+    const res = UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true,
     });
+    const code = res.getResponseCode();
+    return { success: code >= 200 && code < 300, code: code, message: res.getContentText() };
   } catch (e) {
     Logger.log('Chat 알림 실패: ' + e.message);
+    return { success: false, code: 0, message: e.message };
   }
 }
 
@@ -1907,26 +1965,12 @@ function 챗알림테스트() {
   const url = res.getResponseText().trim() || CONFIG.챗_공통Webhook;
   if (!url) { ui.alert('Webhook URL이 없습니다. CONFIG.챗_공통Webhook을 먼저 설정하세요.'); return; }
 
-  _챗POST(url, {
+  const 결과 = _챗POST(url, {
     text: '✅ *AI 기술심사 관리 시스템* 연결 테스트\n알림이 정상적으로 도착했습니다! 🎉',
   });
-  ui.alert('테스트 메시지를 발송했습니다. Google Chat을 확인하세요.');
-}
-
-function _이메일발송(수신자, 접수번호, 건, 담당자, 마감일) {
-  const 제목 = `[AI기술심사] 신규 접수 ${접수번호} — ${건.제품명}`;
-  const 본문 = `
-새로운 인공지능 제품 기술심사 건이 접수되었습니다.
-
-■ 접수번호: ${접수번호}
-■ 제품명: ${건.제품명} (${건.제품버전})
-■ 기업명: ${건.기업명}
-■ 담당심사원: ${담당자}
-■ 심사마감일: ${Utilities.formatDate(마감일, 'Asia/Seoul', 'yyyy-MM-dd')}
-
-Google Sheets에서 상세 내용을 확인하세요.
-  `.trim();
-  MailApp.sendEmail(수신자, 제목, 본문);
+  ui.alert(결과.success
+    ? '테스트 메시지를 발송했습니다. Google Chat을 확인하세요.'
+    : `테스트 발송 실패 (${결과.code}): ${결과.message}`);
 }
 
 
@@ -2155,6 +2199,10 @@ function onOpen() {
   if (관리자) {
     menu.addSeparator()
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
+      .addSeparator()
+      .addItem('🔄 선택 행 라운드로빈 추천', '선택행라운드로빈추천')
+      .addItem('📨 선택 행 배정 확정·알림 발송', '선택행배정확정알림발송')
+      .addItem('🔁 선택 행 배정 알림 재발송', '선택행배정알림재발송')
       .addSeparator()
       .addItem('⚙️ 초기 설정·컬럼 갱신', '초기설정실행')
       .addItem('📅 공휴일·마감예정일 갱신', '마감예정일갱신')
