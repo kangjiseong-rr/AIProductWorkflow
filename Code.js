@@ -212,7 +212,7 @@ const 시트헤더정의 = {
     '신청일',        // 기산일 (신청서 원본)
     '심사접수일',    // TTA 인수일
     '마감예정일',    // 신청일 + 15 WD, 주말·공휴일 제외 (수식 자동 생성)
-    '상태',          // 대기 / 심사중 / 보완 / 완료
+    '상태',          // 대기 / 심사중 / 보완 / 완료(적합) / 종료(부적합)
     '보완요청일',    // 내부 심사원이 직접 입력
     '연장마감일',    // 보완요청일 + 30 WD, 주말·공휴일 제외 (수식 자동 생성)
     '담당심사원',
@@ -406,10 +406,12 @@ function 초기설정실행() {
   // (컬럼 전체를 미리 채우면 appendRow가 빈 행을 못 찾아 밀리므로 사전 채움 안 함)
   _마감예정일수식갱신_(ss);
 
-  // 상태 드롭다운
-  일정시트.getRange(2, iD상태, 999, 1)
+  // 기존 '완료' 값은 새 상태명으로 마이그레이션한 뒤 상태 드롭다운을 갱신
+  const 상태범위 = 일정시트.getRange(2, iD상태, 999, 1);
+  상태범위.createTextFinder('완료').matchEntireCell(true).replaceAllWith('완료(적합)');
+  상태범위
     .setDataValidation(SpreadsheetApp.newDataValidation()
-      .requireValueInList(['대기', '심사중', '보완', '완료'], true).build());
+      .requireValueInList(['대기', '심사중', '보완', '완료(적합)', '종료(부적합)'], true).build());
   const 날짜입력규칙 = SpreadsheetApp.newDataValidation()
     .requireDate()
     .setAllowInvalid(false)
@@ -432,10 +434,11 @@ function 초기설정실행() {
   // ── 조건부서식 (톤다운 색상, 행 전체) ──
   // 규칙 우선순위: 위에서부터 먼저 적용됨.
   //   ① 기한 초과(미완료)  → 연빨강   (상태색보다 우선)
-  //   ② 완료               → 연녹색
-  //   ③ 보완               → 머스터드(짙은 노랑)
-  //   ④ 심사중             → 연노랑
-  //   ⑤ 대기               → 무색 (규칙 없음)
+  //   ② 완료(적합)         → 연녹색
+  //   ③ 종료(부적합)       → 진한 회색
+  //   ④ 보완               → 머스터드(짙은 노랑)
+  //   ⑤ 심사중             → 연노랑
+  //   ⑥ 대기               → 무색 (규칙 없음)
   const 마감열문자 = columnLetter(iD마감);
   const 상태열문자 = columnLetter(iD상태);
   const 보완요청열문자 = columnLetter(iD보완요청);
@@ -445,31 +448,37 @@ function 초기설정실행() {
   // ① 기한 초과 & 미완료
   const 초과 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(
-      `=AND($${상태열문자}2<>"완료",IF($${보완요청열문자}2<>"",AND($${연장마감열문자}2<>"",$${연장마감열문자}2<TODAY()),AND($${마감열문자}2<>"",$${마감열문자}2<TODAY())))`
+      `=AND(NOT(OR($${상태열문자}2="완료",$${상태열문자}2="완료(적합)",$${상태열문자}2="종료(부적합)")),IF($${보완요청열문자}2<>"",AND($${연장마감열문자}2<>"",$${연장마감열문자}2<TODAY()),AND($${마감열문자}2<>"",$${마감열문자}2<TODAY())))`
     )
     .setBackground('#F4CCCC').setFontColor('#990000')
     .setRanges([전체범위]).build();
 
-  // ② 완료 → 연녹색
+  // ② 완료(적합) → 연녹색 (구버전 '완료' 값도 호환)
   const 완료 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=$${상태열문자}2="완료"`)
+    .whenFormulaSatisfied(`=OR($${상태열문자}2="완료(적합)",$${상태열문자}2="완료")`)
     .setBackground('#D9EAD3').setFontColor('#38761D')
     .setRanges([전체범위]).build();
 
-  // ③ 보완 → 머스터드(짙은 노랑)
+  // ③ 종료(부적합) → 진한 회색
+  const 종료 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=$${상태열문자}2="종료(부적합)"`)
+    .setBackground('#666666').setFontColor('#FFFFFF')
+    .setRanges([전체범위]).build();
+
+  // ④ 보완 → 머스터드(짙은 노랑)
   const 보완 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=$${상태열문자}2="보완"`)
     .setBackground('#F9CB9C').setFontColor('#783F04')
     .setRanges([전체범위]).build();
 
-  // ④ 심사중 → 연노랑
+  // ⑤ 심사중 → 연노랑
   const 심사중 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=$${상태열문자}2="심사중"`)
     .setBackground('#FCE8B2').setFontColor('#7F6000')
     .setRanges([전체범위]).build();
 
   // 대기(무색)는 규칙 없음
-  일정시트.setConditionalFormatRules([초과, 완료, 보완, 심사중]);
+  일정시트.setConditionalFormatRules([초과, 완료, 종료, 보완, 심사중]);
 
   _일정관리서식적용_(일정시트, true);
 
