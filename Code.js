@@ -1336,7 +1336,12 @@ function _마감예정일수식갱신_(ss) {
       const 보완셀 = `${보완요청열문자}${행}`;
       return [`=IF(${보완셀}="","",WORKDAY(${보완셀},30,'${공휴일시트명}'!$A$2:$A))`];
     });
-    시트.getRange(2, 연장마감열, 행수, 1).setFormulas(연장수식).setNumberFormat('yy-mm-dd');
+    // 구버전에서 남아 있을 수 있는 수기 날짜 입력 검사를 먼저 제거해야
+    // 자동 수식 입력 시 "날짜를 직접 선택" 유효성 검사 예외가 발생하지 않는다.
+    시트.getRange(2, 연장마감열, 행수, 1)
+      .clearDataValidations()
+      .setFormulas(연장수식)
+      .setNumberFormat('yy-mm-dd');
   }
   return 행수;
 }
