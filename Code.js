@@ -114,6 +114,8 @@ const SHEET = {
 const 일정관리_헤더색 = '#0f5b5f';
 const 보고서_표헤더색 = '#f1f3f3';
 const 보고서_표헤더글자색 = '#202124';
+const 공휴일시트명 = '공휴일';
+const 대한민국공휴일캘린더URL = 'https://calendar.google.com/calendar/ical/ko.south_korea%23holiday%40group.v.calendar.google.com/public/basic.ics';
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
 // id: 고유키 / 항목: 질문 / 참조: 접수대장·AI기능상세에서 끌어올 값의 출처
@@ -207,7 +209,7 @@ const 시트헤더정의 = {
     '접수번호',
     '신청일',        // 기산일 (신청서 원본)
     '심사접수일',    // TTA 인수일
-    '마감예정일',    // 신청일 + 15일 (수식 자동 생성)
+    '마감예정일',    // 신청일 + 15 WD, 주말·공휴일 제외 (수식 자동 생성)
     '상태',          // 대기 / 심사중 / 보완 / 완료
     '담당심사원',
     // ── 신청기업 ──────────────────────────────────
@@ -371,6 +373,7 @@ function 초기설정실행() {
 
   // 마감예정일 수식은 _일정관리행추가()에서 행별로 설정
   // (컬럼 전체를 미리 채우면 appendRow가 빈 행을 못 찾아 밀리므로 사전 채움 안 함)
+  _마감예정일수식갱신_(ss);
 
   // 상태 드롭다운
   일정시트.getRange(2, iD상태, 999, 1)
@@ -866,6 +869,9 @@ function _엑셀파싱처리(blob, 파일명) {
     }
   }
 
+  // 신규행뿐 아니라 구버전 수식이 남은 기존 행도 WD 15일 + 공휴일 기준으로 갱신
+  _마감예정일수식갱신_(ss);
+
   // 파싱 결과 알림
   let msg = `엑셀 파싱 완료\n\n신규 등록: ${등록건수}건`;
   if (이미존재건수) {
@@ -1044,7 +1050,7 @@ function _제품모델탭파싱등록(데이터, 제품명별접수번호) {
  * 일정관리 시트에 신규 행 추가 (하이브리드 싱크)
  *  · 접수대장이 원본인 컬럼 → 접수대장 VLOOKUP 수식으로 자동 참조
  *  · 일정관리가 원본인 컬럼(상태·담당심사원) → 직접 입력값 (편집 가능)
- *  · 마감예정일 → 신청일로부터 15 WD(주말 제외) 수식
+ *  · 마감예정일 → 신청일로부터 15 WD(주말·공휴일 제외) 수식
  *
  * VLOOKUP은 접수번호(A열)를 키로 하므로, 접수대장 행이 정렬·이동돼도
  * 항상 올바른 값을 따라갑니다. 접수대장에서 회사·제품정보를 고치면
@@ -1052,6 +1058,8 @@ function _제품모델탭파싱등록(데이터, 제품명별접수번호) {
  */
 function _일정관리행추가(ss, 접수번호, 직접값) {
   const 일정시트 = ss.getSheetByName(SHEET.일정관리);
+  const 신청연도 = _날짜연도_(직접값.신청일) || new Date().getFullYear();
+  _공휴일연도확보_(ss, [신청연도, 신청연도 + 1]);
   // ⚠️ 실제 시트의 라이브 헤더를 읽음 (정적 정의가 아니라).
   // 심사원이 컬럼을 수동 추가·삽입해도 값이 밀리지 않고 이름 기준으로 배치됨.
   const 일정H = 일정시트.getRange(1, 1, 1, 일정시트.getLastColumn())
@@ -1093,11 +1101,11 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
     if (h === '상태') return '대기';
     if (Object.prototype.hasOwnProperty.call(직접값, h)) return 직접값[h];
 
-    // 2) 마감예정일 = 신청일로부터 15 WD (토·일 제외)
+    // 2) 마감예정일 = 신청일로부터 15 WD (토·일·공휴일 제외)
     if (h === '마감예정일') {
       const iD신청 = 일정H.indexOf('신청일') + 1;
       const 신청셀 = `${columnLetter(iD신청)}${새행번호}`;
-      return `=IF(${신청셀}="","",WORKDAY(${신청셀},15))`;
+      return `=IF(${신청셀}="","",WORKDAY(${신청셀},15,'${공휴일시트명}'!$A$2:$A))`;
     }
 
     // 3) 기타제출서류여부 = 접수대장의 파일명 있으면 Y
@@ -1120,6 +1128,113 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
   } catch (e) {
     Logger.log('일정관리 표 갱신 실패: ' + e.message);
   }
+}
+
+/** 날짜 값(Date 또는 문자열)에서 연도를 추출 */
+function _날짜연도_(값) {
+  if (값 instanceof Date && !isNaN(값.getTime())) return 값.getFullYear();
+  const m = String(값 || '').match(/(20\d{2})/);
+  return m ? Number(m[1]) : null;
+}
+
+/** 대한민국 공휴일을 자동 보관하는 보조 시트 확보 */
+function _공휴일시트확보_(ss) {
+  let 시트 = ss.getSheetByName(공휴일시트명);
+  if (!시트) {
+    시트 = ss.insertSheet(공휴일시트명);
+    시트.getRange(1, 1, 1, 2).setValues([['날짜', '공휴일명']])
+      .setBackground('#5f6368').setFontColor('#ffffff').setFontWeight('bold');
+    시트.setFrozenRows(1);
+    시트.setColumnWidth(1, 100);
+    시트.setColumnWidth(2, 180);
+  }
+  return 시트;
+}
+
+/**
+ * 공개 대한민국 공휴일 캘린더에서 필요한 연도의 법정·대체·임시 공휴일을 자동 동기화한다.
+ * 기념일(어버이날·식목일 등)은 WORKDAY 제외일이 아니므로 포함하지 않는다.
+ */
+function _공휴일연도확보_(ss, 연도목록) {
+  const 시트 = _공휴일시트확보_(ss);
+  const 필요연도 = Array.from(new Set(연도목록.map(Number).filter(y => y >= 2000 && y <= 2100)));
+  if (!필요연도.length) return 시트;
+
+  const 기존값 = 시트.getLastRow() > 1
+    ? 시트.getRange(2, 1, 시트.getLastRow() - 1, 2).getValues()
+    : [];
+  const 기존연도 = new Set(기존값.map(r => _날짜연도_(r[0])).filter(Boolean));
+  const 누락연도 = 필요연도.filter(y => !기존연도.has(y));
+  if (!누락연도.length) return 시트;
+
+  try {
+    const ics = UrlFetchApp.fetch(대한민국공휴일캘린더URL, { muteHttpExceptions: false })
+      .getContentText('UTF-8').replace(/\r?\n[ \t]/g, '');
+    const 공휴일명패턴 = /(새해|신정|설날|삼일절|3·1절|어린이날|부처님오신날|석가탄신일|현충일|광복절|추석|개천절|한글날|성탄절|크리스마스|선거일|임시공휴일|대체공휴일|쉬는 날)/;
+    const 추가값 = [];
+
+    ics.split('BEGIN:VEVENT').slice(1).forEach(block => {
+      const 날짜매치 = block.match(/DTSTART;VALUE=DATE:(\d{4})(\d{2})(\d{2})/);
+      const 이름매치 = block.match(/(?:^|\n)SUMMARY(?:;[^:]*)?:(.*)/);
+      if (!날짜매치 || !이름매치) return;
+      const 연도 = Number(날짜매치[1]);
+      const 이름 = 이름매치[1].trim().replace(/\\,/g, ',');
+      if (누락연도.indexOf(연도) < 0 || !공휴일명패턴.test(이름)) return;
+      추가값.push([new Date(연도, Number(날짜매치[2]) - 1, Number(날짜매치[3])), 이름]);
+    });
+
+    const 날짜맵 = {};
+    기존값.concat(추가값).forEach(r => {
+      const d = r[0] instanceof Date ? r[0] : new Date(r[0]);
+      if (isNaN(d.getTime())) return;
+      const key = Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd');
+      날짜맵[key] = [d, r[1]];
+    });
+    const 전체값 = Object.keys(날짜맵).sort().map(k => 날짜맵[k]);
+    if (시트.getLastRow() > 1) 시트.getRange(2, 1, 시트.getLastRow() - 1, 2).clearContent();
+    if (전체값.length) {
+      시트.getRange(2, 1, 전체값.length, 2).setValues(전체값);
+      시트.getRange(2, 1, 전체값.length, 1).setNumberFormat('yyyy-mm-dd');
+    }
+  } catch (e) {
+    Logger.log('공휴일 자동 동기화 실패(기존 공휴일 목록으로 계산): ' + e.message);
+  }
+  return 시트;
+}
+
+/** 일정관리의 모든 마감예정일을 WD 15일 + 대한민국 공휴일 수식으로 갱신 */
+function _마감예정일수식갱신_(ss) {
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  if (!시트 || 시트.getLastRow() < 2) {
+    _공휴일연도확보_(ss, [new Date().getFullYear(), new Date().getFullYear() + 1]);
+    return 0;
+  }
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 신청열 = 헤더.indexOf('신청일') + 1;
+  const 마감열 = 헤더.indexOf('마감예정일') + 1;
+  if (신청열 < 1 || 마감열 < 1) return 0;
+
+  const 행수 = 시트.getLastRow() - 1;
+  const 신청값 = 시트.getRange(2, 신청열, 행수, 1).getValues().flat();
+  const 연도목록 = 신청값.map(_날짜연도_).filter(Boolean);
+  const 현재연도 = new Date().getFullYear();
+  연도목록.push(현재연도, 현재연도 + 1);
+  _공휴일연도확보_(ss, 연도목록.concat(연도목록.map(y => y + 1)));
+
+  const 신청열문자 = columnLetter(신청열);
+  const 수식 = 신청값.map((_, i) => {
+    const 행 = i + 2;
+    const 신청셀 = `${신청열문자}${행}`;
+    return [`=IF(${신청셀}="","",WORKDAY(${신청셀},15,'${공휴일시트명}'!$A$2:$A))`];
+  });
+  시트.getRange(2, 마감열, 행수, 1).setFormulas(수식).setNumberFormat('yyyy-mm-dd');
+  return 행수;
+}
+
+/** 관리자 수동 실행용: 공휴일과 기존 마감예정일 수식을 즉시 갱신 */
+function 마감예정일갱신() {
+  const 갱신건수 = _마감예정일수식갱신_(SpreadsheetApp.getActiveSpreadsheet());
+  SpreadsheetApp.getUi().alert(`마감예정일 갱신 완료: ${갱신건수}건\n(신청일 기준 15 WD, 주말·공휴일 제외)`);
 }
 
 /** 접수대장 헤더에서 컬럼의 1-based 번호 반환 (VLOOKUP index용) */
@@ -1509,7 +1624,7 @@ function _Sheets에등록(건, 파일명) {
   // 하이브리드 싱크:
   //   · 신청정보(회사·연락처·제품 등) = 접수대장 VLOOKUP 수식 참조 (접수대장이 원본)
   //   · 상태·담당심사원 = 일정관리에서 직접 편집 (일정관리가 원본)
-  //   · 마감예정일 = 신청일 + 15 수식
+  //   · 마감예정일 = 신청일 + 15 WD (주말·공휴일 제외) 수식
   _일정관리행추가(ss, 접수번호, {
     신청일: 건.신청일 || '',
     심사접수일: Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd'),
@@ -1927,6 +2042,7 @@ function onOpen() {
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
       .addSeparator()
       .addItem('⚙️ 초기 설정 (최초 1회)', '초기설정실행')
+      .addItem('📅 공휴일·마감예정일 갱신', '마감예정일갱신')
       .addItem('💬 Chat 알림 테스트', '챗알림테스트');
   }
 
