@@ -1904,6 +1904,11 @@ function _구현방식별세부행(f) {
   return 행;
 }
 
+/** 보고서·증적 연결용 기능 ID (원본 기능번호는 변경하지 않음) */
+function _보고서기능ID(index) {
+  return `F${String(index + 1).padStart(2, '0')}`;
+}
+
 
 // ─────────────────────────────────────────────
 // 6. 사용자 메뉴 등록
@@ -2128,9 +2133,13 @@ function _증적명세서Docs생성(ss, 건) {
   _명세섹션(body, '4. 핵심 인공지능 기능 명세');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
-      body.appendParagraph(`<기능 ${idx + 1}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
+      const 원본기능번호 = _v(f['기능번호'] || idx + 1);
+      const 기능ID = _보고서기능ID(idx);
+      body.appendParagraph(`<기능 ${원본기능번호}: ${기능ID}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
       const 표 = [
         ['구분', '내용'],
+        ['기능 번호', 원본기능번호],
+        ['기능 ID', 기능ID],
         ['기능명', _v(f['기능명'])],
         ['인공지능 역할', _v(f['인공지능역할'])],
         ['입력', _v(f['입력'] || f['입력데이터설명'])],
@@ -2162,11 +2171,13 @@ function _증적명세서Docs생성(ss, 건) {
   _명세섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
-      const n = idx + 1;
-      body.appendParagraph(`<기능 ${n}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
+      const 원본기능번호 = _v(f['기능번호'] || idx + 1);
+      const 기능ID = _보고서기능ID(idx);
+      body.appendParagraph(`<기능 ${원본기능번호}: ${기능ID}>`).setHeading(DocumentApp.ParagraphHeading.HEADING3);
       const 기능세부표 = [['ID', '구분', '내용', '비고']];
       _구현방식별세부행(f).forEach((row, rowIdx) => {
-        기능세부표.push([`기능 ${n}-${rowIdx + 1}`, row[0], row[1], row[2]]);
+        const 세부ID = `${기능ID}-${String(rowIdx + 1).padStart(2, '0')}`;
+        기능세부표.push([세부ID, row[0], row[1], row[2]]);
       });
       const 기능표 = body.appendTable(기능세부표);
       _명세표헤더(기능표);
