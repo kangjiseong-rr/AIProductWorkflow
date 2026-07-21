@@ -214,7 +214,7 @@ const 시트헤더정의 = {
     '마감예정일',    // 신청일 + 15 WD, 주말·공휴일 제외 (수식 자동 생성)
     '상태',          // 대기 / 심사중 / 보완 / 완료
     '보완요청일',    // 내부 심사원이 직접 입력
-    '연장마감일',    // 보완 등에 따른 최종 마감일을 직접 입력
+    '연장마감일',    // 보완요청일 + 30 WD, 주말·공휴일 제외 (수식 자동 생성)
     '담당심사원',
     '특이사항',      // 모든 사용자가 작성하는 내부 자유 메모·의견
     // ── 신청기업 ──────────────────────────────────
@@ -412,13 +412,19 @@ function 초기설정실행() {
     .setAllowInvalid(false)
     .setHelpText('날짜를 직접 입력하거나 캘린더에서 선택하세요.')
     .build();
-  [iD보완요청, iD연장마감].filter(i => i > 0).forEach(i => {
-    // 상태 열 오른쪽에 삽입될 때 복제된 상태 드롭다운을 제거하고 날짜 열로 재설정
-    일정시트.getRange(2, i, 999, 1)
+  if (iD보완요청 > 0) {
+    // 상태 열 오른쪽에 삽입될 때 복제된 상태 드롭다운을 제거하고 날짜 입력 열로 재설정
+    일정시트.getRange(2, iD보완요청, 999, 1)
       .clearDataValidations()
       .setDataValidation(날짜입력규칙)
       .setNumberFormat('yy-mm-dd');
-  });
+  }
+  if (iD연장마감 > 0) {
+    // 자동 계산 열이므로 수기 입력용 유효성 검사를 두지 않음
+    일정시트.getRange(2, iD연장마감, 999, 1)
+      .clearDataValidations()
+      .setNumberFormat('yy-mm-dd');
+  }
 
   // ── 조건부서식 (톤다운 색상, 행 전체) ──
   // 규칙 우선순위: 위에서부터 먼저 적용됨.
@@ -1165,6 +1171,13 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
       return `=IF(${신청셀}="","",WORKDAY(${신청셀},15,'${공휴일시트명}'!$A$2:$A))`;
     }
 
+    // 2-1) 연장마감일 = 보완요청일로부터 30 WD (토·일·공휴일 제외)
+    if (h === '연장마감일') {
+      const iD보완 = 일정H.indexOf('보완요청일') + 1;
+      const 보완셀 = `${columnLetter(iD보완)}${새행번호}`;
+      return `=IF(${보완셀}="","",WORKDAY(${보완셀},30,'${공휴일시트명}'!$A$2:$A))`;
+    }
+
     // 3) 기타제출서류여부 = 접수대장의 파일명 있으면 Y
     if (h === '기타제출서류여부') {
       return `=IF(VLOOKUP($${접수열문자}${새행번호},${대장범위},${_대장열번호('기타제출서류파일명', 대장H)},0)="","","Y")`;
@@ -1259,7 +1272,7 @@ function _공휴일연도확보_(ss, 연도목록) {
   return 시트;
 }
 
-/** 일정관리의 모든 마감예정일을 WD 15일 + 대한민국 공휴일 수식으로 갱신 */
+/** 일정관리의 기본 마감(15 WD)과 보완 연장마감(30 WD) 수식을 모두 갱신 */
 function _마감예정일수식갱신_(ss) {
   const 시트 = ss.getSheetByName(SHEET.일정관리);
   if (!시트 || 시트.getLastRow() < 2) {
@@ -1269,6 +1282,8 @@ function _마감예정일수식갱신_(ss) {
   const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
   const 신청열 = 헤더.indexOf('신청일') + 1;
   const 마감열 = 헤더.indexOf('마감예정일') + 1;
+  const 보완요청열 = 헤더.indexOf('보완요청일') + 1;
+  const 연장마감열 = 헤더.indexOf('연장마감일') + 1;
   if (신청열 < 1 || 마감열 < 1) return 0;
 
   const 행수 = 시트.getLastRow() - 1;
@@ -1285,13 +1300,22 @@ function _마감예정일수식갱신_(ss) {
     return [`=IF(${신청셀}="","",WORKDAY(${신청셀},15,'${공휴일시트명}'!$A$2:$A))`];
   });
   시트.getRange(2, 마감열, 행수, 1).setFormulas(수식).setNumberFormat('yy-mm-dd');
+  if (보완요청열 > 0 && 연장마감열 > 0) {
+    const 보완요청열문자 = columnLetter(보완요청열);
+    const 연장수식 = 신청값.map((_, i) => {
+      const 행 = i + 2;
+      const 보완셀 = `${보완요청열문자}${행}`;
+      return [`=IF(${보완셀}="","",WORKDAY(${보완셀},30,'${공휴일시트명}'!$A$2:$A))`];
+    });
+    시트.getRange(2, 연장마감열, 행수, 1).setFormulas(연장수식).setNumberFormat('yy-mm-dd');
+  }
   return 행수;
 }
 
 /** 관리자 수동 실행용: 공휴일과 기존 마감예정일 수식을 즉시 갱신 */
 function 마감예정일갱신() {
   const 갱신건수 = _마감예정일수식갱신_(SpreadsheetApp.getActiveSpreadsheet());
-  SpreadsheetApp.getUi().alert(`마감예정일 갱신 완료: ${갱신건수}건\n(신청일 기준 15 WD, 주말·공휴일 제외)`);
+  SpreadsheetApp.getUi().alert(`마감일 갱신 완료: ${갱신건수}건\n기본: 신청일 + 15 WD\n보완: 보완요청일 + 30 WD\n(주말·공휴일 제외)`);
 }
 
 /** 접수대장 헤더에서 컬럼의 1-based 번호 반환 (VLOOKUP index용) */
