@@ -1303,7 +1303,12 @@ function _마감예정일수식갱신_(ss) {
 
   const 행수 = 시트.getLastRow() - 1;
   const 신청값 = 시트.getRange(2, 신청열, 행수, 1).getValues().flat();
-  const 연도목록 = 신청값.map(_날짜연도_).filter(Boolean);
+  const 보완요청값 = 보완요청열 > 0
+    ? 시트.getRange(2, 보완요청열, 행수, 1).getValues().flat()
+    : [];
+  // 기본 마감뿐 아니라 연장마감 계산에 필요한 연도의 공휴일도 확보한다.
+  // 보완요청일이 신청일의 다음 해 이후인 경우 신청일만 보면 해당 공휴일이 누락될 수 있다.
+  const 연도목록 = 신청값.concat(보완요청값).map(_날짜연도_).filter(Boolean);
   const 현재연도 = new Date().getFullYear();
   연도목록.push(현재연도, 현재연도 + 1);
   _공휴일연도확보_(ss, 연도목록.concat(연도목록.map(y => y + 1)));

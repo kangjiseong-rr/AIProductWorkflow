@@ -4,11 +4,11 @@
   "description": "AI 제품/서비스 기술심사 관리 시스템 Google Apps Script 프로젝트",
   "main": "Code.js",
   "scripts": {
-    "push:dev": "clasp push -c .clasp-dev.json",
-    "push:prod": "clasp push -c .clasp-prod.json",
-    "pull:dev": "clasp pull -c .clasp-dev.json",
-    "pull:prod": "clasp pull -c .clasp-prod.json",
-    "watch:dev": "clasp push -w -c .clasp-dev.json"
+    "push:dev": "clasp -P .clasp-dev.json push",
+    "push:prod": "clasp -P .clasp-prod.json push",
+    "pull:dev": "clasp -P .clasp-dev.json pull",
+    "pull:prod": "clasp -P .clasp-prod.json pull",
+    "watch:dev": "clasp -P .clasp-dev.json push -w"
   },
   "keywords": [
     "google-apps-script",
