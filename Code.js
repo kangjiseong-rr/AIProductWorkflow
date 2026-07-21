@@ -211,6 +211,8 @@ const 시트헤더정의 = {
     '심사접수일',    // TTA 인수일
     '마감예정일',    // 신청일 + 15 WD, 주말·공휴일 제외 (수식 자동 생성)
     '상태',          // 대기 / 심사중 / 보완 / 완료
+    '보완요청일',    // 내부 심사원이 직접 입력
+    '연장마감일',    // 보완 등에 따른 최종 마감일을 직접 입력
     '담당심사원',
     // ── 신청기업 ──────────────────────────────────
     '기업명', '담당자명', '연락처', '이메일', '소재지',
@@ -244,8 +246,9 @@ function _시트이름마이그레이션(ss) {
 }
 
 /**
- * 기존 시트에 새 표준 컬럼이 없으면 맨 뒤에 추가 (데이터·순서 보존)
- * — 행 쓰기가 헤더 이름 기반이라 컬럼이 뒤에 붙어도 안전합니다.
+ * 기존 시트에 새 표준 컬럼이 없으면 표준 헤더 순서의 위치에 삽입합니다.
+ * Google Sheets의 열 삽입은 기존 셀·수식 참조를 함께 이동하므로 데이터가 보존됩니다.
+ * 행 쓰기는 헤더 이름 기반이라 열 위치가 바뀌어도 안전합니다.
  * 이름이 바뀐 컬럼(역할→인공지능역할 등)은 기존 값도 새 컬럼으로 복사합니다.
  */
 const 컬럼값이관맵 = {
@@ -288,12 +291,31 @@ function 헤더마이그레이션() {
     let 기존 = 시트.getRange(1, 1, 1, Math.max(1, 시트.getLastColumn()))
       .getValues()[0].map(v => String(v).trim());
     const 누락 = 시트헤더정의[이름].filter(h => !기존.includes(h));
-    if (누락.length) {
-      const 시작열 = 기존.filter(v => v !== '').length + 1;
-      시트.getRange(1, 시작열, 1, 누락.length).setValues([누락]);
-      시트.getRange(1, 시작열, 1, 누락.length)
+    누락.forEach(새헤더 => {
+      const 표준 = 시트헤더정의[이름];
+      const 표준위치 = 표준.indexOf(새헤더);
+      기존 = 시트.getRange(1, 1, 1, 시트.getLastColumn())
+        .getValues()[0].map(v => String(v).trim());
+
+      // 표준상 가장 가까운 앞 컬럼 뒤에 삽입. 앞 컬럼이 없으면 가장 가까운 뒤 컬럼 앞에 삽입.
+      const 앞헤더 = 표준.slice(0, 표준위치).reverse().find(h => 기존.includes(h));
+      const 뒤헤더 = 표준.slice(표준위치 + 1).find(h => 기존.includes(h));
+      let 삽입열;
+      if (앞헤더) {
+        삽입열 = 기존.indexOf(앞헤더) + 2; // 1-based: 앞 컬럼 바로 다음
+        시트.insertColumnAfter(삽입열 - 1);
+      } else if (뒤헤더) {
+        삽입열 = 기존.indexOf(뒤헤더) + 1;
+        시트.insertColumnBefore(삽입열);
+      } else {
+        삽입열 = 시트.getLastColumn() + 1;
+        시트.insertColumnAfter(시트.getLastColumn());
+      }
+      시트.getRange(1, 삽입열).setValue(새헤더)
         .setBackground(이름 === SHEET.일정관리 ? 일정관리_헤더색 : '#1a73e8')
         .setFontColor('#ffffff').setFontWeight('bold');
+    });
+    if (누락.length) {
       추가내역.push(`${이름}: ${누락.join(', ')}`);
       기존 = 시트.getRange(1, 1, 1, 시트.getLastColumn())
         .getValues()[0].map(v => String(v).trim());
@@ -366,9 +388,12 @@ function 초기설정실행() {
 
   // ── 일정관리 시트 후처리 ─────────────────────────────
   const 일정시트 = ss.getSheetByName(SHEET.일정관리);
-  const 일정H = 시트헤더정의[SHEET.일정관리];
+  const 일정H = 일정시트.getRange(1, 1, 1, 일정시트.getLastColumn())
+    .getValues()[0].map(v => String(v).trim());
   const iD마감 = 일정H.indexOf('마감예정일') + 1;
   const iD상태 = 일정H.indexOf('상태') + 1;
+  const iD보완요청 = 일정H.indexOf('보완요청일') + 1;
+  const iD연장마감 = 일정H.indexOf('연장마감일') + 1;
   const 끝열문자 = columnLetter(일정H.length);
 
   // 마감예정일 수식은 _일정관리행추가()에서 행별로 설정
@@ -379,6 +404,9 @@ function 초기설정실행() {
   일정시트.getRange(2, iD상태, 999, 1)
     .setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInList(['대기', '심사중', '보완', '완료'], true).build());
+  [iD보완요청, iD연장마감].filter(i => i > 0).forEach(i => {
+    일정시트.getRange(2, i, 999, 1).setNumberFormat('yyyy-mm-dd');
+  });
 
   // ── 조건부서식 (톤다운 색상, 행 전체) ──
   // 규칙 우선순위: 위에서부터 먼저 적용됨.
@@ -389,12 +417,13 @@ function 초기설정실행() {
   //   ⑤ 대기               → 무색 (규칙 없음)
   const 마감열문자 = columnLetter(iD마감);
   const 상태열문자 = columnLetter(iD상태);
+  const 연장마감열문자 = columnLetter(iD연장마감);
   const 전체범위 = 일정시트.getRange(`A2:${끝열문자}1000`);
 
   // ① 기한 초과 & 미완료
   const 초과 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(
-      `=AND($${마감열문자}2<>"",$${마감열문자}2<TODAY(),$${상태열문자}2<>"완료")`
+      `=AND(IF($${연장마감열문자}2<>"",$${연장마감열문자}2,$${마감열문자}2)<>"",IF($${연장마감열문자}2<>"",$${연장마감열문자}2,$${마감열문자}2)<TODAY(),$${상태열문자}2<>"완료")`
     )
     .setBackground('#F4CCCC').setFontColor('#990000')
     .setRanges([전체범위]).build();
@@ -483,7 +512,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
   const 너비맵 = {
     '순번': 45, '접수번호': 115,
     '신청일': 90, '심사접수일': 95, '마감예정일': 95,
-    '상태': 75, '담당심사원': 95,
+    '상태': 75, '보완요청일': 95, '연장마감일': 95, '담당심사원': 95,
     '기업명': 155, '담당자명': 85, '연락처': 115, '이메일': 180, '소재지': 200,
     '제품명': 190, '제품수': 65, '개요': 260,
     '제공형태': 110, '제품분류': 100,
@@ -500,7 +529,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
     const 표시컬럼 = new Set([
       '순번', '접수번호',
       '신청일', '심사접수일', '마감예정일',
-      '상태', '담당심사원',
+      '상태', '보완요청일', '연장마감일', '담당심사원',
       '기업명', '담당자명', '연락처', '소재지',
       '제품명', '제품수', '제공형태', '제품분류',
       '인공지능기능수',
@@ -554,7 +583,7 @@ function _일정관리구글표적용_(시트, 헤더) {
 
 function _일정관리표컬럼타입_(헤더명) {
   if (['순번', '제품수', '인공지능기능수'].indexOf(헤더명) >= 0) return 'DOUBLE';
-  if (['신청일', '심사접수일', '마감예정일'].indexOf(헤더명) >= 0) return 'DATE';
+  if (['신청일', '심사접수일', '마감예정일', '보완요청일', '연장마감일'].indexOf(헤더명) >= 0) return 'DATE';
   return 'TEXT';
 }
 
@@ -2041,7 +2070,7 @@ function onOpen() {
     menu.addSeparator()
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
       .addSeparator()
-      .addItem('⚙️ 초기 설정 (최초 1회)', '초기설정실행')
+      .addItem('⚙️ 초기 설정·컬럼 갱신', '초기설정실행')
       .addItem('📅 공휴일·마감예정일 갱신', '마감예정일갱신')
       .addItem('💬 Chat 알림 테스트', '챗알림테스트');
   }
