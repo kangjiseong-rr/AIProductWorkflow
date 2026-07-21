@@ -420,13 +420,14 @@ function 초기설정실행() {
   //   ⑤ 대기               → 무색 (규칙 없음)
   const 마감열문자 = columnLetter(iD마감);
   const 상태열문자 = columnLetter(iD상태);
+  const 보완요청열문자 = columnLetter(iD보완요청);
   const 연장마감열문자 = columnLetter(iD연장마감);
   const 전체범위 = 일정시트.getRange(`A2:${끝열문자}1000`);
 
   // ① 기한 초과 & 미완료
   const 초과 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(
-      `=AND(IF($${연장마감열문자}2<>"",$${연장마감열문자}2,$${마감열문자}2)<>"",IF($${연장마감열문자}2<>"",$${연장마감열문자}2,$${마감열문자}2)<TODAY(),$${상태열문자}2<>"완료")`
+      `=AND($${상태열문자}2<>"완료",IF($${보완요청열문자}2<>"",AND($${연장마감열문자}2<>"",$${연장마감열문자}2<TODAY()),AND($${마감열문자}2<>"",$${마감열문자}2<TODAY())))`
     )
     .setBackground('#F4CCCC').setFontColor('#990000')
     .setRanges([전체범위]).build();
