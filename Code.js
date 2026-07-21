@@ -779,7 +779,12 @@ function 심사원Chat사용자ID일괄갱신() {
     if (!이름 && !이메일) { 건너뜀++; return; }
     if (!이메일) { 실패.push(`${이름 || (i + 2) + '행'}: 이메일 없음`); return; }
     try {
-      const 사용자 = AdminDirectory.Users.get(이메일);
+      // 같은 Workspace 조직의 일반 사용자도 조회할 수 있는 공개 프로필만 요청한다.
+      // 조직의 연락처 공유가 켜져 있어야 하며 관리자 전용 Directory 권한은 필요하지 않다.
+      const 사용자 = AdminDirectory.Users.get(이메일, {
+        viewType: 'domain_public',
+        projection: 'basic',
+      });
       if (!사용자 || !사용자.id) throw new Error('사용자 ID 없음');
       기존ID[i][0] = String(사용자.id);
       성공++;
