@@ -415,7 +415,7 @@ function 초기설정실행() {
     일정시트.getRange(2, i, 999, 1)
       .clearDataValidations()
       .setDataValidation(날짜입력규칙)
-      .setNumberFormat('yyyy-mm-dd');
+      .setNumberFormat('yy-mm-dd');
   });
 
   // ── 조건부서식 (톤다운 색상, 행 전체) ──
@@ -503,6 +503,12 @@ function _일정관리서식적용_(시트, 요약뷰) {
   _일정관리레거시컬럼삭제_(시트);
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
+
+  // 일정관리 날짜는 실제 날짜값을 유지하고 화면에는 두 자리 연도로 간결하게 표시
+  ['신청일', '심사접수일', '마감예정일', '보완요청일', '연장마감일'].forEach(날짜헤더 => {
+    const 열 = 헤더.indexOf(날짜헤더) + 1;
+    if (열 > 0) 시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd');
+  });
 
   시트.setHiddenGridlines(false);
   시트.setFrozenRows(1);
@@ -1234,7 +1240,7 @@ function _공휴일연도확보_(ss, 연도목록) {
     if (시트.getLastRow() > 1) 시트.getRange(2, 1, 시트.getLastRow() - 1, 2).clearContent();
     if (전체값.length) {
       시트.getRange(2, 1, 전체값.length, 2).setValues(전체값);
-      시트.getRange(2, 1, 전체값.length, 1).setNumberFormat('yyyy-mm-dd');
+      시트.getRange(2, 1, 전체값.length, 1).setNumberFormat('yy-mm-dd');
     }
   } catch (e) {
     Logger.log('공휴일 자동 동기화 실패(기존 공휴일 목록으로 계산): ' + e.message);
@@ -1267,7 +1273,7 @@ function _마감예정일수식갱신_(ss) {
     const 신청셀 = `${신청열문자}${행}`;
     return [`=IF(${신청셀}="","",WORKDAY(${신청셀},15,'${공휴일시트명}'!$A$2:$A))`];
   });
-  시트.getRange(2, 마감열, 행수, 1).setFormulas(수식).setNumberFormat('yyyy-mm-dd');
+  시트.getRange(2, 마감열, 행수, 1).setFormulas(수식).setNumberFormat('yy-mm-dd');
   return 행수;
 }
 
