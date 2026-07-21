@@ -111,7 +111,9 @@ const SHEET = {
   로그: '파싱로그',
 };
 
-const 일정관리_헤더색 = '#0f5b5f';
+const 일정관리_헤더색 = '#1f3a5f';
+const 일정관리_특이사항헤더색 = '#dbe7f3';
+const 일정관리_특이사항헤더글자색 = '#1f3a5f';
 const 보고서_표헤더색 = '#f1f3f3';
 const 보고서_표헤더글자색 = '#202124';
 const 공휴일시트명 = '공휴일';
@@ -524,6 +526,15 @@ function _일정관리서식적용_(시트, 요약뷰) {
     _일정관리구글표적용_(시트, 헤더);
   } catch (e) {
     Logger.log('일정관리 Google Sheets 표 적용 실패: ' + e.message);
+  }
+
+  // 공용 자유 입력 컬럼은 다른 헤더와 구분되는 연한 톤으로 표시
+  const 특이사항열 = 헤더.indexOf('특이사항') + 1;
+  if (특이사항열 > 0) {
+    시트.getRange(1, 특이사항열)
+      .setBackground(일정관리_특이사항헤더색)
+      .setFontColor(일정관리_특이사항헤더글자색)
+      .setFontWeight('bold');
   }
 
   const 너비맵 = {
