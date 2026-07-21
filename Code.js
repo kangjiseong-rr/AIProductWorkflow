@@ -405,7 +405,10 @@ function 초기설정실행() {
     .setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInList(['대기', '심사중', '보완', '완료'], true).build());
   [iD보완요청, iD연장마감].filter(i => i > 0).forEach(i => {
-    일정시트.getRange(2, i, 999, 1).setNumberFormat('yyyy-mm-dd');
+    // 상태 열 오른쪽에 삽입될 때 복제된 상태 드롭다운을 제거하고 날짜 열로 재설정
+    일정시트.getRange(2, i, 999, 1)
+      .clearDataValidations()
+      .setNumberFormat('yyyy-mm-dd');
   });
 
   // ── 조건부서식 (톤다운 색상, 행 전체) ──
