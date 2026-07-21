@@ -437,7 +437,7 @@ function 초기설정실행() {
   if (대장판정열 > 0) {
     const 대장판정범위 = 대장시트.getRange(2, 대장판정열, 999, 1);
     const 대장판정규칙 = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['적합', '조건부 적합', '부적합'], true)
+      .requireValueInList(['적합', '보완요청', '부적합(미충족)'], true)
       .build();
     대장판정범위.setDataValidation(대장판정규칙);
   }
@@ -2158,9 +2158,9 @@ function _증적명세서Docs생성(ss, 건) {
   body.appendPageBreak();
   _명세섹션(body, '5. 종합 심사 의견');
   _명세표(body, [
-    ['종합 판정', _v(건['종합판정'])],
+    ['종합 판정', `${_v(건['종합판정'])}\n※ 선택값: 적합 / 보완요청 / 부적합(미충족)`],
     ['심사 완료일', _v(건['심사완료일'])],
-    ['특이사항', _v(건['심사의견'])],
+    ['특이사항', `${_v(건['심사의견'])}\n※ 해당하는 경우 기재`],
   ]);
 
   _명세섹션(body, '5.1. 심사 항목별 검토 결과');
