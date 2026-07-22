@@ -50,10 +50,9 @@
 | :--- | :--- | :--- |
 | `DRIVE_FOLDER_ID` | `1Ah_yqZ...` | 심사보고서 및 증빙이 저장될 드라이브 폴더 ID |
 | `CHAT_COMMON_WEBHOOK` | `https://chat.googleapis.com/...` | 관리자가 확정한 선택 행이 전송될 공용 Google Chat Webhook URL |
-| `ASSIGNEES` | `홍길동, 김심사, 이검토, 박분석` | `심사원관리` 시트 최초 생성 시 사용할 기본 심사원명 목록 |
 | `ADMIN_EMAILS` | `admin@example.com, manager@example.com` | 쉼표 `,`로 구분된 관리자 메뉴 권한 이메일 목록 |
 
-심사원별 이메일·활성여부·배정순서·Chat 사용자 ID는 Script Properties가 아니라 `심사원관리` 시트에서 관리합니다.
+심사원명·이메일·활성여부·배정순서·Chat 사용자 ID는 Script Properties가 아니라 `심사원관리` 시트에서만 관리합니다. `ASSIGNEES` 속성은 사용하지 않습니다.
 `Chat사용자ID`는 직접 찾을 필요 없이 관리자 메뉴의 **👥 심사원 Chat ID 일괄 갱신**으로 이메일 기준 자동 조회합니다. 최초 실행 시 Admin SDK Directory 읽기 권한 승인이 필요하며, 같은 조직 사용자의 공개 프로필 조회를 위해 조직 연락처 공유가 켜져 있어야 합니다.
 
 ---

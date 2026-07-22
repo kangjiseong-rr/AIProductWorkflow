@@ -24,9 +24,6 @@
 // ─────────────────────────────────────────────
 function loadConfig() {
   const baseConfig = {
-    // 담당자 목록 (라운드로빈 자동 배분)
-    담당자목록: ['홍길동', '김심사', '이검토', '박분석'],
-
     // 기본 심사 기간 (일)
     기본심사기간: 14,
 
@@ -60,10 +57,6 @@ function loadConfig() {
     }
     if (properties.CHAT_COMMON_WEBHOOK) {
       baseConfig.챗_공통Webhook = properties.CHAT_COMMON_WEBHOOK;
-    }
-    if (properties.ASSIGNEES) {
-      // 쉼표로 구분된 담당자 목록 파싱
-      baseConfig.담당자목록 = properties.ASSIGNEES.split(',').map(function(s) { return s.trim(); });
     }
     if (properties.ADMIN_EMAILS) {
       // 쉼표로 구분된 관리자 이메일 목록 파싱
@@ -211,7 +204,7 @@ const 시트헤더정의 = {
     '일시', '파일명', '접수번호', '결과', '메시지',
   ],
   [SHEET.심사원관리]: [
-    '심사원명', '이메일', '활성여부', '배정순서', 'Chat사용자ID',
+    '번호', '심사원명', '이메일', '활성여부', '배정순서', 'Chat사용자ID',
   ],
   [SHEET.배정알림로그]: [
     '발송일시', '접수번호', '담당심사원', '이메일', '발송결과', '실행자',
@@ -400,13 +393,23 @@ function 초기설정실행() {
   상태범위
     .setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInList(['대기', '심사중', '보완', '완료(적합)', '종료(부적합)'], true).build());
-  const 활성심사원명 = _활성심사원목록_(ss).map(심사원 => 심사원.심사원명);
-  if (iD담당심사원 > 0 && 활성심사원명.length) {
+  const 심사원관리시트 = ss.getSheetByName(SHEET.심사원관리);
+  const 심사원관리H = 심사원관리시트
+    ? 심사원관리시트.getRange(1, 1, 1, 심사원관리시트.getLastColumn()).getValues()[0].map(v => String(v).trim())
+    : [];
+  const 심사원명열 = 심사원관리H.indexOf('심사원명') + 1;
+  if (iD담당심사원 > 0 && 심사원관리시트 && 심사원명열 > 0) {
+    const 심사원명범위 = 심사원관리시트.getRange(
+      2,
+      심사원명열,
+      Math.max(1, 심사원관리시트.getMaxRows() - 1),
+      1
+    );
     일정시트.getRange(2, iD담당심사원, 999, 1)
       .setDataValidation(SpreadsheetApp.newDataValidation()
-        .requireValueInList(활성심사원명, true)
+        .requireValueInRange(심사원명범위, true)
         .setAllowInvalid(false)
-        .setHelpText('심사원관리 시트에서 활성화된 심사원을 선택하세요.')
+        .setHelpText('심사원관리 시트에 등록된 심사원을 선택하세요. 배정·발송 시 활성여부가 Y인지 확인합니다.')
         .build());
   }
   const 날짜입력규칙 = SpreadsheetApp.newDataValidation()
@@ -711,20 +714,22 @@ function _심사원관리설정_(ss) {
   const 시트 = ss.getSheetByName(SHEET.심사원관리);
   if (!시트) return;
 
-  if (시트.getLastRow() < 2) {
-    const 기본심사원 = (CONFIG.담당자목록 || []).map((이름, i) => [이름, '', 'Y', i + 1, '']);
-    if (기본심사원.length) 시트.getRange(2, 1, 기본심사원.length, 5).setValues(기본심사원);
-  }
-
   시트.setFrozenRows(1);
-  시트.setColumnWidth(1, 110);
-  시트.setColumnWidth(2, 210);
-  시트.setColumnWidth(3, 85);
+  시트.setColumnWidth(1, 55);
+  시트.setColumnWidth(2, 110);
+  시트.setColumnWidth(3, 210);
   시트.setColumnWidth(4, 85);
-  시트.setColumnWidth(5, 170);
-  시트.getRange(2, 3, Math.max(1, 시트.getMaxRows() - 1), 1)
+  시트.setColumnWidth(5, 85);
+  시트.setColumnWidth(6, 170);
+  시트.getRange(2, 4, Math.max(1, 시트.getMaxRows() - 1), 1)
     .setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInList(['Y', 'N'], true).setAllowInvalid(false).build());
+
+  // 번호는 배정순서와 별개인 표시용 일련번호이며 현재 행 순서대로 자동 갱신한다.
+  if (시트.getLastRow() >= 2) {
+    const 행수 = 시트.getLastRow() - 1;
+    시트.getRange(2, 1, 행수, 1).setValues(Array.from({ length: 행수 }, (_, i) => [i + 1]));
+  }
 
   const 로그시트 = ss.getSheetByName(SHEET.배정알림로그);
   if (로그시트) {
@@ -736,19 +741,22 @@ function _심사원관리설정_(ss) {
 /** 심사원관리 시트의 활성 심사원을 배정순서대로 반환 */
 function _활성심사원목록_(ss) {
   const 시트 = ss.getSheetByName(SHEET.심사원관리);
-  if (!시트 || 시트.getLastRow() < 2) {
-    return (CONFIG.담당자목록 || []).filter(Boolean).map((이름, i) => ({
-      심사원명: String(이름).trim(), 이메일: '', 활성여부: 'Y', 배정순서: i + 1, Chat사용자ID: '',
-    }));
-  }
+  if (!시트 || 시트.getLastRow() < 2) return [];
 
-  const 값 = 시트.getRange(2, 1, 시트.getLastRow() - 1, 5).getValues();
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 이름열 = 헤더.indexOf('심사원명');
+  const 이메일열 = 헤더.indexOf('이메일');
+  const 활성열 = 헤더.indexOf('활성여부');
+  const 순서열 = 헤더.indexOf('배정순서');
+  const ChatID열 = 헤더.indexOf('Chat사용자ID');
+  if ([이름열, 이메일열, 활성열, 순서열, ChatID열].some(i => i < 0)) return [];
+  const 값 = 시트.getRange(2, 1, 시트.getLastRow() - 1, 헤더.length).getValues();
   return 값.map((행, i) => ({
-    심사원명: String(행[0] || '').trim(),
-    이메일: String(행[1] || '').trim(),
-    활성여부: String(행[2] || '').trim().toUpperCase(),
-    배정순서: Number(행[3]) || (i + 1),
-    Chat사용자ID: String(행[4] || '').trim(),
+    심사원명: String(행[이름열] || '').trim(),
+    이메일: String(행[이메일열] || '').trim(),
+    활성여부: String(행[활성열] || '').trim().toUpperCase(),
+    배정순서: Number(행[순서열]) || (i + 1),
+    Chat사용자ID: String(행[ChatID열] || '').trim(),
   }))
     .filter(심사원 => 심사원.심사원명 && 심사원.활성여부 === 'Y')
     .sort((a, b) => a.배정순서 - b.배정순서 || a.심사원명.localeCompare(b.심사원명));
