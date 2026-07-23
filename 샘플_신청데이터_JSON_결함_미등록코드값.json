@@ -1,0 +1,75 @@
+{
+  "_결함케이스설명": "serviceType=CLOUD, aiTechCategory=PRODUCT 등 코드값매핑표에 없는 값 → 등록은 계속 진행하고 원본값 그대로 저장 + Logger.log 경고가 남아야 하는 케이스",
+
+  "keyId": "DEFECT002CODE",
+  "status": "SUBMITTED",
+
+  "applicant": {
+    "companyNm": "(주)미등록코드테스트",
+    "businessNo": "1112223334",
+    "ceoNm": "최코드",
+    "companyAddr": "부산광역시 해운대구 테스트로 2",
+    "managerNm": "정담당",
+    "managerTel": "051-000-0000",
+    "managerMobile": "010-9999-8888",
+    "managerEmail": "code@defect.example"
+  },
+
+  "serviceInfo": {
+    "productNm": "미등록코드 테스트 제품",
+    "productSummary": "코드값매핑표에 없는 serviceType/aiTechCategory 검증용 샘플",
+    "aiTechPurpose": "테스트",
+    "serviceType": "CLOUD",
+    "serviceTypeEtc": "",
+    "aiTechAppliedArea": "테스트",
+    "aiTechCategory": "PRODUCT",
+    "aiTechCategoryEtc": "",
+    "serviceDomain": "테스트",
+    "remark": ""
+  },
+
+  "productModels": [
+    { "modelNm": "CODE-MODEL-1", "detailItemNo": "0000000002", "productIdNo": "00000002" }
+  ],
+
+  "keyFunctions": [
+    {
+      "funcNm": "코드값 테스트 기능",
+      "funcRole": "테스트용 역할 설명",
+      "inputData": "테스트 입력",
+      "outputData": "테스트 출력",
+      "reference": "없음"
+    }
+  ],
+
+  "aiImplementations": [
+    {
+      "aiFunctionNumber": 1,
+      "aiFunctionName": "코드값 테스트 기능",
+      "aiImplementationMethod": "C",
+      "aiComputeResource": "테스트",
+      "aiRuntimeDetail": "",
+      "outApiModel": "테스트 API 제공사 v1",
+      "inputDataDescription": "테스트",
+      "outputDataDescription": "테스트"
+    }
+  ],
+
+  "attachments": {
+    "submitMethodWrite": "SIGN",
+    "structureFiles": [],
+    "specFiles": [],
+    "etcFiles": []
+  },
+
+  "certification": {
+    "certFiles": []
+  },
+
+  "agreements": {
+    "documentConsent": true,
+    "privacyConsent": true,
+    "thirdPartyConsent": false,
+    "finalSubmissionConsent": true
+  }
+}

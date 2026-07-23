@@ -1,0 +1,95 @@
+{
+  "_결함케이스설명": "keyFunctions(3건) vs aiImplementations(1건) 개수 불일치 + businessNo 자릿수 이상(8자리) → 배열 인덱스 조인 경고 로그와 사업자번호 정규화 폴백(원본 유지)이 함께 검증되는 케이스",
+
+  "keyId": "DEFECT003ARR",
+  "status": "SUBMITTED",
+
+  "applicant": {
+    "companyNm": "(주)배열불일치테스트",
+    "businessNo": "12345678",
+    "ceoNm": "한배열",
+    "companyAddr": "인천광역시 연수구 테스트로 3",
+    "managerNm": "오담당",
+    "managerTel": "032-000-0000",
+    "managerMobile": "",
+    "managerEmail": "array@defect.example"
+  },
+
+  "serviceInfo": {
+    "productNm": "배열불일치 테스트 제품",
+    "productSummary": "keyFunctions/aiImplementations 개수 불일치 검증용 샘플",
+    "aiTechPurpose": "테스트",
+    "serviceType": "ONPREMISE",
+    "serviceTypeEtc": "",
+    "aiTechAppliedArea": "테스트",
+    "aiTechCategory": "SERVICE",
+    "aiTechCategoryEtc": "",
+    "serviceDomain": "테스트",
+    "remark": ""
+  },
+
+  "productModels": [
+    { "modelNm": "ARR-MODEL-1", "detailItemNo": "0000000003", "productIdNo": "00000003" },
+    { "modelNm": "ARR-MODEL-2", "detailItemNo": "0000000004", "productIdNo": "00000004" },
+    { "modelNm": "ARR-MODEL-3", "detailItemNo": "0000000005", "productIdNo": "00000005" }
+  ],
+
+  "keyFunctions": [
+    {
+      "funcNm": "기능 A",
+      "funcRole": "역할 A",
+      "inputData": "입력 A",
+      "outputData": "출력 A",
+      "reference": "매뉴얼 p.1"
+    },
+    {
+      "funcNm": "기능 B",
+      "funcRole": "역할 B",
+      "inputData": "입력 B",
+      "outputData": "출력 B",
+      "reference": "매뉴얼 p.2"
+    },
+    {
+      "funcNm": "기능 C",
+      "funcRole": "역할 C",
+      "inputData": "입력 C",
+      "outputData": "출력 C",
+      "reference": "매뉴얼 p.3"
+    }
+  ],
+
+  "aiImplementations": [
+    {
+      "aiFunctionNumber": 1,
+      "aiFunctionName": "기능 A",
+      "aiImplementationMethod": "B",
+      "aiComputeResource": "테스트",
+      "aiRuntimeDetail": "",
+      "baseModelName": "Test-Base-v1",
+      "tuningMethod": "테스트 튜닝",
+      "tuningDataSet": "테스트 데이터셋",
+      "inputDataDescription": "테스트",
+      "outputDataDescription": "테스트"
+    }
+  ],
+
+  "attachments": {
+    "submitMethodWrite": "FILE",
+    "structureFiles": [],
+    "specFiles": [],
+    "etcFiles": []
+  },
+
+  "certification": {
+    "certFiles": [
+      { "fileId": "FILE_099", "LogicalFileNm": "인증서.pdf", "PhysicalFileNm": "20240101_defect_1.pdf", "FileSize": 10240, "GrpId": "7" }
+    ]
+  },
+
+  "agreements": {
+    "documentConsent": true,
+    "privacyConsent": true,
+    "thirdPartyConsent": true,
+    "finalSubmissionConsent": true
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "_결함케이스설명": "agreements 객체가 통째로 없음 → _JSON구조검증()에서 등록 자체가 중단되어야 하는 케이스",
+
+  "keyId": "DEFECT001NOAGR",
+  "status": "SUBMITTED",
+
+  "applicant": {
+    "companyNm": "(주)결함테스트",
+    "businessNo": "9876543210",
+    "ceoNm": "박결함",
+    "companyAddr": "서울특별시 종로구 테스트로 1",
+    "managerNm": "이담당",
+    "managerTel": "02-000-0000",
+    "managerMobile": "",
+    "managerEmail": "test@defect.example"
+  },
+
+  "serviceInfo": {
+    "productNm": "결함테스트 제품",
+    "productSummary": "agreements 누락 검증용 샘플",
+    "aiTechPurpose": "테스트",
+    "serviceType": "SAAS",
+    "aiTechAppliedArea": "테스트",
+    "aiTechCategory": "SOFTWARE",
+    "serviceDomain": "테스트",
+    "remark": ""
+  },
+
+  "productModels": [
+    { "modelNm": "DEFECT-MODEL-1", "detailItemNo": "0000000001", "productIdNo": "00000001" }
+  ],
+
+  "keyFunctions": [
+    {
+      "funcNm": "테스트 기능",
+      "funcRole": "테스트용 역할 설명",
+      "inputData": "테스트 입력",
+      "outputData": "테스트 출력",
+      "reference": "없음"
+    }
+  ],
+
+  "aiImplementations": [
+    {
+      "aiFunctionNumber": 1,
+      "aiFunctionName": "테스트 기능",
+      "aiImplementationMethod": "A",
+      "aiComputeResource": "테스트",
+      "aiRuntimeDetail": "",
+      "learningDataSpec": "테스트",
+      "developmentEnvironment": "테스트",
+      "inputDataDescription": "테스트",
+      "outputDataDescription": "테스트"
+    }
+  ],
+
+  "attachments": {
+    "submitMethodWrite": "WRITE",
+    "structureFiles": [],
+    "specFiles": [],
+    "etcFiles": []
+  },
+
+  "certification": {
+    "certFiles": []
+  }
+}

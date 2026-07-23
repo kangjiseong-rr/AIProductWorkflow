@@ -2253,6 +2253,7 @@ function onOpen() {
   if (관리자) {
     menu.addSeparator()
       .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
+      .addItem('📥 JSON 파일 등록 (파싱)', 'JSON파싱등록')
       .addSeparator()
       .addItem('👥 심사원 Chat ID 일괄 갱신', '심사원Chat사용자ID일괄갱신')
       .addItem('🔄 선택 행 라운드로빈 추천', '선택행라운드로빈추천')
