@@ -3,10 +3,10 @@
  *  JSON 신청서 어댑터 — KOSA JSON Data Schema v1.0 → 기존 시트 등록 파이프라인 연결
  * ============================================================
  *
- *  이 파일은 Code.js를 수정하지 않고 JSON 입력을 지원하기 위한 별도 모듈입니다.
- *  Apps Script는 프로젝트 내 모든 .js/.gs 파일이 하나의 전역 스코프를 공유하므로,
- *  아래 함수들은 Code.js의 SHEET/CONFIG 상수와 _Sheets에등록/제품모델등록/
- *  AI기능상세등록/_접수대장기능수갱신/_드라이브ID추출을 import 없이 그대로 재사용합니다.
+ *  이 파일은 검증·변환·시트 등록 등 "처리 로직"만 담당합니다. JSON 필드
+ *  경로·타입·시트컬럼·enum 매핑·formatter 같은 "정의"는 전부 JsonDefinition.js에
+ *  있습니다. Apps Script는 프로젝트 내 모든 .js/.gs 파일이 하나의 전역
+ *  스코프를 공유하므로, 두 파일과 Code.js는 import 없이 서로 참조합니다.
  *
  *  변환 규칙·정책 결정 사항의 근거는 JSON_ADAPTER_GUIDE.md를 참고하세요.
  * ============================================================
@@ -45,23 +45,39 @@ function JSON파싱등록() {
 }
 
 // ─────────────────────────────────────────────
-// 1. 오케스트레이터 — _엑셀파싱처리와 동일한 순서로 기존 등록 함수 호출
+// 1. 오케스트레이터
+//    구조 검증 → 전체 변환(건/제품모델/기능목록) → 쓰기 가능 여부 사전 검사(A안)
+//    → 여기까지 통과해야 실제 쓰기 시작. 즉 쓰기가 시작된 이후에는 실패하지 않는다.
 // ─────────────────────────────────────────────
 function JSON파싱실행_내부(json, 파일명) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
   _JSON구조검증(json);
 
-  const 접수번호 = _접수번호결정(json);
-  const 건 = _JSON을건객체로변환(json, 접수번호);
+  const 건 = _JSON을건객체로변환(json);
+  const 접수번호 = String(건.접수번호 || '').trim();
+  if (!접수번호) {
+    throw new Error('접수번호(keyId)가 없습니다. keyId가 있는 JSON만 등록할 수 있습니다.');
+  }
+
+  const 모델목록 = _JSON에서제품모델목록추출(json);
+  const 기능목록 = _JSON에서기능목록추출(json);
+
+  // ── 이슈 2, A안: 등록 시작 전 4개 시트 모두 쓰기 가능 여부 사전 검사 ──
+  _쓰기가능여부검사(ss, {
+    [SHEET.접수대장]: 1,
+    [SHEET.일정관리]: 1,
+    [SHEET.제품모델]: Math.max(1, 모델목록.length),
+    [SHEET.AI기능상세]: Math.max(1, 기능목록.length),
+  });
 
   const 결과 = _Sheets에등록(건, 파일명);
   if (!결과.신규) {
     return { 접수번호, 신규: false };
   }
 
-  const 모델목록 = _JSON에서제품모델목록추출(json);
   if (모델목록.length) 제품모델등록(접수번호, 모델목록);
 
-  const 기능목록 = _JSON에서기능목록추출(json);
   if (기능목록.length) {
     const 등록됨 = AI기능상세등록(접수번호, 기능목록);
     if (등록됨) _접수대장기능수갱신(접수번호, 기능목록);
@@ -71,20 +87,83 @@ function JSON파싱실행_내부(json, 파일명) {
 }
 
 // ─────────────────────────────────────────────
-// 2. 구조 검증
-//    ※ 핵심 객체(applicant/serviceInfo/agreements)나 배열 자체가 없는 경우는
-//      "건 객체를 만들 수 없는" 치명적 결함이므로 등록을 중단합니다.
-//      아래 3번의 "미등록 코드값" 정책(자동화 계속 진행)과는 다른 성격입니다.
+// 2. 등록 전 사전 검증 (이슈 2, A안 — rollback 방식은 채택하지 않음)
+//    새로 추가될 행(들)의 전체 컬럼 범위가 현재 실행 계정 기준으로 편집
+//    가능한지 4개 시트 모두 확인한다. 하나라도 막히면 아무 시트에도 쓰지 않고
+//    어느 시트의 어느 범위 때문인지 명시한 오류로 등록 자체를 시작하지 않는다.
+// ─────────────────────────────────────────────
+function _쓰기가능여부검사(ss, 시트별추가행수) {
+  const 실패목록 = [];
+
+  Object.keys(시트별추가행수).forEach(이름 => {
+    const 시트 = ss.getSheetByName(이름);
+    if (!시트) {
+      실패목록.push(`"${이름}" 시트를 찾을 수 없습니다.`);
+      return;
+    }
+
+    const lastCol = Math.max(1, 시트.getLastColumn());
+    const 시작행 = 시트.getLastRow() + 1;
+    const 끝행 = 시작행 + Math.max(1, 시트별추가행수[이름]) - 1;
+
+    // 시트 전체 보호 — 예외(비보호) 범위에 우리가 쓸 행 전체가 포함되면 통과
+    시트.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(보호 => {
+      if (보호.canEdit()) return;
+      const 예외범위목록 = 보호.getUnprotectedRanges() || [];
+      const 예외로완전히덮임 = 예외범위목록.some(r =>
+        r.getRow() <= 시작행 && r.getLastRow() >= 끝행 &&
+        r.getColumn() <= 1 && r.getLastColumn() >= lastCol
+      );
+      if (!예외로완전히덮임) {
+        실패목록.push(`"${이름}" 시트 전체가 보호되어 있어 새 행(${시작행}~${끝행}행)을 쓸 수 없습니다.`);
+      }
+    });
+
+    // 컬럼 단위 범위 보호 — 새로 쓸 행 구간과 겹치는 보호 범위만 확인
+    시트.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(보호 => {
+      if (보호.canEdit()) return;
+      const p = 보호.getRange();
+      const 행겹침 = p.getRow() <= 끝행 && p.getLastRow() >= 시작행;
+      const 열겹침 = p.getColumn() <= lastCol && p.getLastColumn() >= 1;
+      if (행겹침 && 열겹침) {
+        const 시작열 = Math.max(1, p.getColumn());
+        const 끝열 = Math.min(lastCol, p.getLastColumn());
+        const 컬럼명 = 시트.getRange(1, 시작열, 1, 끝열 - 시작열 + 1).getValues()[0]
+          .filter(String).join(', ') || `${시작열}~${끝열}열`;
+        실패목록.push(`"${이름}" 시트의 "${컬럼명}" 컬럼이 보호되어 있어 새 행(${시작행}~${끝행}행)을 쓸 수 없습니다.`);
+      }
+    });
+  });
+
+  if (실패목록.length) {
+    throw new Error(
+      '등록을 시작할 수 없습니다 — 아래 시트/범위에 쓰기 권한이 없습니다:\n\n' +
+      실패목록.join('\n') +
+      '\n\n관리자에게 문의해 해당 범위의 보호 설정(편집 권한)을 확인한 뒤 다시 시도하세요.'
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// 3. 구조 검증 — JsonDefinition.js의 JSON필수구조정의를 그대로 순회
+//    ※ 필수 객체/배열 누락은 "건 객체를 만들 수 없는" 치명적 결함이라 등록을
+//      중단시킨다. 코드값 미등록(4번)과는 다른 성격.
 // ─────────────────────────────────────────────
 function _JSON구조검증(json) {
   const 오류목록 = [];
-  if (!json || typeof json !== 'object') 오류목록.push('JSON 최상위가 객체가 아닙니다.');
-  if (!json.applicant) 오류목록.push('applicant 객체가 없습니다.');
-  if (!json.serviceInfo) 오류목록.push('serviceInfo 객체가 없습니다.');
-  if (!json.agreements) 오류목록.push('agreements 객체가 없습니다.');
-  if (!Array.isArray(json.productModels)) 오류목록.push('productModels 배열이 없습니다.');
-  if (!Array.isArray(json.keyFunctions)) 오류목록.push('keyFunctions 배열이 없습니다.');
-  if (!Array.isArray(json.aiImplementations)) 오류목록.push('aiImplementations 배열이 없습니다.');
+
+  if (!json || typeof json !== 'object') {
+    오류목록.push('JSON 최상위가 객체가 아닙니다.');
+  } else {
+    JSON필수구조정의.forEach(정의 => {
+      const 값 = json[정의.path];
+      if (정의.type === 'array' && !Array.isArray(값)) {
+        오류목록.push(`${정의.path} 배열이 없습니다.`);
+      } else if (정의.type === 'object' && (!값 || typeof 값 !== 'object' || Array.isArray(값))) {
+        오류목록.push(`${정의.path} 객체가 없습니다.`);
+      }
+    });
+  }
 
   if (오류목록.length) {
     throw new Error('JSON 구조 검증 실패:\n' + 오류목록.join('\n'));
@@ -92,28 +171,11 @@ function _JSON구조검증(json) {
 }
 
 // ─────────────────────────────────────────────
-// 3. 코드값 매핑표 + 미등록 코드값 정책
-//    정책: 매핑표에 없는 코드값을 만나도 자동화를 중단하지 않는다.
-//         원본 코드값을 그대로 저장하고 Logger.log에 경고를 남긴다.
-//         운영자는 로그를 보고 아래 매핑표에 신규 코드를 추가한다.
+// 4. 코드값 매핑 (미등록 코드값 정책)
+//    매핑표에 없는 코드값을 만나도 자동화는 중단하지 않는다. 원본값을 그대로
+//    저장하고 Logger.log에 경고를 남긴다 — 운영자는 로그를 보고
+//    JsonDefinition.js의 코드값매핑표에 신규 코드를 추가한다.
 // ─────────────────────────────────────────────
-const 코드값매핑표 = {
-  제공형태: {
-    SAAS: 'SaaS(클라우드 서비스형)',
-    ONPREMISE: '사내 구축형(온프레미스)',
-    // TODO: CLOUD, ETC 등 KOSA 코드값 확정되는 대로 추가
-  },
-  제품분류: {
-    SOFTWARE: '소프트웨어',
-    SERVICE: '서비스',
-    // TODO: PRODUCT, ETC 등 KOSA 코드값 확정되는 대로 추가
-  },
-  명세서작성방식: {
-    WRITE: '직접제출',
-    FILE: '파일제출',
-  },
-};
-
 function _코드값라벨매핑(카테고리, 원본코드, 로그용필드명) {
   const 원본 = String(원본코드 || '').trim();
   if (!원본) return '';
@@ -124,118 +186,109 @@ function _코드값라벨매핑(카테고리, 원본코드, 로그용필드명) 
 
   Logger.log(
     `[경고] 미등록 코드값 — 필드: ${로그용필드명 || 카테고리}, 값: "${원본}" ` +
-    `(매핑표에 없어 원본값을 그대로 저장합니다. 코드값매핑표.${카테고리}에 추가 필요)`
+    `(매핑표에 없어 원본값을 그대로 저장합니다. JsonDefinition.js의 코드값매핑표.${카테고리}에 추가 필요)`
   );
   return 원본;
 }
 
 // ─────────────────────────────────────────────
-// 4. 개별 변환 함수 (자동 변환 허용 항목)
+// 5. 필드 정의 해석 엔진 — JsonDefinition.js의 정의 배열을 실제 값으로 변환
 // ─────────────────────────────────────────────
-function _Boolean동의매핑(값) {
-  return 값 === true ? '동의' : '미동의';
+
+/** dot 경로로 값을 조회한다. path가 배열이면 앞에서부터 값이 있는 첫 후보를 채택(fallback). */
+function _경로값(obj, path) {
+  if (!path) return undefined;
+  const 후보목록 = Array.isArray(path) ? path : [path];
+  for (const 경로 of 후보목록) {
+    const 값 = String(경로).split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
+    if (값 !== undefined && 값 !== null && String(값).trim() !== '') return 값;
+  }
+  return undefined;
 }
 
-function _연락처병합(applicant) {
-  applicant = applicant || {};
-  return String(applicant.managerMobile || applicant.managerTel || '').trim();
+/** dot 경로의 원시값을 그대로 조회한다(배열/불리언 등 falsy-but-valid 값 판별용, fallback 없음). */
+function _원시경로값(obj, path) {
+  if (!path) return undefined;
+  return String(path).split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
 }
 
-function _사업자번호정규화(원본) {
-  const 숫자만 = String(원본 || '').replace(/[^0-9]/g, '');
-  if (숫자만.length !== 10) return String(원본 || '').trim();
-  return `${숫자만.slice(0, 3)}-${숫자만.slice(3, 5)}-${숫자만.slice(5)}`;
-}
+/**
+ * 정의 하나를 obj(컨텍스트)에 적용해 시트에 쓸 값을 계산한다.
+ * index는 반복행(제품모델/기능상세)에서 'index1' 타입에만 사용된다.
+ */
+function _필드값추출(obj, 정의, index) {
+  if (Object.prototype.hasOwnProperty.call(정의, 'fixedValue')) return 정의.fixedValue;
 
-// ── 관리자 결정 반영 ──────────────────────────
-function _접수번호결정(json) {
-  // 관리자 결정: keyId(Base36)를 접수번호로 그대로 채택. 엑셀 경로(AI2026...)와
-  // JSON 경로(Base36)가 서로 다른 형식이어도 각자 원형을 그대로 노출한다.
-  return String((json && json.keyId) || '').trim();
-}
+  let 값;
+  switch (정의.type) {
+    case 'arrayLength': {
+      const 배열 = _원시경로값(obj, 정의.path);
+      값 = Array.isArray(배열) ? 배열.length : (정의.fallback ?? 0);
+      break;
+    }
+    case 'arrayPresence': {
+      const 배열 = _원시경로값(obj, 정의.path);
+      값 = Array.isArray(배열) && 배열.length > 0 ? 정의.presentValue : 정의.absentValue;
+      break;
+    }
+    case 'joinField': {
+      const 배열 = _원시경로값(obj, 정의.path);
+      값 = Array.isArray(배열)
+        ? 배열.map(item => String((item && item[정의.field]) || '').trim()).filter(Boolean).join(정의.delimiter || '/')
+        : '';
+      break;
+    }
+    case 'boolean': {
+      값 = _원시경로값(obj, 정의.path) === true ? '동의' : '미동의';
+      break;
+    }
+    case 'enum': {
+      값 = _코드값라벨매핑(정의.enumCategory, _경로값(obj, 정의.path), 정의.sheetColumn);
+      break;
+    }
+    case 'date': {
+      const 원시값 = _경로값(obj, 정의.path);
+      값 = 원시값
+        ? String(원시값).trim()
+        : (정의.fallback === 'now' ? Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd') : '');
+      break;
+    }
+    case 'index1': {
+      const 원시값 = _원시경로값(obj, 정의.path);
+      값 = (원시값 !== undefined && 원시값 !== null && 원시값 !== '') ? 원시값 : (Number(index) + 1);
+      break;
+    }
+    default: {
+      값 = String(_경로값(obj, 정의.path) ?? '').trim();
+    }
+  }
 
-function _신청일결정(json) {
-  // 관리자 결정: JSON에 신청일 필드가 없으므로 TTA 파싱 시각으로 대체.
-  // TODO: KOSA가 향후 submittedAt(또는 동일 의미 필드)을 추가하면
-  //       아래 후보 목록에 필드명만 추가하면 된다.
-  const 후보 = (json && (json.submittedAt || json.applicationDate || json.appliedAt)) || '';
-  if (후보) return String(후보).trim();
-  return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
-}
-
-function _보유인증단순화(json) {
-  // 관리자 결정: AuthType 정책 확정 전까지 파일 존재 여부로만 단순화.
-  // TODO: KOSA의 AuthType(GS/CAT/해당없음 등) 필드 위치가 확정되면 이 함수만 교체.
-  const 파일목록 = (json && json.certification && json.certification.certFiles) || [];
-  return 파일목록.length > 0 ? '보유(상세 확인 필요)' : '해당없음';
-}
-
-// ─────────────────────────────────────────────
-// 5. JSON → "건" 객체 변환 (_파싱_세로형과 동일한 키 구조)
-// ─────────────────────────────────────────────
-function _JSON을건객체로변환(json, 접수번호) {
-  const applicant = json.applicant || {};
-  const serviceInfo = json.serviceInfo || {};
-  const agreements = json.agreements || {};
-  const attachments = json.attachments || {};
-
-  return {
-    // 기업 정보
-    기업명: String(applicant.companyNm || '').trim(),
-    사업자번호: _사업자번호정규화(applicant.businessNo),
-    대표자: String(applicant.ceoNm || '').trim(),
-    소재지: String(applicant.companyAddr || '').trim(),
-    담당자명: String(applicant.managerNm || '').trim(),
-    연락처: _연락처병합(applicant),
-    이메일: String(applicant.managerEmail || '').trim(),
-
-    // 제품·서비스 정보
-    접수번호,
-    제품명: String(serviceInfo.productNm || '').trim(),
-    제품수: Array.isArray(json.productModels) ? json.productModels.length : 1,
-    제공형태: _코드값라벨매핑('제공형태', serviceInfo.serviceType, 'serviceInfo.serviceType'),
-    제품분류: _코드값라벨매핑('제품분류', serviceInfo.aiTechCategory, 'serviceInfo.aiTechCategory'),
-    개요: String(serviceInfo.productSummary || '').trim(),
-    인공지능적용목적: String(serviceInfo.aiTechPurpose || '').trim(),
-    인공지능적용범위: String(serviceInfo.aiTechAppliedArea || '').trim(),
-
-    // 첨부파일 — 관리자 결정: JSON 경로에서는 처리 제외(빈 값 유지)
-    구조도파일명: '',
-    명세서파일명: '',
-    기타제출서류파일명: '',
-    인증서파일명: '',
-
-    명세서작성방식: _코드값라벨매핑('명세서작성방식', attachments.submitMethodWrite, 'attachments.submitMethodWrite'),
-    보유인증: _보유인증단순화(json),
-
-    // 동의서·특기사항
-    열람이용동의여부: _Boolean동의매핑(agreements.documentConsent),
-    개인정보수집이용동의여부: _Boolean동의매핑(agreements.privacyConsent),
-    개인정보3자제공동의여부: _Boolean동의매핑(agreements.thirdPartyConsent),
-    특기사항: String(serviceInfo.remark || '').trim(),
-
-    신청일: _신청일결정(json),
-
-    // 파서 내부 보조 (인공지능기능명(요약) 초기값 — 등록 후 _접수대장기능수갱신이 재계산)
-    AI기능명_원본: (Array.isArray(json.keyFunctions) ? json.keyFunctions : [])
-      .map(f => String((f && f.funcNm) || '').trim())
-      .filter(Boolean)
-      .join('/'),
-    비고: '',
-  };
+  if (정의.formatter && JSON포매터[정의.formatter]) {
+    값 = JSON포매터[정의.formatter](값, obj, 정의);
+  }
+  return 값;
 }
 
 // ─────────────────────────────────────────────
-// 6. 제품모델 / 기능상세 배열 추출
+// 6. JSON → "건" 객체 / 반복행 배열 변환 — 전부 정의표를 순회하는 범용 로직
 // ─────────────────────────────────────────────
+function _JSON을건객체로변환(json) {
+  const 건 = {};
+  JSON필드정의.forEach(정의 => {
+    건[정의.sheetColumn] = _필드값추출(json, 정의);
+  });
+  return 건;
+}
+
 function _JSON에서제품모델목록추출(json) {
   const 목록 = Array.isArray(json.productModels) ? json.productModels : [];
-  return 목록.map((m, i) => ({
-    연번: i + 1,
-    모델명: String((m && m.modelNm) || '').trim(),
-    세부품명번호: String((m && m.detailItemNo) || '').trim(),
-    물품식별번호: String((m && m.productIdNo) || '').trim(),
-  }));
+  return 목록.map((m, i) => {
+    const 행 = { 연번: i + 1 };
+    JSON제품모델필드정의.forEach(정의 => {
+      행[정의.sheetColumn] = _필드값추출(m || {}, 정의, i);
+    });
+    return 행;
+  });
 }
 
 /**
@@ -259,33 +312,12 @@ function _JSON에서기능목록추출(json) {
   const 결과 = [];
 
   for (let i = 0; i < 개수; i++) {
-    const f = keyFunctions[i] || {};
-    const impl = aiImplementations[i] || {};
-
-    결과.push({
-      기능번호: impl.aiFunctionNumber || (i + 1),
-      기능명: String(impl.aiFunctionName || f.funcNm || '').trim(),
-      인공지능역할: String(f.funcRole || '').trim(),
-      입력: String(f.inputData || '').trim(),
-      출력: String(f.outputData || '').trim(),
-      레퍼런스참조위치: String(f.reference || '').trim(),
-      구현방식: String(impl.aiImplementationMethod || '').trim(),
-      연산자원요약: String(impl.aiComputeResource || '').trim(),
-      실행환경요약: String(impl.aiRuntimeDetail || '').trim(),
-      학습데이터사양: String(impl.learningDataSpec || '').trim(),
-      개발환경라이브러리알고리즘: String(impl.developmentEnvironment || '').trim(),
-      BaseModel명칭: String(impl.baseModelName || '').trim(),
-      튜닝방법: String(impl.tuningMethod || '').trim(),
-      튜닝데이터셋: String(impl.tuningDataSet || '').trim(),
-      외부API정보: String(impl.outApiModel || '').trim(),
-      타겟HW_OS: String(impl.targetDeviceHardware || '').trim(),
-      추론런타임: String(impl.aiModelRuntimeEngine || '').trim(),
-      혼합구성설명: String(impl.mixCompositionExplain || '').trim(),
-      모델별역할및입출력흐름: String(impl.modelSpecificRoles || '').trim(),
-      입력데이터설명: String(impl.inputDataDescription || '').trim(),
-      출력데이터설명: String(impl.outputDataDescription || '').trim(),
-      기타참고자료파일명: '',
+    const context = { f: keyFunctions[i] || {}, impl: aiImplementations[i] || {} };
+    const 행 = {};
+    JSON기능상세필드정의.forEach(정의 => {
+      행[정의.sheetColumn] = _필드값추출(context, 정의, i);
     });
+    결과.push(행);
   }
 
   return 결과;
