@@ -1,3 +1,10 @@
 **/*
-!Code.js
+!Main.js
+!FieldDefinition.js
+!ExcelParser.js
+!JsonAdapter.js
+!SheetWriter.js
+!Schedule.js
+!ReviewerAssignment.js
+!ReportGenerator.js
 !appsscript.json

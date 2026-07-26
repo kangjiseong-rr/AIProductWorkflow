@@ -16,10 +16,19 @@
 
 | 파일 | 설명 |
 |---|---|
-| `Code.js` | 전체 로직 (시트 관리·엑셀 파싱·보고서 생성·알림·웹앱 백엔드 없는 단일 Apps Script) |
+| `Main.js` | 설정값(CONFIG/SHEET)·시트 표준 헤더 정의·초기 설정/컬럼 마이그레이션·메뉴 진입점(onOpen) |
+| `FieldDefinition.js` | 신청서 필드 스키마 — 엑셀 별칭과 JSON path를 sheetColumn 하나에 함께 정의(엑셀·JSON 공용 단일 정의) |
+| `ExcelParser.js` | 엑셀 파일 → 표준 객체 변환 (세로형/가로형 자동 감지, 컬럼매핑 메타 시트) |
+| `JsonAdapter.js` | JSON 파일(KOSA JSON Data Schema) → 표준 객체 변환 |
+| `SheetWriter.js` | 표준 객체 → 접수대장·제품모델·기능상세 시트 기록 (append-only) |
+| `Schedule.js` | 일정관리 동기화 + 공휴일·마감예정일 수식 |
+| `ReviewerAssignment.js` | 심사원 배정(라운드로빈) + Google Chat 알림 |
+| `ReportGenerator.js` | 기술심사보고서(Google Docs) 자동 생성 |
 | `appsscript.json` | Apps Script 프로젝트 매니페스트 (시간대, 런타임 등) |
-| `.clasp.json` | `clasp` 배포용 스크립트 ID 설정 |
+| `.clasp*.json` | `clasp` 배포용 스크립트 ID 설정 (dev/prod 환경 분리) |
 | `샘플_신청데이터_*.xlsx` | KOSA 신청 데이터 형식을 흉내 낸 샘플 엑셀 (파싱 테스트용) |
+
+> Apps Script는 프로젝트 내 모든 `.js` 파일이 하나의 전역 스코프를 공유하므로, 위 파일들은 import 없이 서로 참조합니다. 파일을 나눈 기준은 "책임"이지 "실행 순서"가 아닙니다.
 
 > 과거 존재했던 심사원용 웹 심사 폼(`심사폼.html`, 웹앱 배포, 심사링크)은 제거되었습니다. 현재는 **Google Sheets 메뉴 실행 + 엑셀 인수**만으로 동작합니다.
 
@@ -59,7 +68,7 @@
 ## 설치 및 배포
 
 1. Google Sheets 새 스프레드시트 생성
-2. 확장 프로그램 → Apps Script → `Code.js` 전체 붙여넣기, `appsscript.json` 매니페스트 반영
+2. 확장 프로그램 → Apps Script → `Main.js`부터 `ReportGenerator.js`까지 이 프로젝트의 `.js` 파일 전체 붙여넣기, `appsscript.json` 매니페스트 반영
 3. 저장 후 스프레드시트 새로고침 → 상단 **🔍 인공지능심사관리** 메뉴 확인
 4. 메뉴 → **⚙️ 초기 설정·컬럼 갱신** 실행 → 시트 자동 생성 + 누락 컬럼 마이그레이션 + 상태/판정 드롭다운 + 조건부서식 적용
 5. `심사원관리` 시트에 실제 심사원명·이메일·활성여부·배정순서를 입력하고, 관리자 메뉴의 **👥 심사원 Chat ID 일괄 갱신**을 실행
@@ -71,7 +80,7 @@
 
 ## CONFIG 설정
 
-코드 상단 `CONFIG` 객체에서 설정합니다.
+`Main.js` 상단 `CONFIG` 객체에서 설정합니다.
 
 | 키 | 설명 |
 |---|---|

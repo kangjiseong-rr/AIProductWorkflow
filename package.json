@@ -2,7 +2,7 @@
   "name": "aiproductworkflow",
   "version": "1.0.0",
   "description": "AI 제품/서비스 기술심사 관리 시스템 Google Apps Script 프로젝트",
-  "main": "Code.js",
+  "main": "Main.js",
   "scripts": {
     "push:dev": "clasp -P .clasp-dev.json push",
     "push:prod": "clasp -P .clasp-prod.json push",
