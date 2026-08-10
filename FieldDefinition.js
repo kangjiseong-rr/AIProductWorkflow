@@ -83,9 +83,10 @@ const 코드값매핑표 = {
 // ─────────────────────────────────────────────
 const 포매터 = {
   사업자번호정규화(값) {
-    const 숫자만 = String(값 || '').replace(/[^0-9]/g, '');
-    if (숫자만.length !== 10) return String(값 || '').trim();
-    return `${숫자만.slice(0, 3)}-${숫자만.slice(3, 5)}-${숫자만.slice(5)}`;
+    return String(값 || '').replace(/[^0-9]/g, '');
+  },
+  전화번호정규화(값) {
+    return String(값 || '').replace(/[^0-9]/g, '');
   },
 };
 
@@ -98,7 +99,7 @@ const 포매터 = {
 const 필드정의 = [
   {
     sheetColumn: '기업명', path: 'applicant.companyNm', required: true,
-    excelAliases: ['상호(사업자명)', '기업명'],
+    excelAliases: ['상호명', '상호(사업자명)', '기업명'],
   },
   {
     sheetColumn: '사업자번호', path: 'applicant.businessNo', required: true, formatter: '사업자번호정규화',
@@ -116,14 +117,21 @@ const 필드정의 = [
     sheetColumn: '담당자명', path: 'applicant.managerNm', required: true,
     excelAliases: ['업무담당자', '담당자명', '담당자'],
   },
-  // 관리자 결정: 휴대전화 우선, 없으면 일반전화 — path의 fallback 배열로 표현
   {
-    sheetColumn: '연락처', path: ['applicant.managerMobile', 'applicant.managerTel'], required: true,
-    excelAliases: ['담당자 전화번호', '연락처', '전화번호'],
+    sheetColumn: '담당자직급', path: ['applicant.managerPosition', 'applicant.managerRank'], required: false,
+    excelAliases: ['담당자직급', '담당자 직급', '직급'],
+  },
+  {
+    sheetColumn: '담당자전화', path: 'applicant.managerTel', required: false, formatter: '전화번호정규화',
+    excelAliases: ['담당자전화', '담당자 전화', '담당자 일반전화', '담당자 전화번호', '일반전화'],
+  },
+  {
+    sheetColumn: '담당자휴대전화', path: 'applicant.managerMobile', required: false, formatter: '전화번호정규화',
+    excelAliases: ['담당자휴대전화', '담당자 휴대전화', '담당자 휴대폰', '휴대전화', '휴대폰', '연락처'],
   },
   {
     sheetColumn: '이메일', path: 'applicant.managerEmail', required: true,
-    excelAliases: ['담당자 이메일주소', '이메일', 'email', 'e-mail'],
+    excelAliases: ['담당자이메일', '담당자 이메일주소', '이메일', 'email', 'e-mail'],
   },
   // 관리자 결정: keyId(Base36)를 접수번호로 그대로 채택
   {
@@ -141,12 +149,15 @@ const 필드정의 = [
   },
   {
     sheetColumn: '제품분류', path: 'serviceInfo.aiTechCategory', type: 'enum', enumCategory: '제품분류', required: true,
-    excelAliases: ['인공지능 제품·서비스 분류', 'AI 제품 분류', 'AI제품분류', '제품분류'],
+    excelAliases: ['제품 서비스 분류', '인공지능 제품·서비스 분류', 'AI 제품 분류', 'AI제품분류', '제품분류'],
   },
   {
     sheetColumn: '개요', path: 'serviceInfo.productSummary', required: true,
     excelAliases: ['개요'],
   },
+  { sheetColumn: '제공형태기타', fixedValue: '', required: false, excelAliases: ['제공형태 기타'] },
+  { sheetColumn: '제품분류기타', fixedValue: '', required: false, excelAliases: ['제품 서비스 분류 기타'] },
+  { sheetColumn: '서비스도메인', fixedValue: '', required: false, excelAliases: ['서비스도메인'] },
   {
     sheetColumn: '인공지능적용목적', path: 'serviceInfo.aiTechPurpose', required: true,
     excelAliases: ['인공지능 적용 목적', 'AI 적용 목적', '인공지능적용목적'],
@@ -175,20 +186,26 @@ const 필드정의 = [
     presentValue: '보유(상세 확인 필요)',
     absentValue: '해당없음',
     required: false,
-    excelAliases: ['보유 인증', '보유인증'],
+    excelAliases: ['인증유형', '보유 인증', '보유인증'],
   },
+  { sheetColumn: '기타인증명', fixedValue: '', required: false, excelAliases: ['기타인증명'] },
+  { sheetColumn: '인증비고', fixedValue: '', required: false, excelAliases: ['인증비고'] },
 
   {
     sheetColumn: '열람이용동의여부', path: 'agreements.documentConsent', type: 'boolean', required: true,
-    excelAliases: ['열람·이용동의', '열람이용동의여부'],
+    excelAliases: ['열람이용동의', '열람·이용동의', '열람이용동의여부'],
+  },
+  {
+    sheetColumn: '최종신청동의여부', fixedValue: '', required: true,
+    excelAliases: ['최종신청동의'],
   },
   {
     sheetColumn: '개인정보수집이용동의여부', path: 'agreements.privacyConsent', type: 'boolean', required: true,
-    excelAliases: ['개인정보 수집·이용', '개인정보수집이용동의여부'],
+    excelAliases: ['개인정보수집동의', '개인정보 수집·이용', '개인정보수집이용동의여부'],
   },
   {
     sheetColumn: '개인정보3자제공동의여부', path: 'agreements.thirdPartyConsent', type: 'boolean', required: true,
-    excelAliases: ['개인정보 제3자 제공', '개인정보3자제공동의여부'],
+    excelAliases: ['제3자제공동의', '개인정보 제3자 제공', '개인정보3자제공동의여부'],
   },
   {
     sheetColumn: '특기사항', path: 'serviceInfo.remark', required: false,
@@ -247,19 +264,19 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '인공지능역할', path: 'f.funcRole', required: true,
-    excelAliases: ['인공지능역할', '인공지능 역할', '역할', 'AI 역할'],
+    excelAliases: ['인공지능의 역할', '인공지능역할', '인공지능 역할', '역할', 'AI 역할'],
   },
   {
     sheetColumn: '입력', path: 'f.inputData', required: true,
-    excelAliases: ['입력'],
+    excelAliases: ['입력 데이터', '입력'],
   },
   {
     sheetColumn: '출력', path: 'f.outputData', required: true,
-    excelAliases: ['출력'],
+    excelAliases: ['출력 데이터', '출력'],
   },
   {
     sheetColumn: '레퍼런스참조위치', path: 'f.reference', required: true,
-    excelAliases: ['레퍼런스참조위치', '레퍼런스 참조위치', '설명서참조위치', '설명서 참조 위치'],
+    excelAliases: ['매뉴얼 참조 위치', '레퍼런스참조위치', '레퍼런스 참조위치', '설명서참조위치', '설명서 참조 위치'],
   },
   {
     sheetColumn: '구현방식', path: 'impl.aiImplementationMethod', required: true,
@@ -267,11 +284,11 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '연산자원요약', path: 'impl.aiComputeResource', required: true,
-    excelAliases: ['AI 연산 자원 요약', '연산자원요약', '연산자원', '연산 자원'],
+    excelAliases: ['연산자원', 'AI 연산 자원 요약', '연산자원요약', '연산 자원'],
   },
   {
     sheetColumn: '실행환경요약', path: 'impl.aiRuntimeDetail', required: false,
-    excelAliases: ['AI 실행 환경 요약', '실행환경요약', '실행환경', '실행 환경'],
+    excelAliases: ['실행환경세부', 'AI 실행 환경 요약', '실행환경요약', '실행환경', '실행 환경'],
   },
   {
     sheetColumn: '학습데이터사양', path: 'impl.learningDataSpec', required: false,
@@ -279,11 +296,11 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '개발환경라이브러리알고리즘', path: 'impl.developmentEnvironment', required: false,
-    excelAliases: ['개발환경·라이브러리·알고리즘', '개발환경라이브러리알고리즘'],
+    excelAliases: ['개발환경/알고리즘', '개발환경·라이브러리·알고리즘', '개발환경라이브러리알고리즘'],
   },
   {
     sheetColumn: 'BaseModel명칭', path: 'impl.baseModelName', required: false,
-    excelAliases: ['Base Model 명칭', 'BaseModel명칭', 'BaseModel', 'Base Model', '베이스'],
+    excelAliases: ['베이스모델명', 'Base Model 명칭', 'BaseModel명칭', 'BaseModel', 'Base Model', '베이스'],
   },
   {
     sheetColumn: '튜닝방법', path: 'impl.tuningMethod', required: false,
@@ -295,11 +312,11 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '외부API정보', path: 'impl.outApiModel', required: false,
-    excelAliases: ['외부 API 정보', '외부API정보', '외부 API', '외부API', '외부API모델'],
+    excelAliases: ['외부API모델', '외부 API 정보', '외부API정보', '외부 API', '외부API'],
   },
   {
     sheetColumn: '타겟HW_OS', path: 'impl.targetDeviceHardware', required: false,
-    excelAliases: ['타겟 하드웨어·OS', '타겟HW_OS', '타겟', 'HW', 'OS'],
+    excelAliases: ['타겟하드웨어', '타겟 하드웨어·OS', '타겟HW_OS', '타겟', 'HW', 'OS'],
   },
   {
     sheetColumn: '추론런타임', path: 'impl.aiModelRuntimeEngine', required: false,
@@ -311,7 +328,7 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '모델별역할및입출력흐름', path: 'impl.modelSpecificRoles', required: false,
-    excelAliases: ['모델별 역할 및 입출력 흐름', '모델별역할및입출력흐름', '세부구성요소별설명'],
+    excelAliases: ['모델별역할흐름', '모델별 역할 및 입출력 흐름', '모델별역할및입출력흐름', '세부구성요소별설명'],
   },
   {
     sheetColumn: '입력데이터설명', path: 'impl.inputDataDescription', required: true,
@@ -321,5 +338,6 @@ const 기능상세필드정의 = [
     sheetColumn: '출력데이터설명', path: 'impl.outputDataDescription', required: true,
     excelAliases: ['출력데이터설명'],
   },
-  { sheetColumn: '기타참고자료파일명', fixedValue: '', required: false, excelAliases: ['기타참고자료', '기타 참고자료'] },
+  { sheetColumn: '기타참고자료파일명', fixedValue: '', required: false, excelAliases: ['기타참고자료파일명', '기타참고자료', '기타 참고자료'] },
+  { sheetColumn: '흐름도파일명', fixedValue: '', required: false, excelAliases: ['흐름도파일명'] },
 ];

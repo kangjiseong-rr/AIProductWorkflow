@@ -188,26 +188,36 @@ function _엑셀파싱처리(blob, 파일명) {
     const 임시SS = SpreadsheetApp.openById(임시파일ID);
     const 시트들 = 임시SS.getSheets();
 
-    // 탭 분류: 기능상세 탭(이름에 '기능' 포함), 제품모델 탭(이름에 '모델' 포함), 나머지 기본정보 탭
+    // 확정 신청폼(2026-08-05) 기준 탭 분류.
+    // 핵심 기능과 구현 명세는 별도 탭이므로 신청번호+기능번호로 병합한 뒤 등록한다.
     let 기본탭 = null;
-    let 기능탭 = null;
+    let 핵심기능탭 = null;
+    let 구현명세탭 = null;
+    let 구형기능탭 = null;
     let 모델탭 = null;
     시트들.forEach(sh => {
       const 이름 = sh.getName();
-      if (/기능|function|feature/i.test(이름)) {
-        if (!기능탭) 기능탭 = sh;
-      } else if (/모델|model/i.test(이름)) {
+      if (/^기본정보$|basic/i.test(이름)) {
+        기본탭 = sh;
+      } else if (/인공지능처리.*연산.*기능.*명세|연산 체계/i.test(이름)) {
+        구현명세탭 = sh;
+      } else if (/핵심.*기능.*명세/i.test(이름)) {
+        핵심기능탭 = sh;
+      } else if (/제품.*서비스.*모델.*목록|모델|model/i.test(이름)) {
         if (!모델탭) 모델탭 = sh;
+      } else if (/기능|function|feature/i.test(이름) && !/이력/.test(이름)) {
+        if (!구형기능탭) 구형기능탭 = sh;
       } else if (/안내|guide|readme/i.test(이름)) {
         // 작성안내 탭은 무시
-      } else {
+      } else if (!/심사.*이력/.test(이름)) {
         if (!기본탭) 기본탭 = sh;
       }
     });
     if (!기본탭) 기본탭 = 시트들[0];  // 못 찾으면 첫 탭
 
     // 1) 기본정보 탭 파싱 → 접수대장 등록 (제품명·접수번호 → 접수번호 매핑 보관)
-    const 기본데이터 = 기본탭.getDataRange().getValues();
+    // 전화번호·사업자번호의 선행 0을 보존하기 위해 표시 문자열로 읽는다.
+    const 기본데이터 = 기본탭.getDataRange().getDisplayValues();
     const 제품명별접수번호 = {};
 
     const 세로형여부 = _세로형감지(기본데이터);
@@ -241,15 +251,19 @@ function _엑셀파싱처리(blob, 파일명) {
       } catch (e2) {}
     }
 
-    // 2) 기능상세 탭 파싱 → 인공지능기능상세 등록 (접수번호 우선, 없으면 제품명으로 연결)
-    if (기능탭) {
-      const 기능데이터 = 기능탭.getDataRange().getValues();
+    // 2) 핵심 기능 + 구현 명세 병합 파싱 (구형 통합 기능탭도 계속 지원)
+    if (핵심기능탭 || 구현명세탭) {
+      const 핵심데이터 = 핵심기능탭 ? 핵심기능탭.getDataRange().getDisplayValues() : [];
+      const 구현데이터 = 구현명세탭 ? 구현명세탭.getDataRange().getDisplayValues() : [];
+      const 기능데이터 = _기능탭데이터병합(핵심데이터, 구현데이터);
       _기능탭파싱등록(기능데이터, 제품명별접수번호);
+    } else if (구형기능탭) {
+      _기능탭파싱등록(구형기능탭.getDataRange().getDisplayValues(), 제품명별접수번호);
     }
 
     // 3) 제품모델 탭 파싱 → 인공지능제품모델 등록 (세부품명번호가 여러 건인 경우)
     if (모델탭) {
-      const 모델데이터 = 모델탭.getDataRange().getValues();
+      const 모델데이터 = 모델탭.getDataRange().getDisplayValues();
       _제품모델탭파싱등록(모델데이터, 제품명별접수번호);
     }
 
@@ -272,6 +286,49 @@ function _엑셀파싱처리(blob, 파일명) {
     msg += `\n\n※ 건너뛴 행은 KOSA 접수번호가 없어 등록되지 않았습니다. 파싱로그를 확인하세요.`;
   }
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+}
+
+/**
+ * 확정 엑셀의 두 기능 탭을 신청번호+기능번호 기준으로 합친 가상 가로형 데이터 생성.
+ * 어느 한쪽에만 존재하는 행도 유실하지 않는다.
+ */
+function _기능탭데이터병합(핵심데이터, 구현데이터) {
+  const 데이터목록 = [핵심데이터, 구현데이터].filter(d => d && d.length);
+  if (!데이터목록.length) return [];
+
+  const 통합헤더 = [];
+  데이터목록.forEach(데이터 => {
+    데이터[0].forEach(h => {
+      const 이름 = String(h || '').trim();
+      if (이름 && !통합헤더.includes(이름)) 통합헤더.push(이름);
+    });
+  });
+
+  const 행맵 = {};
+  const 키순서 = [];
+  데이터목록.forEach(데이터 => {
+    const 헤더 = 데이터[0].map(h => String(h || '').trim());
+    const 신청번호인덱스 = 헤더.findIndex(h => h === '신청번호' || h === '접수번호');
+    const 기능번호인덱스 = 헤더.findIndex(h => h === '기능번호');
+    for (let r = 1; r < 데이터.length; r++) {
+      const 행 = 데이터[r];
+      if (행.every(v => v === '' || v == null)) continue;
+      const 신청번호 = 신청번호인덱스 >= 0 ? String(행[신청번호인덱스] ?? '').trim() : '';
+      const 기능번호 = 기능번호인덱스 >= 0 ? String(행[기능번호인덱스] ?? '').trim() : '';
+      if (!신청번호 || !기능번호) continue;
+      const 키 = 신청번호 + '::' + 기능번호;
+      if (!행맵[키]) {
+        행맵[키] = {};
+        키순서.push(키);
+      }
+      헤더.forEach((h, c) => {
+        const 값 = 행[c];
+        if (h && 값 !== '' && 값 != null) 행맵[키][h] = 값;
+      });
+    }
+  });
+
+  return [통합헤더].concat(키순서.map(키 => 통합헤더.map(h => 행맵[키][h] ?? '')));
 }
 
 /**
@@ -471,10 +528,19 @@ function _파싱_세로형(데이터) {
   const 건 = {};
   필드정의.forEach(정의 => {
     if (!정의.excelAliases) return;
-    건[정의.sheetColumn] = _맵값(맵, _별칭합치기(정의.sheetColumn, 정의.excelAliases));
+    const 원본값 = _맵값(맵, _별칭합치기(정의.sheetColumn, 정의.excelAliases));
+    건[정의.sheetColumn] = _엑셀정의값정규화(정의, 원본값);
   });
   건.원본맵 = 맵;
   return 건;
+}
+
+/** Excel 입력도 JSON 입력과 동일한 정의 formatter를 적용한다. */
+function _엑셀정의값정규화(정의, 값) {
+  if (정의 && 정의.formatter && 포매터[정의.formatter]) {
+    return 포매터[정의.formatter](값, null, 정의);
+  }
+  return String(값 ?? '').trim();
 }
 
 /**

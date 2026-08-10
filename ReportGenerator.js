@@ -11,6 +11,9 @@
 
 const 보고서_표헤더색 = '#f1f3f3';
 const 보고서_표헤더글자색 = '#202124';
+// Google Docs·PDF·Windows Word에서 동일하게 사용할 한글 글꼴.
+// 최종 배포본은 글꼴이 렌더링에 포함되는 PDF를 기준으로 한다.
+const 보고서_기본폰트 = 'Noto Sans KR';
 
 // 심사 체크리스트 항목 정의 (엑셀 데이터로 자동 채워질 항목들)
 // id: 고유키 / 항목: 질문 / 참조: 접수대장·AI기능상세에서 끌어올 값의 출처
@@ -206,8 +209,31 @@ function _증적명세서Docs생성(ss, 건) {
     .editAsText().setForegroundColor('#5f6368');
   body.appendHorizontalRule();
 
+  // ═══════════════ 심사 결과 요약 (표지 다음 독립 페이지) ═══════════════
+  _새페이지섹션(body, '· 심사 결과 요약');
+  const 요약판정 = _v(건['종합판정']);
+  const 항목별판정 = [
+    `1. 인공지능처리 연산체계 확인: ${요약판정}`,
+    `2. 인공지능기능 확인: ${요약판정}`,
+    `3. 외부 인공지능 서비스 연동 확인: ${요약판정}`,
+  ].join('\n');
+  _명세표(body, [
+    ['접수번호', _v(접수번호)],
+    ['신청기업명', _v(건['기업명'])],
+    ['제품명 / 세부품명번호 / 물품식별번호', _모델번호요약(제품모델목록, 건, false)],
+    ['제공 형태', _기타포함표시(건['제공형태'], 건['제공형태기타'])],
+    ['인공지능 제품·서비스 분류', _기타포함표시(건['제품분류'], 건['제품분류기타'])],
+    ['제품 개요', _요약(건['개요'], 300)],
+    ['인공지능 기능', 기능목록.length
+      ? 기능목록.map((f, i) => `${i + 1}. ${_v(f['기능명'])}`).join('\n')
+      : '(미기재)'],
+    ['심사완료일', _v(건['심사완료일'])],
+    ['종합판정', 요약판정],
+    ['심사 항목별 판정', 항목별판정],
+  ]);
+
   // ═══════════════ 1. 심사 개요 ═══════════════
-  _명세섹션(body, '1. 심사 개요');
+  _새페이지섹션(body, '1. 심사 개요');
   _명세표(body, [
     ['접수번호', _v(접수번호)],
     ['심사 근거', _v(R.심사근거)],
@@ -218,22 +244,22 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   // ═══════════════ 2. 신청기업 현황 ═══════════════
-  _명세섹션(body, '2. 신청기업 현황');
+  _새페이지섹션(body, '2. 신청기업 현황');
   _명세표(body, [
     ['기업명', _v(건['기업명'])],
     ['사업자등록번호', _v(건['사업자번호'])],
     ['대표자명', _v(건['대표자'])],
-    ['담당자', `${_v(건['담당자명'])} / ${_v(건['연락처'])} / ${_v(건['이메일'])}`],
+    ['담당자', `${_v(건['담당자명'])} ${_v(건['담당자직급'])} / 일반전화 ${_v(건['담당자전화'])} / 휴대전화 ${_v(건['담당자휴대전화'])} / ${_v(건['이메일'])}`],
     ['주소', _v(건['소재지'])],
   ]);
 
   // ═══════════════ 3. 심사 대상 제품 ═══════════════
-  _명세섹션(body, '3. 심사 대상 제품');
+  _새페이지섹션(body, '3. 심사 대상 제품');
   _명세표(body, [
     ['제품명 / 세부품명번호 / 물품식별번호', _모델번호요약(제품모델목록, 건)],
     ['제품 또는 서비스 수', _제품수표시(제품모델목록, 건)],
-    ['제공 형태', _v(건['제공형태'])],
-    ['인공지능 제품 분류', _v(건['제품분류'])],
+    ['제공 형태', _기타포함표시(건['제공형태'], 건['제공형태기타'])],
+    ['인공지능 제품 분류', _기타포함표시(건['제품분류'], 건['제품분류기타'])],
     ['제품 개요', _v(건['개요'])],
     ['인공지능 적용 목적', _v(건['인공지능적용목적'])],
     ['인공지능 적용 범위', _v(건['인공지능적용범위'])],
@@ -242,7 +268,7 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   // ═══════════════ 4. 핵심 인공지능 기능 명세 ═══════════════
-  _명세섹션(body, '4. 핵심 인공지능 기능 명세');
+  _새페이지섹션(body, '4. 핵심 인공지능 기능 명세');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
       const 원본기능번호 = _v(f['기능번호'] || idx + 1);
@@ -260,15 +286,14 @@ function _증적명세서Docs생성(ss, 건) {
       ];
       const 기능명세표 = body.appendTable(표);
       _명세표헤더(기능명세표);
-      _두열표스타일(기능명세표, _cm(3), _cm(13));
+      _두열표스타일(기능명세표, _cm(4), _cm(13));
     });
   } else {
     body.appendParagraph('(인공지능 기능 데이터 없음)').editAsText().setForegroundColor('#9aa0a6');
   }
 
   // ═══════════════ 5. 종합 심사 의견 (접수대장 심사 결과 컬럼 기준) ═══════════════
-  body.appendPageBreak();
-  _명세섹션(body, '5. 종합 심사 의견');
+  _새페이지섹션(body, '5. 종합 심사 의견');
   _명세표(body, [
     ['종합 판정', `${_v(건['종합판정'])}\n※ 선택값: 적합 / 보완요청 / 부적합(미충족)`],
     ['심사 완료일', _v(건['심사완료일'])],
@@ -279,8 +304,7 @@ function _증적명세서Docs생성(ss, 건) {
   _심사항목별검토결과표(body, 결과행);
 
   // ═══════════════ 붙임 ═══════════════
-  body.appendPageBreak();
-  _명세섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
+  _새페이지섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
       const 원본기능번호 = _v(f['기능번호'] || idx + 1);
@@ -300,8 +324,7 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ── 붙임 2. 데이터 구조도 (새 페이지) ──
-  body.appendPageBreak();
-  _명세섹션(body, '붙임 2. 데이터 구조도');
+  _새페이지섹션(body, '붙임 2. 데이터 구조도');
   const 구조도원본 = String(건['구조도파일명'] || '').trim();
   if (구조도원본) {
     const ID목록 = 구조도원본.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
@@ -331,15 +354,34 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ── 붙임 3. 첨부자료 목록 ──
-  body.appendPageBreak();
-  _명세섹션(body, '붙임 3. 첨부자료 목록');
+  _새페이지섹션(body, '붙임 3. 첨부자료 목록');
   _명세표(body, [
     ['기존 인증·시험 결과', _v(건['비고'])],
   ]);
 
+  _보고서폰트통일_(doc, 보고서_기본폰트);
   doc.saveAndClose();
-  _보고서를접수번호폴더로저장_(DriveApp.getFileById(doc.getId()), 접수번호);
+  const 보고서파일 = DriveApp.getFileById(doc.getId());
+  _보고서를접수번호폴더로저장_(보고서파일, 접수번호);
+  _보고서PDF저장_(보고서파일, 접수번호);
   return doc;
+}
+
+/** 본문·표·머리글의 모든 텍스트를 단일 글꼴로 강제해 DOCX 내 글꼴 혼용을 방지한다. */
+function _보고서폰트통일_(doc, fontFamily) {
+  const 적용 = element => {
+    if (!element) return;
+    if (element.getType && element.getType() === DocumentApp.ElementType.TEXT) {
+      element.asText().setFontFamily(fontFamily);
+      return;
+    }
+    if (element.getNumChildren) {
+      for (let i = 0; i < element.getNumChildren(); i++) 적용(element.getChild(i));
+    }
+  };
+  적용(doc.getBody());
+  적용(doc.getHeader());
+  적용(doc.getFooter());
 }
 
 function _문서여백설정(body, topCm, bottomCm, leftCm, rightCm) {
@@ -372,6 +414,14 @@ function _구조도표시(건) {
   return `${count}건`;
 }
 
+function _기타포함표시(기본값, 기타값) {
+  const 기본 = String(기본값 || '').trim();
+  const 기타 = String(기타값 || '').trim();
+  if (!기타) return _v(기본);
+  if (!기본 || 기본 === '기타') return `기타(${기타})`;
+  return `${기본}(${기타})`;
+}
+
 function _심사항목별검토결과표(body, 결과행) {
   const 그룹순서 = [];
   const 그룹맵 = {};
@@ -396,7 +446,7 @@ function _심사항목별검토결과표(body, 결과행) {
 }
 
 function _기능세부표스타일(table) {
-  const widths = [_cm(2), _cm(3), _cm(9), _cm(3)];
+  const widths = [_cm(2), _cm(3), _cm(9.3), _cm(2.7)];
   for (let r = 0; r < table.getNumRows(); r++) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
@@ -433,7 +483,7 @@ function _두열표스타일(table, firstWidth, secondWidth) {
 }
 
 function _심사결과표스타일(table) {
-  const widths = [_cm(1.3), _cm(10), _cm(2), _cm(2.7)];
+  const widths = [_cm(1.3), _cm(10.5), _cm(2), _cm(3.2)];
   for (let r = 0; r < table.getNumRows(); r++) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
@@ -475,7 +525,7 @@ function _요약(val, 길이) {
   return s.length > 길이 ? s.slice(0, 길이) + '…' : s;
 }
 
-function _모델번호요약(제품모델목록, 건) {
+function _모델번호요약(제품모델목록, 건, 번호표시) {
   const rows = 제품모델목록.length ? 제품모델목록 : [{
     모델명: 건['제품명'],
     세부품명번호: 건['세부품명번호'],
@@ -485,7 +535,8 @@ function _모델번호요약(제품모델목록, 건) {
     const 모델명 = String(m['모델명'] || m.모델명 || `모델 ${idx + 1}`).trim();
     const 세부 = _v(m['세부품명번호'] || m.세부품명번호);
     const 물품 = _v(m['물품식별번호'] || m.물품식별번호);
-    return `${idx + 1}. ${모델명} / ${세부} / ${물품}`;
+    const 접두 = 번호표시 === false ? '' : `${idx + 1}. `;
+    return `${접두}${모델명} / ${세부} / ${물품}`;
   }).join('\n');
 }
 
@@ -520,6 +571,12 @@ function _명세섹션(body, 제목) {
   body.appendParagraph(제목).setHeading(DocumentApp.ParagraphHeading.HEADING2);
 }
 
+/** 주요 섹션은 항상 새 페이지에서 시작한다. 표 행은 페이지를 넘어 자연스럽게 이어진다. */
+function _새페이지섹션(body, 제목) {
+  body.appendPageBreak();
+  _명세섹션(body, 제목);
+}
+
 function _명세표(body, 행들) {
   const t = body.appendTable(행들);
   for (let r = 0; r < t.getNumRows(); r++) {
@@ -533,6 +590,7 @@ function _명세표(body, 행들) {
       }
     }
   }
+  _두열표스타일(t, _cm(4), _cm(13));
   return t;
 }
 
@@ -680,3 +738,16 @@ function _보고서를접수번호폴더로저장_(file, 접수번호) {
   }
 }
 
+/** 공식 배포·보관용 PDF 생성. PDF는 글꼴 렌더링이 고정되어 열람 환경 영향을 받지 않는다. */
+function _보고서PDF저장_(googleDocFile, 접수번호) {
+  try {
+    const 폴더 = _보관폴더준비(접수번호);
+    const pdf이름 = googleDocFile.getName() + '.pdf';
+    const 기존 = 폴더.getFilesByName(pdf이름);
+    while (기존.hasNext()) 기존.next().setTrashed(true);
+    const pdfBlob = googleDocFile.getAs(MimeType.PDF).setName(pdf이름);
+    폴더.createFile(pdfBlob);
+  } catch (e) {
+    Logger.log('보고서 PDF 생성 실패: ' + e.message);
+  }
+}

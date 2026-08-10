@@ -15,17 +15,6 @@ const 일정관리_특이사항헤더글자색 = '#1f3a5f';
 const 공휴일시트명 = '공휴일';
 const 대한민국공휴일캘린더URL = 'https://calendar.google.com/calendar/ical/ko.south_korea%23holiday%40group.v.calendar.google.com/public/basic.ics';
 
-/** 더 이상 쓰지 않는 옛 컬럼(심사링크, 보고서생성)이 남아있으면 완전히 삭제 */
-function _일정관리레거시컬럼삭제_(시트) {
-  ['심사링크', '보고서생성'].forEach(옛컬럼명 => {
-    const lastCol = 시트.getLastColumn();
-    if (lastCol < 1) return;
-    const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
-    const iOld = 헤더.indexOf(옛컬럼명);
-    if (iOld >= 0) 시트.deleteColumn(iOld + 1);
-  });
-}
-
 function _일정관리헤더색적용_(시트) {
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
@@ -46,7 +35,6 @@ function _일정관리헤더색적용_(시트) {
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
-  _일정관리레거시컬럼삭제_(시트);
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
@@ -78,7 +66,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
     '순번': 45, '접수번호': 115,
     '신청일': 90, '심사접수일': 95, '마감예정일': 95,
     '상태': 75, '보완요청일': 95, '연장마감일': 95, '담당심사원': 95, '특이사항': 260,
-    '기업명': 155, '담당자명': 85, '연락처': 115, '이메일': 180, '소재지': 200,
+    '기업명': 155, '담당자명': 85, '담당자직급': 80, '담당자전화': 115, '담당자휴대전화': 115, '이메일': 180, '소재지': 200,
     '제품명': 190, '제품수': 65, '개요': 260,
     '제공형태': 110, '제품분류': 100,
     '인공지능적용목적': 260, '인공지능적용범위': 260,
@@ -95,7 +83,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
       '순번', '접수번호',
       '신청일', '심사접수일', '마감예정일',
       '상태', '보완요청일', '연장마감일', '담당심사원', '특이사항',
-      '기업명', '담당자명', '연락처', '소재지',
+      '기업명', '담당자명', '담당자직급', '담당자전화', '담당자휴대전화', '소재지',
       '제품명', '제품수', '제공형태', '제품분류',
       '인공지능기능수',
     ]);
@@ -212,20 +200,27 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
   // 심사원이 컬럼을 수동 추가·삽입해도 값이 밀리지 않고 이름 기준으로 배치됨.
   const 일정H = 일정시트.getRange(1, 1, 1, 일정시트.getLastColumn())
     .getValues()[0].map(v => String(v).trim());
-  const 대장H = 시트헤더정의[SHEET.접수대장];
+  const 대장시트 = ss.getSheetByName(SHEET.접수대장);
+  const 대장H = 대장시트.getRange(1, 1, 1, 대장시트.getLastColumn())
+    .getValues()[0].map(v => String(v).trim());
 
   // 접수대장을 원본으로 참조할 컬럼 (일정관리 컬럼명 → 접수대장 컬럼명)
   // 대부분 이름이 같지만, 명세서/기타제출서류는 가공이 필요해 별도 처리
   const 참조맵 = {
+    '신청일': '신청일',
+    '심사접수일': '심사접수일',
     '기업명': '기업명',
     '담당자명': '담당자명',
-    '연락처': '연락처',
+    '담당자직급': '담당자직급',
+    '담당자전화': '담당자전화',
+    '담당자휴대전화': '담당자휴대전화',
     '이메일': '이메일',
     '소재지': '소재지',
     '제품명': '제품명',
     '제품수': '제품수',
     '개요': '개요',
     '제공형태': '제공형태',
+    '제공형태기타': '제공형태기타',
     '제품분류': '제품분류',
     '인공지능적용목적': '인공지능적용목적',
     '인공지능적용범위': '인공지능적용범위',
@@ -235,7 +230,7 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
   };
 
   const 새행번호 = 일정시트.getLastRow() + 1;
-  const 대장범위 = `${SHEET.접수대장}!$A:$${columnLetter(대장H.length)}`;
+  const 대장범위 = `'${SHEET.접수대장}'!$A:$${columnLetter(대장H.length)}`;
   const iD접수 = 일정H.indexOf('접수번호') + 1;
   const 접수열문자 = columnLetter(iD접수);
 
@@ -244,10 +239,10 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
     // 0) 순번 = 헤더 제외한 현재 행 위치 (새행번호 - 1)
     if (h === '순번') return 새행번호 - 1;
 
-    // 1) 직접 입력값 (상태·담당심사원·신청일·심사접수일)
+    // 1) 직접 입력값 (상태·담당심사원). 날짜는 접수대장 참조.
     if (h === '접수번호') return 접수번호;
     if (h === '상태') return '대기';
-    if (Object.prototype.hasOwnProperty.call(직접값, h)) return 직접값[h];
+    if (h === '담당심사원' && Object.prototype.hasOwnProperty.call(직접값, h)) return 직접값[h];
 
     // 2) 마감예정일 = 신청일로부터 15 WD (토·일·공휴일 제외)
     if (h === '마감예정일') {
