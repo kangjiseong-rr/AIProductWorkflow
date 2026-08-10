@@ -209,15 +209,15 @@ function _증적명세서Docs생성(ss, 건) {
     .editAsText().setForegroundColor('#5f6368');
   body.appendHorizontalRule();
 
-  // ═══════════════ 심사 결과 요약 (표지 다음 독립 페이지) ═══════════════
-  _새페이지섹션(body, '· 심사 결과 요약');
+  // ═══════════════ 심사 결과 요약 (제목과 같은 첫 페이지) ═══════════════
+  _첫페이지요약섹션(body, '· 심사 결과 요약');
   const 요약판정 = _v(건['종합판정']);
   const 항목별판정 = [
     `1. 인공지능처리 연산체계 확인: ${요약판정}`,
     `2. 인공지능기능 확인: ${요약판정}`,
     `3. 외부 인공지능 서비스 연동 확인: ${요약판정}`,
   ].join('\n');
-  _명세표(body, [
+  const 심사결과요약표 = _명세표(body, [
     ['접수번호', _v(접수번호)],
     ['신청기업명', _v(건['기업명'])],
     ['제품명 / 세부품명번호 / 물품식별번호', _모델번호요약(제품모델목록, 건, false)],
@@ -231,9 +231,10 @@ function _증적명세서Docs생성(ss, 건) {
     ['종합판정', 요약판정],
     ['심사 항목별 판정', 항목별판정],
   ]);
+  _심사결과요약표스타일(심사결과요약표);
 
   // ═══════════════ 1. 심사 개요 ═══════════════
-  _새페이지섹션(body, '1. 심사 개요');
+  _명세섹션(body, '1. 심사 개요');
   _명세표(body, [
     ['접수번호', _v(접수번호)],
     ['심사 근거', _v(R.심사근거)],
@@ -244,7 +245,7 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   // ═══════════════ 2. 신청기업 현황 ═══════════════
-  _새페이지섹션(body, '2. 신청기업 현황');
+  _명세섹션(body, '2. 신청기업 현황');
   _명세표(body, [
     ['기업명', _v(건['기업명'])],
     ['사업자등록번호', _v(건['사업자번호'])],
@@ -254,7 +255,7 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   // ═══════════════ 3. 심사 대상 제품 ═══════════════
-  _새페이지섹션(body, '3. 심사 대상 제품');
+  _명세섹션(body, '3. 심사 대상 제품');
   _명세표(body, [
     ['제품명 / 세부품명번호 / 물품식별번호', _모델번호요약(제품모델목록, 건)],
     ['제품 또는 서비스 수', _제품수표시(제품모델목록, 건)],
@@ -268,7 +269,7 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   // ═══════════════ 4. 핵심 인공지능 기능 명세 ═══════════════
-  _새페이지섹션(body, '4. 핵심 인공지능 기능 명세');
+  _명세섹션(body, '4. 핵심 인공지능 기능 명세');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
       const 원본기능번호 = _v(f['기능번호'] || idx + 1);
@@ -293,7 +294,7 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ═══════════════ 5. 종합 심사 의견 (접수대장 심사 결과 컬럼 기준) ═══════════════
-  _새페이지섹션(body, '5. 종합 심사 의견');
+  _명세섹션(body, '5. 종합 심사 의견');
   _명세표(body, [
     ['종합 판정', `${_v(건['종합판정'])}\n※ 선택값: 적합 / 보완요청 / 부적합(미충족)`],
     ['심사 완료일', _v(건['심사완료일'])],
@@ -304,7 +305,7 @@ function _증적명세서Docs생성(ss, 건) {
   _심사항목별검토결과표(body, 결과행);
 
   // ═══════════════ 붙임 ═══════════════
-  _새페이지섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
+  _명세섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
       const 원본기능번호 = _v(f['기능번호'] || idx + 1);
@@ -323,8 +324,8 @@ function _증적명세서Docs생성(ss, 건) {
     body.appendParagraph('(데이터 없음)').editAsText().setForegroundColor('#9aa0a6');
   }
 
-  // ── 붙임 2. 데이터 구조도 (새 페이지) ──
-  _새페이지섹션(body, '붙임 2. 데이터 구조도');
+  // ── 붙임 2. 데이터 구조도 ──
+  _명세섹션(body, '붙임 2. 데이터 구조도');
   const 구조도원본 = String(건['구조도파일명'] || '').trim();
   if (구조도원본) {
     const ID목록 = 구조도원본.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
@@ -354,7 +355,7 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ── 붙임 3. 첨부자료 목록 ──
-  _새페이지섹션(body, '붙임 3. 첨부자료 목록');
+  _명세섹션(body, '붙임 3. 첨부자료 목록');
   _명세표(body, [
     ['기존 인증·시험 결과', _v(건['비고'])],
   ]);
@@ -571,10 +572,10 @@ function _명세섹션(body, 제목) {
   body.appendParagraph(제목).setHeading(DocumentApp.ParagraphHeading.HEADING2);
 }
 
-/** 주요 섹션은 항상 새 페이지에서 시작한다. 표 행은 페이지를 넘어 자연스럽게 이어진다. */
-function _새페이지섹션(body, 제목) {
-  body.appendPageBreak();
-  _명세섹션(body, 제목);
+/** 첫 페이지 요약은 앞쪽 빈 문단이나 페이지 나눔 없이 제목 바로 아래에 붙인다. */
+function _첫페이지요약섹션(body, 제목) {
+  const p = body.appendParagraph(제목).setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  p.setSpacingBefore(4).setSpacingAfter(4);
 }
 
 function _명세표(body, 행들) {
@@ -592,6 +593,27 @@ function _명세표(body, 행들) {
   }
   _두열표스타일(t, _cm(4), _cm(13));
   return t;
+}
+
+/**
+ * Google Docs는 Word의 '고정값 12pt'를 직접 제공하지 않으므로,
+ * 10pt 글자 × 1.2줄과 문단 앞뒤 0pt로 12pt 줄 높이에 맞춘다.
+ */
+function _심사결과요약표스타일(table) {
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      cell.setPaddingTop(2).setPaddingBottom(2).setPaddingLeft(6).setPaddingRight(6);
+      for (let i = 0; i < cell.getNumChildren(); i++) {
+        const child = cell.getChild(i);
+        if (child.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
+        const p = child.asParagraph();
+        p.setLineSpacing(1.2).setSpacingBefore(0).setSpacingAfter(0);
+        p.editAsText().setFontSize(10);
+      }
+    }
+  }
 }
 
 function _명세표헤더(t) {
