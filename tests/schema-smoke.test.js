@@ -18,6 +18,30 @@ vm.runInContext(
 );
 
 const { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시 } = context.__schemaTest;
+
+const scheduleContext = {
+  console,
+  SHEET: { 접수대장: '접수대장' },
+  columnLetter(n) {
+    let s = '';
+    while (n > 0) {
+      const r = (n - 1) % 26;
+      s = String.fromCharCode(65 + r) + s;
+      n = Math.floor((n - 1) / 26);
+    }
+    return s;
+  },
+};
+vm.createContext(scheduleContext);
+vm.runInContext(
+  fs.readFileSync(path.join(root, 'Schedule.js'), 'utf8') +
+  '\nglobalThis.__formulaTest = _접수대장조회수식_;',
+  scheduleContext
+);
+const lookupFormula = scheduleContext.__formulaTest(['순번', '접수번호', '기업명'], '기업명', '$B2', false);
+if (!lookupFormula.includes('$B:$B') || !lookupFormula.includes('$C:$C') || lookupFormula.includes('VLOOKUP')) {
+  throw new Error(`컬럼 이동 안전 조회 수식 생성 실패: ${lookupFormula}`);
+}
 const 날짜필드 = 필드정의.find(f => f.sheetColumn === '접수일자');
 if (!날짜필드 || !날짜필드.excelAliases.includes('접수일자')) {
   throw new Error('접수일자 필드 매핑이 없습니다.');

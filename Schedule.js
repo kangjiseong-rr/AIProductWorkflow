@@ -14,6 +14,28 @@ const 일정관리_특이사항헤더색 = '#dbe7f3';
 const 일정관리_특이사항헤더글자색 = '#1f3a5f';
 const 공휴일시트명 = '공휴일';
 const 대한민국공휴일캘린더URL = 'https://calendar.google.com/calendar/ical/ko.south_korea%23holiday%40group.v.calendar.google.com/public/basic.ics';
+const 일정관리_접수대장참조맵 = {
+  '접수일자': '접수일자',
+  '심사접수일': '심사접수일',
+  '기업명': '기업명',
+  '담당자명': '담당자명',
+  '담당자직급': '담당자직급',
+  '담당자전화': '담당자전화',
+  '담당자휴대전화': '담당자휴대전화',
+  '이메일': '이메일',
+  '소재지': '소재지',
+  '제품명': '제품명',
+  '제품수': '제품수',
+  '개요': '개요',
+  '제공형태': '제공형태',
+  '제공형태기타': '제공형태기타',
+  '제품분류': '제품분류',
+  '인공지능적용목적': '인공지능적용목적',
+  '인공지능적용범위': '인공지능적용범위',
+  '명세서작성방식': '명세서작성방식',
+  '보유인증': '보유인증',
+  '인공지능기능수': '인공지능기능수',
+};
 
 function _일정관리헤더색적용_(시트) {
   const lastCol = Math.max(1, 시트.getLastColumn());
@@ -184,13 +206,12 @@ function _hexToRgb_(hex) {
 /** 인공지능제품모델 시트에 등록 (재파싱 시 같은 접수번호 기존 행 삭제 후 재기록) */
 /**
  * 일정관리 시트에 신규 행 추가 (하이브리드 싱크)
- *  · 접수대장이 원본인 컬럼 → 접수대장 VLOOKUP 수식으로 자동 참조
+ *  · 접수대장이 원본인 컬럼 → 접수대장 INDEX+MATCH 수식으로 자동 참조
  *  · 일정관리가 원본인 컬럼(상태·담당심사원) → 직접 입력값 (편집 가능)
  *  · 마감예정일 → 접수일자로부터 15 WD(주말·공휴일 제외) 수식
  *
- * VLOOKUP은 접수번호(A열)를 키로 하므로, 접수대장 행이 정렬·이동돼도
- * 항상 올바른 값을 따라갑니다. 접수대장에서 회사·제품정보를 고치면
- * 일정관리에 자동 반영됩니다.
+ * 접수번호와 대상 컬럼의 실제 헤더 위치를 각각 찾아 수식을 만들므로,
+ * 순번을 A열로 옮기거나 컬럼 순서를 바꿔도 정상 참조합니다.
  */
 function _일정관리행추가(ss, 접수번호, 직접값) {
   const 일정시트 = ss.getSheetByName(SHEET.일정관리);
@@ -218,33 +239,10 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
 
   // 접수대장을 원본으로 참조할 컬럼 (일정관리 컬럼명 → 접수대장 컬럼명)
   // 대부분 이름이 같지만, 명세서/기타제출서류는 가공이 필요해 별도 처리
-  const 참조맵 = {
-    '접수일자': '접수일자',
-    '심사접수일': '심사접수일',
-    '기업명': '기업명',
-    '담당자명': '담당자명',
-    '담당자직급': '담당자직급',
-    '담당자전화': '담당자전화',
-    '담당자휴대전화': '담당자휴대전화',
-    '이메일': '이메일',
-    '소재지': '소재지',
-    '제품명': '제품명',
-    '제품수': '제품수',
-    '개요': '개요',
-    '제공형태': '제공형태',
-    '제공형태기타': '제공형태기타',
-    '제품분류': '제품분류',
-    '인공지능적용목적': '인공지능적용목적',
-    '인공지능적용범위': '인공지능적용범위',
-    '명세서작성방식': '명세서작성방식',
-    '보유인증': '보유인증',
-    '인공지능기능수': '인공지능기능수',
-  };
-
   const 새행번호 = 일정시트.getLastRow() + 1;
-  const 대장범위 = `'${SHEET.접수대장}'!$A:$${columnLetter(대장H.length)}`;
   const iD접수 = 일정H.indexOf('접수번호') + 1;
   const 접수열문자 = columnLetter(iD접수);
+  const 일정접수셀 = `$${접수열문자}${새행번호}`;
 
   // 각 컬럼별 값/수식 생성
   const 행값 = 일정H.map(h => {
@@ -272,13 +270,12 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
 
     // 3) 기타제출서류여부 = 접수대장의 파일명 있으면 Y
     if (h === '기타제출서류여부') {
-      return `=IF(VLOOKUP($${접수열문자}${새행번호},${대장범위},${_대장열번호('기타제출서류파일명', 대장H)},0)="","","Y")`;
+      return _접수대장조회수식_(대장H, '기타제출서류파일명', 일정접수셀, true);
     }
 
-    // 4) 접수대장 참조 컬럼 → VLOOKUP
-    if (참조맵[h]) {
-      const 열번호 = _대장열번호(참조맵[h], 대장H);
-      return `=IFERROR(VLOOKUP($${접수열문자}${새행번호},${대장범위},${열번호},0),"")`;
+    // 4) 접수대장 참조 컬럼 → 컬럼 순서와 무관한 INDEX+MATCH
+    if (일정관리_접수대장참조맵[h]) {
+      return _접수대장조회수식_(대장H, 일정관리_접수대장참조맵[h], 일정접수셀, false);
     }
 
     return '';
@@ -291,6 +288,77 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
     Logger.log('일정관리 표 갱신 실패: ' + e.message);
   }
   return { 신규: true, 행번호: 새행번호 };
+}
+
+function _접수대장조회수식_(대장H, 대상헤더, 일정접수셀, 여부표시) {
+  const 접수번호열 = 대장H.indexOf('접수번호') + 1;
+  const 대상열 = 대장H.indexOf(대상헤더) + 1;
+  if (접수번호열 < 1 || 대상열 < 1) return '=""';
+  const 접수범위 = `'${SHEET.접수대장}'!$${columnLetter(접수번호열)}:$${columnLetter(접수번호열)}`;
+  const 대상범위 = `'${SHEET.접수대장}'!$${columnLetter(대상열)}:$${columnLetter(대상열)}`;
+  const 조회식 = `INDEX(${대상범위},MATCH(${일정접수셀},${접수범위},0))`;
+  return 여부표시
+    ? `=IFERROR(IF(${조회식}="","","Y"),"")`
+    : `=IFERROR(IF(${조회식}="","",${조회식}),"")`;
+}
+
+/** 기존 일정관리 행의 접수대장 참조 수식만 헤더 기반 수식으로 복구한다. */
+function 일정관리참조수식복구() {
+  const ui = SpreadsheetApp.getUi();
+  if (!_관리자여부()) {
+    ui.alert('관리자만 일정관리 참조 수식을 복구할 수 있습니다.');
+    return;
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 일정시트 = ss.getSheetByName(SHEET.일정관리);
+  const 대장시트 = ss.getSheetByName(SHEET.접수대장);
+  if (!일정시트 || !대장시트 || 일정시트.getLastRow() < 2) {
+    ui.alert('복구할 일정관리 데이터가 없습니다.');
+    return;
+  }
+  const 일정H = 일정시트.getRange(1, 1, 1, 일정시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 대장H = 대장시트.getRange(1, 1, 1, 대장시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 일정접수열 = 일정H.indexOf('접수번호') + 1;
+  const 대장접수열 = 대장H.indexOf('접수번호') + 1;
+  if (일정접수열 < 1 || 대장접수열 < 1) {
+    ui.alert('접수번호 헤더를 찾지 못해 복구를 중단했습니다.');
+    return;
+  }
+  const 행수 = 일정시트.getLastRow() - 1;
+  const 접수값 = 일정시트.getRange(2, 일정접수열, 행수, 1).getDisplayValues();
+  const 대상행수 = 접수값.filter(행 => String(행[0]).trim()).length;
+  if (!대상행수) {
+    ui.alert('접수번호가 입력된 일정관리 행이 없습니다.');
+    return;
+  }
+  const 확인 = ui.alert(
+    '일정관리 참조 수식 복구',
+    `접수번호가 있는 ${대상행수}개 행의 접수대장 참조 컬럼만 INDEX+MATCH 수식으로 다시 설정합니다.\n상태·담당심사원·특이사항은 변경하지 않습니다. 계속할까요?`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (확인 !== ui.Button.OK) return;
+
+  Object.keys(일정관리_접수대장참조맵).forEach(일정헤더 => {
+    const 일정열 = 일정H.indexOf(일정헤더) + 1;
+    if (일정열 < 1) return;
+    접수값.forEach((행, idx) => {
+      if (!String(행[0]).trim()) return;
+      const 접수셀 = `$${columnLetter(일정접수열)}${idx + 2}`;
+      일정시트.getRange(idx + 2, 일정열)
+        .setFormula(_접수대장조회수식_(대장H, 일정관리_접수대장참조맵[일정헤더], 접수셀, false));
+    });
+  });
+  const 기타열 = 일정H.indexOf('기타제출서류여부') + 1;
+  if (기타열 > 0) {
+    접수값.forEach((행, idx) => {
+      if (!String(행[0]).trim()) return;
+      const 접수셀 = `$${columnLetter(일정접수열)}${idx + 2}`;
+      일정시트.getRange(idx + 2, 기타열)
+        .setFormula(_접수대장조회수식_(대장H, '기타제출서류파일명', 접수셀, true));
+    });
+  }
+  _마감예정일수식갱신_(ss);
+  ui.alert(`일정관리 참조 수식 복구 완료: ${대상행수}개 행`);
 }
 
 /** 날짜 값(Date 또는 문자열)에서 연도를 추출 */
