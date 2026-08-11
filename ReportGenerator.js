@@ -255,8 +255,8 @@ function _증적명세서Docs생성(ss, 건) {
   ]);
 
   // ═══════════════ 3. 심사 대상 제품 ═══════════════
-  _명세섹션(body, '3. 심사 대상 제품');
-  _명세표(body, [
+  _새페이지섹션(body, '3. 심사 대상 제품');
+  const 심사대상제품표 = _명세표(body, [
     ['제품명 / 세부품명번호 / 물품식별번호', _모델번호요약(제품모델목록, 건)],
     ['제품 또는 서비스 수', _제품수표시(제품모델목록, 건)],
     ['제공 형태', _기타포함표시(건['제공형태'], 건['제공형태기타'])],
@@ -267,6 +267,8 @@ function _증적명세서Docs생성(ss, 건) {
     ['제품 구조도', _구조도표시(건)],
     ['인공지능 기능 수', _v(건['인공지능기능수'])],
   ]);
+  // 첫 행의 제품명·세부품명번호·물품식별번호 내용은 가운데 정렬하지 않는다.
+  _셀문단정렬(심사대상제품표.getRow(0).getCell(1), DocumentApp.HorizontalAlignment.LEFT);
 
   // ═══════════════ 4. 핵심 인공지능 기능 명세 ═══════════════
   _명세섹션(body, '4. 핵심 인공지능 기능 명세');
@@ -462,6 +464,7 @@ function _기능세부표스타일(table) {
       }
     }
   }
+  _모든표공통스타일_(table);
 }
 
 function _두열표스타일(table, firstWidth, secondWidth) {
@@ -481,6 +484,7 @@ function _두열표스타일(table, firstWidth, secondWidth) {
       }
     }
   }
+  _모든표공통스타일_(table);
 }
 
 function _심사결과표스타일(table) {
@@ -498,6 +502,24 @@ function _심사결과표스타일(table) {
           ? DocumentApp.HorizontalAlignment.CENTER
           : DocumentApp.HorizontalAlignment.LEFT
       );
+    }
+  }
+  _모든표공통스타일_(table);
+}
+
+/** 모든 보고서 표에 기본 한 줄 간격과 셀 세로 가운데 정렬을 적용한다. */
+function _모든표공통스타일_(table) {
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+      for (let i = 0; i < cell.getNumChildren(); i++) {
+        const child = cell.getChild(i);
+        if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+          child.asParagraph().setLineSpacing(1.0);
+        }
+      }
     }
   }
 }

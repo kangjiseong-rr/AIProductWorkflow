@@ -11,6 +11,7 @@ const context = { console };
 const reportSource = fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8');
 for (const section of [
   '1. 심사 개요',
+  '3. 심사 대상 제품',
   '5. 종합 심사 의견',
   '붙임 1. 기능별 인공지능 구현 세부 사항',
   '붙임 2. 데이터 구조도',
@@ -22,6 +23,9 @@ for (const section of [
 }
 if (!reportSource.includes('p.setLineSpacing(1.0)') || !reportSource.includes('setFontSize(11)')) {
   throw new Error('심사결과 요약 표의 11pt·한 줄 간격 설정이 없습니다.');
+}
+if (!reportSource.includes('function _모든표공통스타일_') || !reportSource.includes('setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER)')) {
+  throw new Error('보고서 전체 표의 한 줄 간격·세로 가운데 정렬 설정이 없습니다.');
 }
 vm.createContext(context);
 vm.runInContext(
