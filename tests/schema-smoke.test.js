@@ -3,11 +3,15 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
+const parserSource = fs.readFileSync(path.join(root, 'ExcelParser.js'), 'utf8');
+if (!/function _엑셀파싱처리\([^)]*\)\s*\{\s*const ss = SpreadsheetApp\.getActiveSpreadsheet\(\);/.test(parserSource)) {
+  throw new Error('_엑셀파싱처리의 활성 스프레드시트 선언이 없습니다.');
+}
 const context = { console };
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync(path.join(root, 'FieldDefinition.js'), 'utf8') +
-  '\n' + fs.readFileSync(path.join(root, 'ExcelParser.js'), 'utf8') +
+  '\n' + parserSource +
   '\n' + fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8') +
   '\nglobalThis.__schemaTest = { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시 };',
   context

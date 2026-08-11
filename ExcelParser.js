@@ -154,7 +154,8 @@ function 엑셀파싱등록() {
     const blob = file.getBlob();
     _엑셀파싱처리(blob, file.getName());
   } catch (e) {
-    ui.alert('파일을 찾을 수 없습니다: ' + e.message);
+    Logger.log('엑셀 파일 등록 실패: ' + (e && e.stack ? e.stack : e));
+    ui.alert('엑셀 파일 등록 중 오류가 발생했습니다: ' + e.message);
   }
 }
 
@@ -177,6 +178,7 @@ function 엑셀파싱등록() {
  * 형태 B를 받는다면 _파싱_가로형() 함수를 대신 호출하세요.
  */
 function _엑셀파싱처리(blob, 파일명) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 제목 = '__임시파싱__' + new Date().getTime();
   let 임시파일ID;
   let 등록건수 = 0;
@@ -272,9 +274,6 @@ function _엑셀파싱처리(blob, 파일명) {
       try { DriveApp.getFileById(임시파일ID).setTrashed(true); } catch(e) {}
     }
   }
-
-  // 신규행뿐 아니라 구버전 수식이 남은 기존 행도 WD 15일 + 공휴일 기준으로 갱신
-  _마감예정일수식갱신_(ss);
 
   // 파싱 결과 알림
   let msg = `엑셀 파싱 완료\n\n신규 등록: ${등록건수}건`;
