@@ -194,6 +194,18 @@ function _hexToRgb_(hex) {
  */
 function _일정관리행추가(ss, 접수번호, 직접값) {
   const 일정시트 = ss.getSheetByName(SHEET.일정관리);
+  const 기존데이터 = 일정시트.getDataRange().getDisplayValues();
+  const 기존헤더 = 기존데이터[0].map(v => String(v).trim());
+  const 기존접수번호열 = 기존헤더.indexOf('접수번호');
+  if (기존접수번호열 >= 0) {
+    const 기존행 = 기존데이터.slice(1).findIndex(행 =>
+      String(행[기존접수번호열]).trim() === String(접수번호).trim()
+    );
+    if (기존행 >= 0) {
+      Logger.log(`일정관리 기존 행 유지 - append 생략: ${접수번호} (${기존행 + 2}행)`);
+      return { 신규: false, 행번호: 기존행 + 2 };
+    }
+  }
   const 신청연도 = _날짜연도_(직접값.접수일자) || new Date().getFullYear();
   _공휴일연도확보_(ss, [신청연도, 신청연도 + 1]);
   // ⚠️ 실제 시트의 라이브 헤더를 읽음 (정적 정의가 아니라).
@@ -278,6 +290,7 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
   } catch (e) {
     Logger.log('일정관리 표 갱신 실패: ' + e.message);
   }
+  return { 신규: true, 행번호: 새행번호 };
 }
 
 /** 날짜 값(Date 또는 문자열)에서 연도를 추출 */
