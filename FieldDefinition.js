@@ -221,11 +221,11 @@ const 필드정의 = [
     excelAliases: ['특기사항'],
   },
 
-  // 관리자 결정: JSON에 신청일 필드가 없으므로 TTA 파싱 시각으로 대체.
+  // JSON에 접수일자 필드가 없으면 TTA 파싱 시각으로 대체한다.
   // TODO: KOSA가 submittedAt(또는 동일 의미 필드)을 추가하면 path 배열에 필드명만 추가.
   {
-    sheetColumn: '신청일', path: ['submittedAt', 'applicationDate', 'appliedAt'], type: 'date', fallback: 'now', required: true,
-    excelAliases: ['신청일자', '신청일'],
+    sheetColumn: '접수일자', path: ['submittedAt', 'applicationDate', 'appliedAt'], type: 'date', fallback: 'now', required: true,
+    excelAliases: ['접수일자', '신청일자', '신청일'],
   },
 
   // 등록 후 _접수대장기능수갱신이 재계산 — 초기값 용도

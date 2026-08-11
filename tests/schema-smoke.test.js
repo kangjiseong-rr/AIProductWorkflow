@@ -9,11 +9,18 @@ vm.runInContext(
   fs.readFileSync(path.join(root, 'FieldDefinition.js'), 'utf8') +
   '\n' + fs.readFileSync(path.join(root, 'ExcelParser.js'), 'utf8') +
   '\n' + fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8') +
-  '\nglobalThis.__schemaTest = { 포매터, _기능탭데이터병합, _기타포함표시 };',
+  '\nglobalThis.__schemaTest = { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시 };',
   context
 );
 
-const { 포매터, _기능탭데이터병합, _기타포함표시 } = context.__schemaTest;
+const { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시 } = context.__schemaTest;
+const 날짜필드 = 필드정의.find(f => f.sheetColumn === '접수일자');
+if (!날짜필드 || !날짜필드.excelAliases.includes('접수일자')) {
+  throw new Error('접수일자 필드 매핑이 없습니다.');
+}
+if (필드정의.some(f => f.sheetColumn === '신청일')) {
+  throw new Error('구형 신청일 시트 컬럼명이 남아 있습니다.');
+}
 const normalized = [
   포매터.사업자번호정규화('123-45-67890'),
   포매터.전화번호정규화('02-2188-6980'),
