@@ -234,7 +234,7 @@ function _증적명세서Docs생성(ss, 건) {
   _심사결과요약표스타일(심사결과요약표);
 
   // ═══════════════ 1. 심사 개요 ═══════════════
-  _명세섹션(body, '1. 심사 개요');
+  _새페이지섹션(body, '1. 심사 개요');
   _명세표(body, [
     ['접수번호', _v(접수번호)],
     ['심사 근거', _v(R.심사근거)],
@@ -294,7 +294,7 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ═══════════════ 5. 종합 심사 의견 (접수대장 심사 결과 컬럼 기준) ═══════════════
-  _명세섹션(body, '5. 종합 심사 의견');
+  _새페이지섹션(body, '5. 종합 심사 의견');
   _명세표(body, [
     ['종합 판정', `${_v(건['종합판정'])}\n※ 선택값: 적합 / 보완요청 / 부적합(미충족)`],
     ['심사 완료일', _v(건['심사완료일'])],
@@ -305,7 +305,7 @@ function _증적명세서Docs생성(ss, 건) {
   _심사항목별검토결과표(body, 결과행);
 
   // ═══════════════ 붙임 ═══════════════
-  _명세섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
+  _새페이지섹션(body, '붙임 1. 기능별 인공지능 구현 세부 사항');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
       const 원본기능번호 = _v(f['기능번호'] || idx + 1);
@@ -325,7 +325,7 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ── 붙임 2. 데이터 구조도 ──
-  _명세섹션(body, '붙임 2. 데이터 구조도');
+  _새페이지섹션(body, '붙임 2. 데이터 구조도');
   const 구조도원본 = String(건['구조도파일명'] || '').trim();
   if (구조도원본) {
     const ID목록 = 구조도원본.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
@@ -355,7 +355,7 @@ function _증적명세서Docs생성(ss, 건) {
   }
 
   // ── 붙임 3. 첨부자료 목록 ──
-  _명세섹션(body, '붙임 3. 첨부자료 목록');
+  _새페이지섹션(body, '붙임 3. 첨부자료 목록');
   _명세표(body, [
     ['기존 인증·시험 결과', _v(건['비고'])],
   ]);
@@ -492,7 +492,12 @@ function _심사결과표스타일(table) {
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
       if (widths[c]) cell.setWidth(widths[c]);
       cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
-      _셀문단정렬(cell, c === 1 || c === 3 ? DocumentApp.HorizontalAlignment.LEFT : DocumentApp.HorizontalAlignment.CENTER);
+      _셀문단정렬(
+        cell,
+        r === 0 || (c !== 1 && c !== 3)
+          ? DocumentApp.HorizontalAlignment.CENTER
+          : DocumentApp.HorizontalAlignment.LEFT
+      );
     }
   }
 }
@@ -572,6 +577,12 @@ function _명세섹션(body, 제목) {
   body.appendParagraph(제목).setHeading(DocumentApp.ParagraphHeading.HEADING2);
 }
 
+/** 지정한 주요 섹션을 강제로 새 페이지에서 시작한다. */
+function _새페이지섹션(body, 제목) {
+  body.appendPageBreak();
+  body.appendParagraph(제목).setHeading(DocumentApp.ParagraphHeading.HEADING2);
+}
+
 /** 첫 페이지 요약은 앞쪽 빈 문단이나 페이지 나눔 없이 제목 바로 아래에 붙인다. */
 function _첫페이지요약섹션(body, 제목) {
   const p = body.appendParagraph(제목).setHeading(DocumentApp.ParagraphHeading.HEADING2);
@@ -596,8 +607,7 @@ function _명세표(body, 행들) {
 }
 
 /**
- * Google Docs는 Word의 '고정값 12pt'를 직접 제공하지 않으므로,
- * 10pt 글자 × 1.2줄과 문단 앞뒤 0pt로 12pt 줄 높이에 맞춘다.
+ * 첫 페이지 요약 표는 11pt와 기본 한 줄 간격으로 통일한다.
  */
 function _심사결과요약표스타일(table) {
   for (let r = 0; r < table.getNumRows(); r++) {
@@ -609,8 +619,8 @@ function _심사결과요약표스타일(table) {
         const child = cell.getChild(i);
         if (child.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
         const p = child.asParagraph();
-        p.setLineSpacing(1.2).setSpacingBefore(0).setSpacingAfter(0);
-        p.editAsText().setFontSize(10);
+        p.setLineSpacing(1.0).setSpacingBefore(0).setSpacingAfter(0);
+        p.editAsText().setFontSize(11);
       }
     }
   }

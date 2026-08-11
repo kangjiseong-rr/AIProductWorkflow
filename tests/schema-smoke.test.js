@@ -8,11 +8,26 @@ if (!/function _엑셀파싱처리\([^)]*\)\s*\{\s*const ss = SpreadsheetApp\.ge
   throw new Error('_엑셀파싱처리의 활성 스프레드시트 선언이 없습니다.');
 }
 const context = { console };
+const reportSource = fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8');
+for (const section of [
+  '1. 심사 개요',
+  '5. 종합 심사 의견',
+  '붙임 1. 기능별 인공지능 구현 세부 사항',
+  '붙임 2. 데이터 구조도',
+  '붙임 3. 첨부자료 목록',
+]) {
+  if (!reportSource.includes(`_새페이지섹션(body, '${section}')`)) {
+    throw new Error(`새 페이지 시작 설정 누락: ${section}`);
+  }
+}
+if (!reportSource.includes('p.setLineSpacing(1.0)') || !reportSource.includes('setFontSize(11)')) {
+  throw new Error('심사결과 요약 표의 11pt·한 줄 간격 설정이 없습니다.');
+}
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync(path.join(root, 'FieldDefinition.js'), 'utf8') +
   '\n' + parserSource +
-  '\n' + fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8') +
+  '\n' + reportSource +
   '\nglobalThis.__schemaTest = { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시 };',
   context
 );
