@@ -167,7 +167,7 @@ function 엑셀직접업로드창열기() {
   }
   const html = HtmlService.createHtmlOutputFromFile('ExcelUpload')
     .setWidth(520)
-    .setHeight(430);
+    .setHeight(360);
   SpreadsheetApp.getUi().showModalDialog(html, '엑셀 파일 직접 업로드');
 }
 
@@ -175,14 +175,25 @@ function 엑셀직접업로드창열기() {
  * HTML 업로드 폼에서 전달된 Blob을 바로 파싱한다.
  * 원본 파일은 Drive에 저장하지 않으며, 변환용 임시 Google Sheets는 파싱 후 휴지통으로 이동한다.
  */
-function 직접업로드엑셀파싱(formObject) {
+function 직접업로드엑셀파싱(payload) {
   if (!_관리자여부()) throw new Error('관리자만 엑셀 파일을 등록할 수 있습니다.');
-  const blob = formObject && formObject.excelFile;
-  if (!blob || typeof blob.getName !== 'function') throw new Error('업로드할 파일을 선택하세요.');
-  const 파일명 = String(blob.getName() || '').trim();
+  const 파일명 = String(payload && payload.name || '').trim();
   if (!/\.xlsx$/i.test(파일명)) throw new Error('확장자가 .xlsx인 엑셀 파일만 등록할 수 있습니다.');
+  const base64 = String(payload && payload.base64 || '');
+  if (!base64) throw new Error('업로드된 파일 내용이 없습니다.');
+  let bytes;
+  try {
+    bytes = Utilities.base64Decode(base64);
+  } catch (e) {
+    throw new Error('업로드 파일을 해석하지 못했습니다. 다시 선택해 주세요.');
+  }
   const 최대크기 = 20 * 1024 * 1024;
-  if (blob.getBytes().length > 최대크기) throw new Error('파일 크기는 20MB 이하여야 합니다.');
+  if (bytes.length > 최대크기) throw new Error('파일 크기는 20MB 이하여야 합니다.');
+  const blob = Utilities.newBlob(
+    bytes,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    파일명
+  );
   return _엑셀파싱처리(blob, 파일명, false);
 }
 

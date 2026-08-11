@@ -3,10 +3,10 @@
   <head>
     <base target="_top">
     <style>
-      body { font-family: Arial, "Noto Sans KR", sans-serif; color: #202124; margin: 0; padding: 24px; }
-      h2 { font-size: 18px; margin: 0 0 8px; }
-      .help { color: #5f6368; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
-      .drop { border: 2px dashed #9aa0a6; border-radius: 10px; padding: 42px 18px; text-align: center; cursor: pointer; background: #f8f9fa; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, "Noto Sans KR", sans-serif; color: #202124; margin: 0; padding: 20px 24px; }
+      .help { color: #5f6368; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+      .drop { display: block; width: 100%; border: 2px dashed #9aa0a6; border-radius: 10px; padding: 34px 18px; text-align: center; cursor: pointer; background: #f8f9fa; line-height: 1.5; }
       .drop.over { border-color: #1a73e8; background: #e8f0fe; }
       .filename { margin-top: 10px; font-size: 13px; font-weight: 600; word-break: break-all; }
       input[type=file] { display: none; }
@@ -14,13 +14,12 @@
       button { border: 1px solid #dadce0; border-radius: 6px; padding: 9px 16px; background: white; cursor: pointer; }
       button.primary { border-color: #1a73e8; background: #1a73e8; color: white; }
       button:disabled { opacity: .55; cursor: default; }
-      .status { min-height: 38px; margin-top: 14px; white-space: pre-line; font-size: 13px; line-height: 1.45; }
+      .status { min-height: 40px; margin-top: 12px; white-space: pre-line; overflow-wrap: anywhere; font-size: 13px; line-height: 1.45; }
       .error { color: #b3261e; }
       .success { color: #137333; }
     </style>
   </head>
   <body>
-    <h2>엑셀 신청 파일 업로드</h2>
     <div class="help">확정 양식의 .xlsx 파일만 가능하며 최대 20MB입니다. 원본 파일은 Drive에 영구 저장하지 않습니다.</div>
     <form id="uploadForm">
       <label id="dropZone" class="drop" for="excelFile">
@@ -72,17 +71,35 @@
         submitButton.disabled = true;
         status.className = 'status';
         status.textContent = '업로드 및 파싱 중입니다. 창을 닫지 마세요…';
-        google.script.run
-          .withSuccessHandler(message => {
-            status.className = 'status success';
-            status.textContent = message || '엑셀 등록이 완료되었습니다.';
-            submitButton.textContent = '완료';
-          })
-          .withFailureHandler(error => {
+        const reader = new FileReader();
+        reader.onerror = () => {
+          submitButton.disabled = false;
+          setError('파일을 읽지 못했습니다. 다시 선택해 주세요.');
+        };
+        reader.onload = () => {
+          const dataUrl = String(reader.result || '');
+          const comma = dataUrl.indexOf(',');
+          if (comma < 0) {
             submitButton.disabled = false;
-            setError(error && error.message ? error.message : String(error));
-          })
-          .직접업로드엑셀파싱(form);
+            return setError('파일 내용을 변환하지 못했습니다.');
+          }
+          google.script.run
+            .withSuccessHandler(message => {
+              status.className = 'status success';
+              status.textContent = message || '엑셀 등록이 완료되었습니다.';
+              submitButton.textContent = '완료';
+            })
+            .withFailureHandler(error => {
+              submitButton.disabled = false;
+              setError(error && error.message ? error.message : String(error));
+            })
+            .직접업로드엑셀파싱({
+              name: file.name,
+              mimeType: file.type,
+              base64: dataUrl.slice(comma + 1),
+            });
+        };
+        reader.readAsDataURL(file);
       });
       function setError(message) {
         status.className = 'status error';
