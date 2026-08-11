@@ -125,7 +125,7 @@ function _정의찾기(정의배열, sheetColumn) {
 function 엑셀파싱등록() {
   const ui = SpreadsheetApp.getUi();
   const response = ui.prompt(
-    '엑셀 파일 등록',
+    'Drive 링크로 엑셀 등록',
     '엑셀 파일 ID 또는 공유 URL을 입력하세요.\n' +
     '(Drive 링크, Sheets 링크 모두 가능합니다.)\n\n' +
     '※ 주의: 스크립트를 실행하는 구글 계정이 해당 파일에 접근할 권한이 있어야 합니다.',
@@ -159,6 +159,33 @@ function 엑셀파싱등록() {
   }
 }
 
+/** 로컬 PC의 .xlsx 파일을 선택하거나 끌어다 놓는 기본 업로드 창. */
+function 엑셀직접업로드창열기() {
+  if (!_관리자여부()) {
+    SpreadsheetApp.getUi().alert('관리자만 엑셀 파일을 등록할 수 있습니다.');
+    return;
+  }
+  const html = HtmlService.createHtmlOutputFromFile('ExcelUpload')
+    .setWidth(520)
+    .setHeight(430);
+  SpreadsheetApp.getUi().showModalDialog(html, '엑셀 파일 직접 업로드');
+}
+
+/**
+ * HTML 업로드 폼에서 전달된 Blob을 바로 파싱한다.
+ * 원본 파일은 Drive에 저장하지 않으며, 변환용 임시 Google Sheets는 파싱 후 휴지통으로 이동한다.
+ */
+function 직접업로드엑셀파싱(formObject) {
+  if (!_관리자여부()) throw new Error('관리자만 엑셀 파일을 등록할 수 있습니다.');
+  const blob = formObject && formObject.excelFile;
+  if (!blob || typeof blob.getName !== 'function') throw new Error('업로드할 파일을 선택하세요.');
+  const 파일명 = String(blob.getName() || '').trim();
+  if (!/\.xlsx$/i.test(파일명)) throw new Error('확장자가 .xlsx인 엑셀 파일만 등록할 수 있습니다.');
+  const 최대크기 = 20 * 1024 * 1024;
+  if (blob.getBytes().length > 최대크기) throw new Error('파일 크기는 20MB 이하여야 합니다.');
+  return _엑셀파싱처리(blob, 파일명, false);
+}
+
 /**
  * 엑셀 Blob → 파싱 → Sheets 등록
  *
@@ -177,7 +204,7 @@ function 엑셀파싱등록() {
  * 아래 코드는 형태 A (건별 세로형) 기준.
  * 형태 B를 받는다면 _파싱_가로형() 함수를 대신 호출하세요.
  */
-function _엑셀파싱처리(blob, 파일명) {
+function _엑셀파싱처리(blob, 파일명, 알림표시) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 제목 = '__임시파싱__' + new Date().getTime();
   let 임시파일ID;
@@ -284,7 +311,10 @@ function _엑셀파싱처리(blob, 파일명) {
     msg += `\n건너뜀: ${건너뛴행.length}건 (접수번호 누락 등)\n\n` + 건너뛴행.join('\n');
     msg += `\n\n※ 건너뛴 행은 KOSA 접수번호가 없어 등록되지 않았습니다. 파싱로그를 확인하세요.`;
   }
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+  if (알림표시 !== false) {
+    try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+  }
+  return msg;
 }
 
 /**

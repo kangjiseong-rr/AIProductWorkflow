@@ -511,7 +511,8 @@ function onOpen() {
   // ── 관리자 전용 메뉴 (관리자가 아니면 아예 표시 안 함) ──
   if (관리자) {
     menu.addSeparator()
-      .addItem('📁 엑셀 파일 등록 (파싱)', '엑셀파싱등록')
+      .addItem('📤 엑셀 파일 직접 업로드', '엑셀직접업로드창열기')
+      .addItem('🔗 Drive 링크로 엑셀 등록', '엑셀파싱등록')
       .addItem('🧾 JSON 파일 등록 (파싱)', 'JSON파싱등록')
       .addItem('🗑️ 접수번호 1건 삭제', '접수번호한건삭제')
       .addSeparator()
