@@ -177,6 +177,8 @@ function 엑셀직접업로드창열기() {
  */
 function 직접업로드엑셀파싱(payload) {
   if (!_관리자여부()) throw new Error('관리자만 엑셀 파일을 등록할 수 있습니다.');
+  const 작업ID = String(payload && payload.jobId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  _업로드상태저장_(작업ID, 15, '파일을 서버에서 확인하고 있습니다.');
   const 파일명 = String(payload && payload.name || '').trim();
   if (!/\.xlsx$/i.test(파일명)) throw new Error('확장자가 .xlsx인 엑셀 파일만 등록할 수 있습니다.');
   const base64 = String(payload && payload.base64 || '');
@@ -194,7 +196,30 @@ function 직접업로드엑셀파싱(payload) {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     파일명
   );
-  return _엑셀파싱처리(blob, 파일명, false);
+  try {
+    return _엑셀파싱처리(blob, 파일명, false, 작업ID);
+  } catch (e) {
+    _업로드상태저장_(작업ID, -1, '처리 실패: ' + e.message);
+    throw e;
+  }
+}
+
+function _업로드상태저장_(작업ID, 진행률, 메시지) {
+  if (!작업ID) return;
+  try {
+    CacheService.getScriptCache().put(
+      'excel-upload-' + 작업ID,
+      JSON.stringify({ 진행률, 메시지, 시각: new Date().getTime() }),
+      600
+    );
+  } catch (e) { Logger.log('업로드 상태 저장 실패: ' + e.message); }
+}
+
+function 업로드진행상태조회(작업ID) {
+  const 안전ID = String(작업ID || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  if (!안전ID) return null;
+  const value = CacheService.getScriptCache().get('excel-upload-' + 안전ID);
+  return value ? JSON.parse(value) : null;
 }
 
 /**
@@ -215,7 +240,7 @@ function 직접업로드엑셀파싱(payload) {
  * 아래 코드는 형태 A (건별 세로형) 기준.
  * 형태 B를 받는다면 _파싱_가로형() 함수를 대신 호출하세요.
  */
-function _엑셀파싱처리(blob, 파일명, 알림표시) {
+function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 제목 = '__임시파싱__' + new Date().getTime();
   let 임시파일ID;
@@ -224,7 +249,9 @@ function _엑셀파싱처리(blob, 파일명, 알림표시) {
   const 건너뛴행 = [];
 
   try {
+    _업로드상태저장_(작업ID, 25, '엑셀 파일을 Google Sheets로 변환하고 있습니다.');
     임시파일ID = _엑셀을Sheets로변환(blob, 제목);
+    _업로드상태저장_(작업ID, 40, '변환된 파일의 시트 구성을 확인하고 있습니다.');
     const 임시SS = SpreadsheetApp.openById(임시파일ID);
     const 시트들 = 임시SS.getSheets();
 
@@ -256,6 +283,7 @@ function _엑셀파싱처리(blob, 파일명, 알림표시) {
     if (!기본탭) 기본탭 = 시트들[0];  // 못 찾으면 첫 탭
 
     // 1) 기본정보 탭 파싱 → 접수대장 등록 (제품명·접수번호 → 접수번호 매핑 보관)
+    _업로드상태저장_(작업ID, 52, '기본정보를 읽고 접수대장에 등록하고 있습니다.');
     // 전화번호·사업자번호의 선행 0을 보존하기 위해 표시 문자열로 읽는다.
     const 기본데이터 = 기본탭.getDataRange().getDisplayValues();
     const 제품명별접수번호 = {};
@@ -292,6 +320,7 @@ function _엑셀파싱처리(blob, 파일명, 알림표시) {
     }
 
     // 2) 핵심 기능 + 구현 명세 병합 파싱 (구형 통합 기능탭도 계속 지원)
+    _업로드상태저장_(작업ID, 70, '인공지능 기능 명세를 등록하고 있습니다.');
     if (핵심기능탭 || 구현명세탭) {
       const 핵심데이터 = 핵심기능탭 ? 핵심기능탭.getDataRange().getDisplayValues() : [];
       const 구현데이터 = 구현명세탭 ? 구현명세탭.getDataRange().getDisplayValues() : [];
@@ -302,12 +331,14 @@ function _엑셀파싱처리(blob, 파일명, 알림표시) {
     }
 
     // 3) 제품모델 탭 파싱 → 인공지능제품모델 등록 (세부품명번호가 여러 건인 경우)
+    _업로드상태저장_(작업ID, 84, '제품·서비스 모델 목록을 등록하고 있습니다.');
     if (모델탭) {
       const 모델데이터 = 모델탭.getDataRange().getDisplayValues();
       _제품모델탭파싱등록(모델데이터, 제품명별접수번호);
     }
 
   } finally {
+    _업로드상태저장_(작업ID, 94, '임시 변환 파일을 정리하고 있습니다.');
     if (임시파일ID) {
       try { DriveApp.getFileById(임시파일ID).setTrashed(true); } catch(e) {}
     }
@@ -325,6 +356,7 @@ function _엑셀파싱처리(blob, 파일명, 알림표시) {
   if (알림표시 !== false) {
     try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
   }
+  _업로드상태저장_(작업ID, 100, '등록이 완료되었습니다.');
   return msg;
 }
 

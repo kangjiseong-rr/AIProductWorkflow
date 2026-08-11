@@ -15,6 +15,9 @@
       button.primary { border-color: #1a73e8; background: #1a73e8; color: white; }
       button:disabled { opacity: .55; cursor: default; }
       .status { min-height: 40px; margin-top: 12px; white-space: pre-line; overflow-wrap: anywhere; font-size: 13px; line-height: 1.45; }
+      .progress { height: 8px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #e8eaed; }
+      .bar { width: 0; height: 100%; background: #1a73e8; transition: width .3s ease; }
+      .elapsed { margin-top: 5px; color: #5f6368; font-size: 12px; }
       .error { color: #b3261e; }
       .success { color: #137333; }
     </style>
@@ -27,6 +30,8 @@
         <div id="fileName" class="filename">선택된 파일 없음</div>
       </label>
       <input id="excelFile" name="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+      <div class="progress" aria-label="업로드 진행률"><div id="progressBar" class="bar"></div></div>
+      <div id="elapsed" class="elapsed"></div>
       <div id="status" class="status"></div>
       <div class="actions">
         <button type="button" onclick="google.script.host.close()">취소</button>
@@ -39,7 +44,13 @@
       const dropZone = document.getElementById('dropZone');
       const fileName = document.getElementById('fileName');
       const status = document.getElementById('status');
+      const progressBar = document.getElementById('progressBar');
+      const elapsed = document.getElementById('elapsed');
       const submitButton = document.getElementById('submitButton');
+      let running = false;
+      let startedAt = 0;
+      let elapsedTimer = null;
+      let pollTimer = null;
 
       function showFile() {
         const file = input.files && input.files[0];
@@ -69,31 +80,44 @@
         if (!/\.xlsx$/i.test(file.name)) return setError('.xlsx 파일만 등록할 수 있습니다.');
         if (file.size > 20 * 1024 * 1024) return setError('파일 크기는 20MB 이하여야 합니다.');
         submitButton.disabled = true;
+        running = true;
+        startedAt = Date.now();
+        updateProgress(2, '로컬 파일을 읽기 시작했습니다.');
+        elapsedTimer = setInterval(updateElapsed, 1000);
         status.className = 'status';
-        status.textContent = '업로드 및 파싱 중입니다. 창을 닫지 마세요…';
         const reader = new FileReader();
+        reader.onprogress = event => {
+          if (event.lengthComputable) updateProgress(2 + Math.round((event.loaded / event.total) * 10), '로컬 파일을 읽고 있습니다.');
+        };
         reader.onerror = () => {
-          submitButton.disabled = false;
+          finishTracking();
           setError('파일을 읽지 못했습니다. 다시 선택해 주세요.');
         };
         reader.onload = () => {
           const dataUrl = String(reader.result || '');
           const comma = dataUrl.indexOf(',');
           if (comma < 0) {
-            submitButton.disabled = false;
+            finishTracking();
             return setError('파일 내용을 변환하지 못했습니다.');
           }
+          const jobId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          updateProgress(12, '파일을 서버로 전송하고 있습니다.');
+          pollStatus(jobId);
           google.script.run
             .withSuccessHandler(message => {
+              finishTracking();
+              updateProgress(100, '등록이 완료되었습니다.');
               status.className = 'status success';
               status.textContent = message || '엑셀 등록이 완료되었습니다.';
               submitButton.textContent = '완료';
+              submitButton.disabled = true;
             })
             .withFailureHandler(error => {
-              submitButton.disabled = false;
+              finishTracking();
               setError(error && error.message ? error.message : String(error));
             })
             .직접업로드엑셀파싱({
+              jobId,
               name: file.name,
               mimeType: file.type,
               base64: dataUrl.slice(comma + 1),
@@ -104,6 +128,37 @@
       function setError(message) {
         status.className = 'status error';
         status.textContent = message;
+      }
+      function updateProgress(percent, message) {
+        progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        if (message) status.textContent = message;
+      }
+      function updateElapsed() {
+        if (!startedAt) return;
+        const seconds = Math.floor((Date.now() - startedAt) / 1000);
+        elapsed.textContent = seconds >= 90
+          ? `경과시간 ${seconds}초 · 오래 걸리고 있습니다. 창을 닫고 재시도하기 전에 시트 등록 여부를 먼저 확인하세요.`
+          : `경과시간 ${seconds}초 · 서버 변환 단계는 파일 크기와 Google 상태에 따라 시간이 걸릴 수 있습니다.`;
+      }
+      function pollStatus(jobId) {
+        if (!running) return;
+        google.script.run
+          .withSuccessHandler(state => {
+            if (!running) return;
+            if (state && Number(state.진행률) >= 0) updateProgress(Number(state.진행률), state.메시지);
+            pollTimer = setTimeout(() => pollStatus(jobId), 1200);
+          })
+          .withFailureHandler(() => {
+            if (running) pollTimer = setTimeout(() => pollStatus(jobId), 2000);
+          })
+          .업로드진행상태조회(jobId);
+      }
+      function finishTracking() {
+        running = false;
+        submitButton.disabled = false;
+        if (elapsedTimer) clearInterval(elapsedTimer);
+        if (pollTimer) clearTimeout(pollTimer);
+        updateElapsed();
       }
     </script>
   </body>
