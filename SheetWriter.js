@@ -47,6 +47,109 @@ function _다음고정순번(시트) {
   return Math.max(기존최대, 기존데이터행수) + 1;
 }
 
+/**
+ * 접수번호 하나를 정확히 입력받아 해당 건의 운영 데이터만 일괄 삭제한다.
+ * Drive 원본·보고서·폴더와 파싱로그는 삭제하지 않는다.
+ */
+function 접수번호한건삭제() {
+  const ui = SpreadsheetApp.getUi();
+  if (!_관리자여부()) {
+    ui.alert('관리자만 접수 건을 삭제할 수 있습니다.');
+    return;
+  }
+
+  const 입력 = ui.prompt(
+    '접수번호 1건 삭제',
+    '삭제할 접수번호를 정확히 입력하세요.\n접수대장·일정관리·인공지능제품모델·인공지능기능상세의 일치 행이 함께 삭제됩니다.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (입력.getSelectedButton() !== ui.Button.OK) return;
+  const 접수번호 = String(입력.getResponseText() || '').trim();
+  if (!접수번호) {
+    ui.alert('접수번호를 입력하지 않아 삭제하지 않았습니다.');
+    return;
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 대상시트명 = [SHEET.접수대장, SHEET.일정관리, SHEET.제품모델, SHEET.AI기능상세];
+  const 조회 = _접수번호삭제대상조회_(ss, 접수번호, 대상시트명);
+  const 대장 = 조회[SHEET.접수대장];
+  if (!대장 || !대장.행번호.length) {
+    ui.alert(`접수대장에서 일치하는 접수번호를 찾지 못했습니다: ${접수번호}`);
+    return;
+  }
+
+  const 기업명 = 대장.첫행객체.기업명 || '-';
+  const 제품명 = 대장.첫행객체.제품명 || '-';
+  const 내역 = 대상시트명.map(이름 => `${이름}: ${(조회[이름] && 조회[이름].행번호.length) || 0}행`).join('\n');
+  const 확인 = ui.alert(
+    '⚠️ 접수 건 삭제 최종 확인',
+    `접수번호: ${접수번호}\n기업명: ${기업명}\n제품명: ${제품명}\n\n${내역}\n\nDrive 원본 파일과 보고서 폴더는 삭제하지 않습니다. 이 운영 데이터를 삭제할까요?`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (확인 !== ui.Button.OK) return;
+
+  const 잠금 = LockService.getDocumentLock();
+  if (!잠금.tryLock(10000)) {
+    ui.alert('다른 작업이 실행 중이어서 삭제하지 않았습니다. 잠시 후 다시 시도하세요.');
+    return;
+  }
+
+  try {
+    // 확인 이후 변경 가능성을 막기 위해 잠금 상태에서 삭제 대상을 다시 조회한다.
+    const 최종조회 = _접수번호삭제대상조회_(ss, 접수번호, 대상시트명);
+    if (!최종조회[SHEET.접수대장] || !최종조회[SHEET.접수대장].행번호.length) {
+      throw new Error('최종 확인 중 접수대장 행이 사라져 삭제를 중단했습니다.');
+    }
+
+    // 자식 데이터부터 지우고 접수대장을 마지막에 삭제한다.
+    [SHEET.AI기능상세, SHEET.제품모델, SHEET.일정관리, SHEET.접수대장].forEach(이름 => {
+      const 대상 = 최종조회[이름];
+      if (!대상) return;
+      대상.행번호.slice().sort((a, b) => b - a).forEach(행번호 => 대상.시트.deleteRow(행번호));
+    });
+
+    const 삭제건수 = 대상시트명.map(이름 => `${이름} ${(최종조회[이름] && 최종조회[이름].행번호.length) || 0}행`).join(', ');
+    const 로그시트 = ss.getSheetByName(SHEET.로그);
+    if (로그시트) {
+      로그시트.appendRow([
+        Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+        '관리자 메뉴', 접수번호, '수동삭제',
+        `${삭제건수} / 실행자: ${Session.getActiveUser().getEmail() || '(확인 불가)'}`,
+      ]);
+    }
+    ui.alert(`삭제 완료: ${접수번호}\n${삭제건수}\n\nDrive 원본 파일과 보고서 폴더는 유지했습니다.`);
+  } catch (e) {
+    Logger.log('접수번호 삭제 실패: ' + (e && e.stack ? e.stack : e));
+    ui.alert('접수 건 삭제 중 오류가 발생했습니다: ' + e.message + '\n시트 버전 기록을 확인하세요.');
+  } finally {
+    잠금.releaseLock();
+  }
+}
+
+function _접수번호삭제대상조회_(ss, 접수번호, 대상시트명) {
+  const 결과 = {};
+  대상시트명.forEach(이름 => {
+    const 시트 = ss.getSheetByName(이름);
+    if (!시트 || 시트.getLastRow() < 1) return;
+    const 데이터 = 시트.getDataRange().getDisplayValues();
+    const 헤더 = 데이터[0].map(v => String(v).trim());
+    const 접수번호열 = 헤더.indexOf('접수번호');
+    if (접수번호열 < 0) return;
+    const 행번호 = [];
+    let 첫행객체 = {};
+    for (let r = 1; r < 데이터.length; r++) {
+      if (String(데이터[r][접수번호열]).trim() !== 접수번호) continue;
+      행번호.push(r + 1);
+      if (!Object.keys(첫행객체).length) {
+        헤더.forEach((h, c) => { if (h) 첫행객체[h] = 데이터[r][c]; });
+      }
+    }
+    결과[이름] = { 시트, 행번호, 첫행객체 };
+  });
+  return 결과;
+}
+
 function 제품모델등록(접수번호, 모델목록) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.제품모델);
