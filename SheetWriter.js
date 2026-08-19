@@ -155,7 +155,7 @@ function _접수번호삭제대상조회_(ss, 접수번호, 대상시트명) {
   return 결과;
 }
 
-function 제품모델등록(접수번호, 모델목록) {
+function 제품모델등록(접수번호, 모델목록, 접수건옵션) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.제품모델);
 
@@ -172,7 +172,7 @@ function 제품모델등록(접수번호, 모델목록) {
 
   const 헤더행 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0]
     .map(v => String(v).trim());
-  const 접수건 = _건조회(ss, 접수번호) || {};
+  const 접수건 = 접수건옵션 || _건조회(ss, 접수번호) || {};
   let 다음순번 = _다음고정순번(시트);
   모델목록.forEach((m, i) => {
     const 값맵 = {
@@ -286,7 +286,7 @@ function _접수대장기능수갱신(접수번호, 기능목록) {
 // ─────────────────────────────────────────────
 // 3. Sheets 등록 — 접수대장 + 일정관리 기록
 // ─────────────────────────────────────────────
-function _Sheets에등록(건, 파일명) {
+function _Sheets에등록(건, 파일명, 등록컨텍스트) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   // 접수번호는 KOSA가 부여한 신청번호(예: AI202600001)를 그대로 키로 사용.
@@ -382,7 +382,7 @@ function _Sheets에등록(건, 파일명) {
     접수일자: 건.접수일자 || '',
     심사접수일: Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd'),
     담당심사원: 담당자,   // 최초 배분값 (이후 일정관리에서 직접 수정 가능)
-  });
+  }, 등록컨텍스트 && 등록컨텍스트.일정관리);
 
   // ── 로그 ──
   ss.getSheetByName(SHEET.로그).appendRow([
@@ -400,7 +400,7 @@ function _Sheets에등록(건, 파일명) {
 // ─────────────────────────────────────────────
 // 4. AI기능상세 등록 (별도 실행 또는 파싱 시 자동 호출)
 // ─────────────────────────────────────────────
-function AI기능상세등록(접수번호, 기능목록) {
+function AI기능상세등록(접수번호, 기능목록, 접수건옵션) {
   /**
    * 기능목록 예시:
    * [
@@ -425,7 +425,7 @@ function AI기능상세등록(접수번호, 기능목록) {
   // 헤더 이름 기반 쓰기 — 시트 컬럼 순서와 무관하게 올바른 칸에 기록
   const 헤더행 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0]
     .map(v => String(v).trim());
-  const 접수건 = _건조회(ss, 접수번호) || {};
+  const 접수건 = 접수건옵션 || _건조회(ss, 접수번호) || {};
   let 다음순번 = _다음고정순번(시트);
   기능목록.forEach(f => {
     const 값맵 = {

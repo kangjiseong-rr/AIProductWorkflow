@@ -213,19 +213,30 @@ function _hexToRgb_(hex) {
  * 접수번호와 대상 컬럼의 실제 헤더 위치를 각각 찾아 수식을 만들므로,
  * 순번을 A열로 옮기거나 컬럼 순서를 바꿔도 정상 참조합니다.
  */
-function _일정관리행추가(ss, 접수번호, 직접값) {
+/** 한 번의 다건 등록 동안 일정관리 중복 검사에 재사용할 인덱스를 만든다. */
+function _일정관리등록컨텍스트생성(ss) {
   const 일정시트 = ss.getSheetByName(SHEET.일정관리);
-  const 기존데이터 = 일정시트.getDataRange().getDisplayValues();
-  const 기존헤더 = 기존데이터[0].map(v => String(v).trim());
-  const 기존접수번호열 = 기존헤더.indexOf('접수번호');
-  if (기존접수번호열 >= 0) {
-    const 기존행 = 기존데이터.slice(1).findIndex(행 =>
-      String(행[기존접수번호열]).trim() === String(접수번호).trim()
-    );
-    if (기존행 >= 0) {
-      Logger.log(`일정관리 기존 행 유지 - append 생략: ${접수번호} (${기존행 + 2}행)`);
-      return { 신규: false, 행번호: 기존행 + 2 };
+  const 데이터 = 일정시트.getDataRange().getDisplayValues();
+  const 헤더 = (데이터[0] || []).map(v => String(v).trim());
+  const 접수번호열 = 헤더.indexOf('접수번호');
+  const 접수번호행맵 = new Map();
+  if (접수번호열 >= 0) {
+    for (let r = 1; r < 데이터.length; r++) {
+      const 번호 = String(데이터[r][접수번호열] || '').trim();
+      if (번호 && !접수번호행맵.has(번호)) 접수번호행맵.set(번호, r + 1);
     }
+  }
+  return { 접수번호행맵 };
+}
+
+function _일정관리행추가(ss, 접수번호, 직접값, 등록컨텍스트) {
+  const 일정시트 = ss.getSheetByName(SHEET.일정관리);
+  const 컨텍스트 = 등록컨텍스트 || _일정관리등록컨텍스트생성(ss);
+  const 정규화접수번호 = String(접수번호).trim();
+  if (컨텍스트.접수번호행맵.has(정규화접수번호)) {
+    const 기존행번호 = 컨텍스트.접수번호행맵.get(정규화접수번호);
+    Logger.log(`일정관리 기존 행 유지 - append 생략: ${접수번호} (${기존행번호}행)`);
+    return { 신규: false, 행번호: 기존행번호 };
   }
   const 신청연도 = _날짜연도_(직접값.접수일자) || new Date().getFullYear();
   _공휴일연도확보_(ss, [신청연도, 신청연도 + 1]);
@@ -282,6 +293,7 @@ function _일정관리행추가(ss, 접수번호, 직접값) {
   });
 
   일정시트.appendRow(행값);
+  컨텍스트.접수번호행맵.set(정규화접수번호, 새행번호);
   try {
     _일정관리서식적용_(일정시트, true);
   } catch (e) {
@@ -481,6 +493,33 @@ function _마감예정일수식갱신_(ss) {
       .setNumberFormat('yy-mm-dd');
   }
   return 행수;
+}
+
+/**
+ * 기존 일정 행의 값·수식은 건드리지 않고, 계산에 필요한 공휴일 연도만 확보한다.
+ * 엑셀 등록 뒤 전체 마감 수식을 다시 쓰지 않으면서 장기 진행 건의 연도 범위를 보완한다.
+ */
+function _일정관리공휴일연도만확보_(ss) {
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  const 현재연도 = new Date().getFullYear();
+  const 연도집합 = new Set([현재연도, 현재연도 + 1]);
+  if (시트 && 시트.getLastRow() >= 2) {
+    const 데이터 = 시트.getDataRange().getValues();
+    const 헤더 = 데이터[0].map(v => String(v).trim());
+    const 날짜열들 = ['접수일자', '심사접수일', '보완요청일']
+      .map(h => 헤더.indexOf(h)).filter(i => i >= 0);
+    for (let r = 1; r < 데이터.length; r++) {
+      날짜열들.forEach(c => {
+        const 연도 = _날짜연도_(데이터[r][c]);
+        if (연도) {
+          연도집합.add(연도);
+          연도집합.add(연도 + 1);
+        }
+      });
+    }
+  }
+  _공휴일연도확보_(ss, Array.from(연도집합));
+  return 연도집합.size;
 }
 
 /** 관리자 수동 실행용: 공휴일과 기존 마감예정일 수식을 즉시 갱신 */

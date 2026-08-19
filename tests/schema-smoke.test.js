@@ -76,15 +76,32 @@ const normalized = [
   포매터.전화번호정규화(1012345678),
   포매터.전화번호정규화(221886980),
   포매터.전화번호정규화(311234567),
+  포매터.전화번호정규화(111234567),
+  포매터.전화번호정규화(161234567),
+  포매터.전화번호정규화(7012345678),
   포매터.전화번호정규화(15881234),
 ];
 const expected = [
   '1234567890', '0221886980', '01012345678',
-  '0123456789', '01012345678', '0221886980', '0311234567', '15881234',
+  '0123456789', '01012345678', '0221886980', '0311234567',
+  '0111234567', '0161234567', '07012345678', '15881234',
 ];
 if (JSON.stringify(normalized) !== JSON.stringify(expected)) {
   throw new Error(`번호 정규화 실패: ${JSON.stringify(normalized)}`);
 }
+
+const jsonPathExpectations = {
+  '제공형태기타': 'serviceInfo.serviceTypeEtc',
+  '제품분류기타': 'serviceInfo.aiTechCategoryEtc',
+  '서비스도메인': 'serviceInfo.serviceDomain',
+  '최종신청동의여부': 'agreements.finalSubmissionConsent',
+};
+Object.entries(jsonPathExpectations).forEach(([sheetColumn, expectedPath]) => {
+  const definition = 필드정의.find(f => f.sheetColumn === sheetColumn);
+  if (!definition || definition.path !== expectedPath || Object.prototype.hasOwnProperty.call(definition, 'fixedValue')) {
+    throw new Error(`JSON 필드 경로 설정 실패: ${sheetColumn}`);
+  }
+});
 
 const 핵심 = [
   ['신청번호', '기능번호', '기능명', '인공지능의 역할', '입력 데이터', '출력 데이터', '매뉴얼 참조 위치'],

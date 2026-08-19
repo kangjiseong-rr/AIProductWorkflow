@@ -289,7 +289,7 @@ function _증적명세서Docs생성(ss, 건) {
       ];
       const 기능명세표 = body.appendTable(표);
       _명세표헤더(기능명세표);
-      _두열표스타일(기능명세표, _cm(4), _cm(13));
+      _두열표스타일(기능명세표, _cm(4), _cm(13), true);
     });
   } else {
     body.appendParagraph('(인공지능 기능 데이터 없음)').editAsText().setForegroundColor('#9aa0a6');
@@ -456,7 +456,6 @@ function _기능세부표스타일(table) {
       const cell = row.getCell(c);
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
       if (widths[c]) cell.setWidth(widths[c]);
-      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
       if (c === 0 || c === 1) {
         _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
       } else {
@@ -467,7 +466,7 @@ function _기능세부표스타일(table) {
   _모든표공통스타일_(table);
 }
 
-function _두열표스타일(table, firstWidth, secondWidth) {
+function _두열표스타일(table, firstWidth, secondWidth, 첫행헤더) {
   const widths = [firstWidth, secondWidth];
   for (let r = 0; r < table.getNumRows(); r++) {
     const row = table.getRow(r);
@@ -475,8 +474,7 @@ function _두열표스타일(table, firstWidth, secondWidth) {
       const cell = row.getCell(c);
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
       if (widths[c]) cell.setWidth(widths[c]);
-      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
-      if (r === 0 || c === 0) {
+      if ((첫행헤더 === true && r === 0) || c === 0) {
         cell.editAsText().setBold(true);
         _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
       } else {
@@ -495,7 +493,6 @@ function _심사결과표스타일(table) {
       const cell = row.getCell(c);
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
       if (widths[c]) cell.setWidth(widths[c]);
-      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
       _셀문단정렬(
         cell,
         r === 0 || (c !== 1 && c !== 3)
@@ -624,7 +621,8 @@ function _명세표(body, 행들) {
       }
     }
   }
-  _두열표스타일(t, _cm(4), _cm(13));
+  // 명세표는 모든 행이 "항목명 / 값" 구조이며 첫 행도 헤더가 아니다.
+  _두열표스타일(t, _cm(4), _cm(13), false);
   return t;
 }
 

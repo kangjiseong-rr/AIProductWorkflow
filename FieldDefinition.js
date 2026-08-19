@@ -35,8 +35,7 @@
  *                     | 'date' | 'joinField' | 'index1' — JSON 변환에만 적용.
  *   - required      : 문서화 목적 메타데이터 (입력폼_명세서.md 기준 필수여부). 현재는
  *                     구조 검증에는 쓰이지 않고 향후 필드 단위 검증을 붙일 때 참조하는 용도
- *   - formatter     : type 처리 후 추가로 적용할 포매터의 키 이름 (예: 사업자번호 재포맷).
- *                     JSON 변환에만 적용.
+ *   - formatter     : 입력값에 공통 적용할 포매터의 키 이름 (예: 사업자번호 재포맷).
  *   - fixedValue    : path 없이 항상 고정값을 쓰는 경우(첨부파일 등, 관리자 결정으로 제외).
  *                     JSON 변환에만 적용 — 엑셀은 excelAliases로 별도 값을 읽을 수 있다.
  * ============================================================
@@ -79,7 +78,7 @@ const 코드값매핑표 = {
 };
 
 // ─────────────────────────────────────────────
-// 3. 개별 포매터 (범용 type으로 표현하기 어려운 경우만, JSON 변환 전용)
+// 3. 개별 포매터 (범용 type으로 표현하기 어려운 경우만, Excel·JSON 공용)
 // ─────────────────────────────────────────────
 const 포매터 = {
   사업자번호정규화(값) {
@@ -92,12 +91,21 @@ const 포매터 = {
     if (!숫자 || 숫자.startsWith('0')) return 숫자;
     // Excel이 숫자 셀로 내보내 선행 0을 없앤 국내 휴대전화·지역번호만 복원한다.
     // 15xx/16xx/18xx 대표번호처럼 원래 0으로 시작하지 않는 번호는 그대로 둔다.
-    if (/^10\d{8}$/.test(숫자)) return '0' + 숫자;
+    if (/^1(?:0|1|6|7|8|9)\d{7,8}$/.test(숫자)) return '0' + 숫자;
     if (/^2\d{7,8}$/.test(숫자)) return '0' + 숫자;
     if (/^(3[1-3]|4[1-4]|5[1-5]|6[1-4])\d{7,8}$/.test(숫자)) return '0' + 숫자;
+    if (/^(5|7|8)0\d{7,8}$/.test(숫자)) return '0' + 숫자;
     return 숫자;
   },
 };
+
+/** Excel·JSON 어댑터가 공유하는 formatter 디스패처. */
+function _정의포매터적용(정의, 값, 원본객체) {
+  if (정의 && 정의.formatter && 포매터[정의.formatter]) {
+    return 포매터[정의.formatter](값, 원본객체 || null, 정의);
+  }
+  return 값;
+}
 
 // ─────────────────────────────────────────────
 // 4. "건" 객체 필드 정의 — 접수대장/일정관리 공용 (_Sheets에등록이 참조하는 키와 동일)
@@ -164,9 +172,9 @@ const 필드정의 = [
     sheetColumn: '개요', path: 'serviceInfo.productSummary', required: true,
     excelAliases: ['개요'],
   },
-  { sheetColumn: '제공형태기타', fixedValue: '', required: false, excelAliases: ['제공형태 기타'] },
-  { sheetColumn: '제품분류기타', fixedValue: '', required: false, excelAliases: ['제품 서비스 분류 기타'] },
-  { sheetColumn: '서비스도메인', fixedValue: '', required: false, excelAliases: ['서비스도메인'] },
+  { sheetColumn: '제공형태기타', path: 'serviceInfo.serviceTypeEtc', required: false, excelAliases: ['제공형태 기타'] },
+  { sheetColumn: '제품분류기타', path: 'serviceInfo.aiTechCategoryEtc', required: false, excelAliases: ['제품 서비스 분류 기타'] },
+  { sheetColumn: '서비스도메인', path: 'serviceInfo.serviceDomain', required: false, excelAliases: ['서비스도메인'] },
   {
     sheetColumn: '인공지능적용목적', path: 'serviceInfo.aiTechPurpose', required: true,
     excelAliases: ['인공지능 적용 목적', 'AI 적용 목적', '인공지능적용목적'],
@@ -205,7 +213,7 @@ const 필드정의 = [
     excelAliases: ['열람이용동의', '열람·이용동의', '열람이용동의여부'],
   },
   {
-    sheetColumn: '최종신청동의여부', fixedValue: '', required: true,
+    sheetColumn: '최종신청동의여부', path: 'agreements.finalSubmissionConsent', type: 'boolean', required: true,
     excelAliases: ['최종신청동의'],
   },
   {
