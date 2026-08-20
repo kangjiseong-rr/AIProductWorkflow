@@ -17,6 +17,9 @@ const mainSource = fs.readFileSync(path.join(root, 'Main.js'), 'utf8');
 if (!/if \(이름 === SHEET\.일정관리\) \{\s*_일정관리서식적용_\(시트, true\);/.test(mainSource)) {
   throw new Error('일정관리 신규 컬럼 추가 후 표 서식 확장 처리가 없습니다.');
 }
+if (!/if \(!예정\.length\) \{[\s\S]*?_일정관리서식적용_\(일정시트, true\);/.test(mainSource)) {
+  throw new Error('기존 일정관리 컬럼의 표 서식 새로고침 처리가 없습니다.');
+}
 const context = { console };
 const reportSource = fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8');
 for (const section of [

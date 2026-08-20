@@ -289,7 +289,9 @@ function 안전컬럼갱신() {
 
   const ui = SpreadsheetApp.getUi();
   if (!예정.length) {
-    ui.alert('추가할 컬럼이 없습니다. 현재 헤더가 최신 상태입니다.');
+    const 일정시트 = ss.getSheetByName(SHEET.일정관리);
+    if (일정시트) _일정관리서식적용_(일정시트, true);
+    ui.alert('추가할 컬럼이 없습니다. 현재 헤더가 최신 상태이며 일정관리 표 서식을 새로고침했습니다.');
     return [];
   }
   const 응답 = ui.alert(
