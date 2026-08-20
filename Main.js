@@ -188,6 +188,13 @@ const 시트헤더이름변경정의 = {
   [SHEET.일정관리]: { '신청일': '접수일자' },
 };
 
+/** 내용이 많은 운영 목록 시트의 헤더·본문을 9pt로 통일한다. */
+function _운영목록9pt적용_(시트) {
+  if (!시트) return;
+  const 마지막열 = Math.max(1, 시트.getLastColumn());
+  시트.getRange(1, 1, Math.max(1, 시트.getMaxRows()), 마지막열).setFontSize(9);
+}
+
 // 구버전 시트명 → 신버전 시트명 (탭 이름만 바꿔서 기존 데이터 그대로 보존)
 const 시트이름마이그레이션맵 = {
   'AI기능상세': SHEET.AI기능상세,
@@ -251,6 +258,8 @@ function 헤더마이그레이션() {
       // 기존 열과 동일한 헤더·본문 표시 서식을 적용한다. 값·수식은 변경하지 않는다.
       if (이름 === SHEET.일정관리) {
         _일정관리서식적용_(시트, true);
+      } else if (이름 === SHEET.접수대장 || 이름 === SHEET.AI기능상세) {
+        _운영목록9pt적용_(시트);
       }
     }
   });
@@ -291,7 +300,9 @@ function 안전컬럼갱신() {
   if (!예정.length) {
     const 일정시트 = ss.getSheetByName(SHEET.일정관리);
     if (일정시트) _일정관리서식적용_(일정시트, true);
-    ui.alert('추가할 컬럼이 없습니다. 현재 헤더가 최신 상태이며 일정관리 표 서식을 새로고침했습니다.');
+    _운영목록9pt적용_(ss.getSheetByName(SHEET.접수대장));
+    _운영목록9pt적용_(ss.getSheetByName(SHEET.AI기능상세));
+    ui.alert('추가할 컬럼이 없습니다. 현재 헤더가 최신 상태이며 운영 시트 서식을 새로고침했습니다.');
     return [];
   }
   const 응답 = ui.alert(
@@ -462,6 +473,9 @@ function 초기설정실행() {
       .build();
     대장판정범위.setDataValidation(대장판정규칙);
   }
+
+  _운영목록9pt적용_(대장시트);
+  _운영목록9pt적용_(ss.getSheetByName(SHEET.AI기능상세));
 
   SpreadsheetApp.getUi().alert('초기설정 완료! 심사원관리·배정알림로그를 포함한 시트 구성이 갱신되었습니다.');
 }

@@ -21,7 +21,10 @@ function _테이블행추가(sheet, 값배열, 헤더행, 텍스트헤더목록)
       if (열 > 0) sheet.getRange(대상행, 열).setNumberFormat('@');
     });
   }
-  sheet.getRange(대상행, 1, 1, 값배열.length).setValues([값배열]);
+  const 대상범위 = sheet.getRange(대상행, 1, 1, 값배열.length).setValues([값배열]);
+  if (sheet.getName() === SHEET.접수대장 || sheet.getName() === SHEET.AI기능상세) {
+    대상범위.setFontSize(9);
+  }
   return 대상행;
 }
 

@@ -20,6 +20,11 @@ if (!/if \(이름 === SHEET\.일정관리\) \{\s*_일정관리서식적용_\(시
 if (!/if \(!예정\.length\) \{[\s\S]*?_일정관리서식적용_\(일정시트, true\);/.test(mainSource)) {
   throw new Error('기존 일정관리 컬럼의 표 서식 새로고침 처리가 없습니다.');
 }
+if (!mainSource.includes('function _운영목록9pt적용_') ||
+    !mainSource.includes('_운영목록9pt적용_(ss.getSheetByName(SHEET.접수대장))') ||
+    !mainSource.includes('_운영목록9pt적용_(ss.getSheetByName(SHEET.AI기능상세))')) {
+  throw new Error('접수대장·인공지능기능상세의 9pt 서식 설정이 없습니다.');
+}
 const scheduleSource = fs.readFileSync(path.join(root, 'Schedule.js'), 'utf8');
 if (!/getRange\(1, 1, Math\.max\(1, 시트\.getMaxRows\(\)\), lastCol\)\s*\.setFontSize\(9\)/.test(scheduleSource)) {
   throw new Error('일정관리 전체 범위의 9pt 글꼴 설정이 없습니다.');
