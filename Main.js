@@ -247,6 +247,11 @@ function 헤더마이그레이션() {
       추가내역.push(`${이름}: ${누락.join(', ')}`);
       기존 = 시트.getRange(1, 1, 1, 시트.getLastColumn())
         .getValues()[0].map(v => String(v).trim());
+      // 일정관리의 Google Sheets 표 범위를 신규 열까지 확장하고,
+      // 기존 열과 동일한 헤더·본문 표시 서식을 적용한다. 값·수식은 변경하지 않는다.
+      if (이름 === SHEET.일정관리) {
+        _일정관리서식적용_(시트, true);
+      }
     }
   });
   if (추가내역.length) {

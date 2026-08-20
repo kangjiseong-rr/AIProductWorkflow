@@ -7,6 +7,16 @@ const parserSource = fs.readFileSync(path.join(root, 'ExcelParser.js'), 'utf8');
 if (!/function _엑셀파싱처리\([^)]*\)\s*\{\s*const ss = SpreadsheetApp\.getActiveSpreadsheet\(\);/.test(parserSource)) {
   throw new Error('_엑셀파싱처리의 활성 스프레드시트 선언이 없습니다.');
 }
+const uploadSource = fs.readFileSync(path.join(root, 'ExcelUpload.html'), 'utf8');
+if (!uploadSource.includes("submitButton.type = 'button'") ||
+    !uploadSource.includes('submitButton.disabled = false') ||
+    !uploadSource.includes('google.script.host.close()')) {
+  throw new Error('엑셀 업로드 완료 버튼의 활성화·닫기 처리가 없습니다.');
+}
+const mainSource = fs.readFileSync(path.join(root, 'Main.js'), 'utf8');
+if (!/if \(이름 === SHEET\.일정관리\) \{\s*_일정관리서식적용_\(시트, true\);/.test(mainSource)) {
+  throw new Error('일정관리 신규 컬럼 추가 후 표 서식 확장 처리가 없습니다.');
+}
 const context = { console };
 const reportSource = fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8');
 for (const section of [

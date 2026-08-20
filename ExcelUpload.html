@@ -34,7 +34,7 @@
       <div id="elapsed" class="elapsed"></div>
       <div id="status" class="status"></div>
       <div class="actions">
-        <button type="button" onclick="google.script.host.close()">취소</button>
+        <button id="cancelButton" type="button" onclick="google.script.host.close()">취소</button>
         <button id="submitButton" class="primary" type="submit">업로드·등록</button>
       </div>
     </form>
@@ -46,6 +46,7 @@
       const status = document.getElementById('status');
       const progressBar = document.getElementById('progressBar');
       const elapsed = document.getElementById('elapsed');
+      const cancelButton = document.getElementById('cancelButton');
       const submitButton = document.getElementById('submitButton');
       let running = false;
       let startedAt = 0;
@@ -110,7 +111,10 @@
               status.className = 'status success';
               status.textContent = message || '엑셀 등록이 완료되었습니다.';
               submitButton.textContent = '완료';
-              submitButton.disabled = true;
+              submitButton.type = 'button';
+              submitButton.disabled = false;
+              submitButton.onclick = () => google.script.host.close();
+              cancelButton.hidden = true;
             })
             .withFailureHandler(error => {
               finishTracking();
