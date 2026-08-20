@@ -72,6 +72,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
 
   시트.setRowHeight(1, 34);
   시트.getRange(1, 1, Math.max(1, 시트.getMaxRows()), lastCol)
+    .setFontSize(9)
     .setVerticalAlignment('middle');
   시트.getRange(2, 1, Math.max(1, 시트.getMaxRows() - 1), lastCol)
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
