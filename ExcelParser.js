@@ -125,7 +125,7 @@ function _정의찾기(정의배열, sheetColumn) {
 function 엑셀파싱등록() {
   const ui = SpreadsheetApp.getUi();
   const response = ui.prompt(
-    '엑셀 파일 등록',
+    'Drive 링크로 엑셀 등록',
     '엑셀 파일 ID 또는 공유 URL을 입력하세요.\n' +
     '(Drive 링크, Sheets 링크 모두 가능합니다.)\n\n' +
     '※ 주의: 스크립트를 실행하는 구글 계정이 해당 파일에 접근할 권한이 있어야 합니다.',
@@ -154,8 +154,72 @@ function 엑셀파싱등록() {
     const blob = file.getBlob();
     _엑셀파싱처리(blob, file.getName());
   } catch (e) {
-    ui.alert('파일을 찾을 수 없습니다: ' + e.message);
+    Logger.log('엑셀 파일 등록 실패: ' + (e && e.stack ? e.stack : e));
+    ui.alert('엑셀 파일 등록 중 오류가 발생했습니다: ' + e.message);
   }
+}
+
+/** 로컬 PC의 .xlsx 파일을 선택하거나 끌어다 놓는 기본 업로드 창. */
+function 엑셀직접업로드창열기() {
+  if (!_관리자여부()) {
+    SpreadsheetApp.getUi().alert('관리자만 엑셀 파일을 등록할 수 있습니다.');
+    return;
+  }
+  const html = HtmlService.createHtmlOutputFromFile('ExcelUpload')
+    .setWidth(520)
+    .setHeight(360);
+  SpreadsheetApp.getUi().showModalDialog(html, '엑셀 파일 직접 업로드');
+}
+
+/**
+ * HTML 업로드 폼에서 전달된 Blob을 바로 파싱한다.
+ * 원본 파일은 Drive에 저장하지 않으며, 변환용 임시 Google Sheets는 파싱 후 휴지통으로 이동한다.
+ */
+function 직접업로드엑셀파싱(payload) {
+  if (!_관리자여부()) throw new Error('관리자만 엑셀 파일을 등록할 수 있습니다.');
+  const 작업ID = String(payload && payload.jobId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  _업로드상태저장_(작업ID, 15, '파일을 서버에서 확인하고 있습니다.');
+  const 파일명 = String(payload && payload.name || '').trim();
+  if (!/\.xlsx$/i.test(파일명)) throw new Error('확장자가 .xlsx인 엑셀 파일만 등록할 수 있습니다.');
+  const base64 = String(payload && payload.base64 || '');
+  if (!base64) throw new Error('업로드된 파일 내용이 없습니다.');
+  let bytes;
+  try {
+    bytes = Utilities.base64Decode(base64);
+  } catch (e) {
+    throw new Error('업로드 파일을 해석하지 못했습니다. 다시 선택해 주세요.');
+  }
+  const 최대크기 = 20 * 1024 * 1024;
+  if (bytes.length > 최대크기) throw new Error('파일 크기는 20MB 이하여야 합니다.');
+  const blob = Utilities.newBlob(
+    bytes,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    파일명
+  );
+  try {
+    return _엑셀파싱처리(blob, 파일명, false, 작업ID);
+  } catch (e) {
+    _업로드상태저장_(작업ID, -1, '처리 실패: ' + e.message);
+    throw e;
+  }
+}
+
+function _업로드상태저장_(작업ID, 진행률, 메시지) {
+  if (!작업ID) return;
+  try {
+    CacheService.getScriptCache().put(
+      'excel-upload-' + 작업ID,
+      JSON.stringify({ 진행률, 메시지, 시각: new Date().getTime() }),
+      600
+    );
+  } catch (e) { Logger.log('업로드 상태 저장 실패: ' + e.message); }
+}
+
+function 업로드진행상태조회(작업ID) {
+  const 안전ID = String(작업ID || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  if (!안전ID) return null;
+  const value = CacheService.getScriptCache().get('excel-upload-' + 안전ID);
+  return value ? JSON.parse(value) : null;
 }
 
 /**
@@ -176,7 +240,8 @@ function 엑셀파싱등록() {
  * 아래 코드는 형태 A (건별 세로형) 기준.
  * 형태 B를 받는다면 _파싱_가로형() 함수를 대신 호출하세요.
  */
-function _엑셀파싱처리(blob, 파일명) {
+function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 제목 = '__임시파싱__' + new Date().getTime();
   let 임시파일ID;
   let 등록건수 = 0;
@@ -184,43 +249,66 @@ function _엑셀파싱처리(blob, 파일명) {
   const 건너뛴행 = [];
 
   try {
+    _업로드상태저장_(작업ID, 25, '엑셀 파일을 Google Sheets로 변환하고 있습니다.');
     임시파일ID = _엑셀을Sheets로변환(blob, 제목);
+    _업로드상태저장_(작업ID, 40, '변환된 파일의 시트 구성을 확인하고 있습니다.');
     const 임시SS = SpreadsheetApp.openById(임시파일ID);
     const 시트들 = 임시SS.getSheets();
 
-    // 탭 분류: 기능상세 탭(이름에 '기능' 포함), 제품모델 탭(이름에 '모델' 포함), 나머지 기본정보 탭
+    // 확정 신청폼(2026-08-05) 기준 탭 분류.
+    // 핵심 기능과 구현 명세는 별도 탭이므로 신청번호+기능번호로 병합한 뒤 등록한다.
     let 기본탭 = null;
-    let 기능탭 = null;
+    let 핵심기능탭 = null;
+    let 구현명세탭 = null;
+    let 구형기능탭 = null;
     let 모델탭 = null;
     시트들.forEach(sh => {
       const 이름 = sh.getName();
-      if (/기능|function|feature/i.test(이름)) {
-        if (!기능탭) 기능탭 = sh;
-      } else if (/모델|model/i.test(이름)) {
+      if (/^기본정보$|basic/i.test(이름)) {
+        기본탭 = sh;
+      } else if (/인공지능처리.*연산.*기능.*명세|연산 체계/i.test(이름)) {
+        구현명세탭 = sh;
+      } else if (/핵심.*기능.*명세/i.test(이름)) {
+        핵심기능탭 = sh;
+      } else if (/제품.*서비스.*모델.*목록|모델|model/i.test(이름)) {
         if (!모델탭) 모델탭 = sh;
+      } else if (/기능|function|feature/i.test(이름) && !/이력/.test(이름)) {
+        if (!구형기능탭) 구형기능탭 = sh;
       } else if (/안내|guide|readme/i.test(이름)) {
         // 작성안내 탭은 무시
-      } else {
+      } else if (!/심사.*이력/.test(이름)) {
         if (!기본탭) 기본탭 = sh;
       }
     });
     if (!기본탭) 기본탭 = 시트들[0];  // 못 찾으면 첫 탭
 
     // 1) 기본정보 탭 파싱 → 접수대장 등록 (제품명·접수번호 → 접수번호 매핑 보관)
-    const 기본데이터 = 기본탭.getDataRange().getValues();
+    _업로드상태저장_(작업ID, 52, '기본정보를 읽고 접수대장에 등록하고 있습니다.');
+    // 전화번호·사업자번호의 선행 0을 보존하기 위해 표시 문자열로 읽는다.
+    const 기본데이터 = 기본탭.getDataRange().getDisplayValues();
     const 제품명별접수번호 = {};
+    const 신규접수건맵 = {};
 
     const 세로형여부 = _세로형감지(기본데이터);
     const 건목록 = 세로형여부 ? [_파싱_세로형(기본데이터)] : _파싱_가로형(기본데이터);
+    // 다건 등록 중 일정관리 전체 시트를 레코드마다 다시 읽지 않도록 한 번만 인덱싱한다.
+    const 등록컨텍스트 = { 일정관리: _일정관리등록컨텍스트생성(ss) };
     건목록.forEach((건, idx) => {
       try {
-        const 결과 = _Sheets에등록(건, 파일명);
+        const 결과 = _Sheets에등록(건, 파일명, 등록컨텍스트);
         const 접수번호 = 결과.접수번호;
         if (건.제품명) 제품명별접수번호[String(건.제품명).trim()] = 접수번호;
         // 접수번호 자기참조도 등록 (기능탭에 접수번호 컬럼이 있으면 직접 매칭)
         제품명별접수번호['__접수__' + 접수번호] = 접수번호;
         if (결과.신규) {
-          try { _보관폴더준비(접수번호); } catch (e2) { Logger.log('접수번호 폴더 생성 실패: ' + e2.message); }
+          신규접수건맵[접수번호] = 건;
+          try {
+            _보관폴더준비(접수번호, {
+              순번: 결과.순번,
+              기업명: 건.기업명,
+              제품명: 건.제품명,
+            });
+          } catch (e2) { Logger.log('접수번호 폴더 생성 실패: ' + e2.message); }
           등록건수++;
         } else {
           이미존재건수++;  // append-only 정책 — 기존 데이터는 덮어쓰지 않고 건너뜀
@@ -241,26 +329,33 @@ function _엑셀파싱처리(blob, 파일명) {
       } catch (e2) {}
     }
 
-    // 2) 기능상세 탭 파싱 → 인공지능기능상세 등록 (접수번호 우선, 없으면 제품명으로 연결)
-    if (기능탭) {
-      const 기능데이터 = 기능탭.getDataRange().getValues();
-      _기능탭파싱등록(기능데이터, 제품명별접수번호);
+    // 2) 핵심 기능 + 구현 명세 병합 파싱 (구형 통합 기능탭도 계속 지원)
+    _업로드상태저장_(작업ID, 70, '인공지능 기능 명세를 등록하고 있습니다.');
+    if (핵심기능탭 || 구현명세탭) {
+      const 핵심데이터 = 핵심기능탭 ? 핵심기능탭.getDataRange().getDisplayValues() : [];
+      const 구현데이터 = 구현명세탭 ? 구현명세탭.getDataRange().getDisplayValues() : [];
+      const 기능데이터 = _기능탭데이터병합(핵심데이터, 구현데이터);
+      _기능탭파싱등록(기능데이터, 제품명별접수번호, 신규접수건맵);
+    } else if (구형기능탭) {
+      _기능탭파싱등록(구형기능탭.getDataRange().getDisplayValues(), 제품명별접수번호, 신규접수건맵);
     }
 
     // 3) 제품모델 탭 파싱 → 인공지능제품모델 등록 (세부품명번호가 여러 건인 경우)
+    _업로드상태저장_(작업ID, 84, '제품·서비스 모델 목록을 등록하고 있습니다.');
     if (모델탭) {
-      const 모델데이터 = 모델탭.getDataRange().getValues();
-      _제품모델탭파싱등록(모델데이터, 제품명별접수번호);
+      const 모델데이터 = 모델탭.getDataRange().getDisplayValues();
+      _제품모델탭파싱등록(모델데이터, 제품명별접수번호, 신규접수건맵);
     }
 
   } finally {
+    _업로드상태저장_(작업ID, 94, '임시 변환 파일을 정리하고 있습니다.');
     if (임시파일ID) {
       try { DriveApp.getFileById(임시파일ID).setTrashed(true); } catch(e) {}
     }
   }
 
-  // 신규행뿐 아니라 구버전 수식이 남은 기존 행도 WD 15일 + 공휴일 기준으로 갱신
-  _마감예정일수식갱신_(ss);
+  // 기존 일정 행의 값·수식은 유지하고, WORKDAY 계산에 필요한 공휴일 연도만 보완한다.
+  _일정관리공휴일연도만확보_(ss);
 
   // 파싱 결과 알림
   let msg = `엑셀 파싱 완료\n\n신규 등록: ${등록건수}건`;
@@ -271,14 +366,61 @@ function _엑셀파싱처리(blob, 파일명) {
     msg += `\n건너뜀: ${건너뛴행.length}건 (접수번호 누락 등)\n\n` + 건너뛴행.join('\n');
     msg += `\n\n※ 건너뛴 행은 KOSA 접수번호가 없어 등록되지 않았습니다. 파싱로그를 확인하세요.`;
   }
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+  if (알림표시 !== false) {
+    try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+  }
+  _업로드상태저장_(작업ID, 100, '등록이 완료되었습니다.');
+  return msg;
+}
+
+/**
+ * 확정 엑셀의 두 기능 탭을 신청번호+기능번호 기준으로 합친 가상 가로형 데이터 생성.
+ * 어느 한쪽에만 존재하는 행도 유실하지 않는다.
+ */
+function _기능탭데이터병합(핵심데이터, 구현데이터) {
+  const 데이터목록 = [핵심데이터, 구현데이터].filter(d => d && d.length);
+  if (!데이터목록.length) return [];
+
+  const 통합헤더 = [];
+  데이터목록.forEach(데이터 => {
+    데이터[0].forEach(h => {
+      const 이름 = String(h || '').trim();
+      if (이름 && !통합헤더.includes(이름)) 통합헤더.push(이름);
+    });
+  });
+
+  const 행맵 = {};
+  const 키순서 = [];
+  데이터목록.forEach(데이터 => {
+    const 헤더 = 데이터[0].map(h => String(h || '').trim());
+    const 신청번호인덱스 = 헤더.findIndex(h => h === '신청번호' || h === '접수번호');
+    const 기능번호인덱스 = 헤더.findIndex(h => h === '기능번호');
+    for (let r = 1; r < 데이터.length; r++) {
+      const 행 = 데이터[r];
+      if (행.every(v => v === '' || v == null)) continue;
+      const 신청번호 = 신청번호인덱스 >= 0 ? String(행[신청번호인덱스] ?? '').trim() : '';
+      const 기능번호 = 기능번호인덱스 >= 0 ? String(행[기능번호인덱스] ?? '').trim() : '';
+      if (!신청번호 || !기능번호) continue;
+      const 키 = 신청번호 + '::' + 기능번호;
+      if (!행맵[키]) {
+        행맵[키] = {};
+        키순서.push(키);
+      }
+      헤더.forEach((h, c) => {
+        const 값 = 행[c];
+        if (h && 값 !== '' && 값 != null) 행맵[키][h] = 값;
+      });
+    }
+  });
+
+  return [통합헤더].concat(키순서.map(키 => 통합헤더.map(h => 행맵[키][h] ?? '')));
 }
 
 /**
  * 기능상세 탭(가로형: 1행 헤더 + 기능 N행) 파싱 → AI기능상세 시트 등록
  * 각 기능 행의 '제품명'으로 접수번호를 찾아 연결합니다.
  */
-function _기능탭파싱등록(데이터, 제품명별접수번호) {
+function _기능탭파싱등록(데이터, 제품명별접수번호, 신규접수건맵) {
   if (데이터.length < 2) return;
   const 헤더 = 데이터[0].map(h => String(h).trim());
 
@@ -316,7 +458,7 @@ function _기능탭파싱등록(데이터, 제품명별접수번호) {
 
   // 접수번호별로 기능상세 등록 + 접수대장 기능수 갱신 (이미 등록된 접수번호는 건너뜀)
   Object.keys(묶음).forEach(접수번호 => {
-    const 등록됨 = AI기능상세등록(접수번호, 묶음[접수번호]);
+    const 등록됨 = AI기능상세등록(접수번호, 묶음[접수번호], 신규접수건맵 && 신규접수건맵[접수번호]);
     if (등록됨) _접수대장기능수갱신(접수번호, 묶음[접수번호]);
   });
 }
@@ -325,7 +467,7 @@ function _기능탭파싱등록(데이터, 제품명별접수번호) {
  * 제품모델 탭(가로형: 1행 헤더 + 모델 N행) 파싱 → 인공지능제품모델 시트 등록
  * 세부품명번호·물품식별번호가 접수 건당 여러 개인 경우를 위한 반복 목록.
  */
-function _제품모델탭파싱등록(데이터, 제품명별접수번호) {
+function _제품모델탭파싱등록(데이터, 제품명별접수번호, 신규접수건맵) {
   if (데이터.length < 2) return;
   const 헤더 = 데이터[0].map(h => String(h).trim());
 
@@ -358,7 +500,9 @@ function _제품모델탭파싱등록(데이터, 제품명별접수번호) {
     (묶음[접수번호] = 묶음[접수번호] || []).push(모델);
   }
 
-  Object.keys(묶음).forEach(접수번호 => 제품모델등록(접수번호, 묶음[접수번호]));
+  Object.keys(묶음).forEach(접수번호 =>
+    제품모델등록(접수번호, 묶음[접수번호], 신규접수건맵 && 신규접수건맵[접수번호])
+  );
 }
 
 /**
@@ -471,10 +615,16 @@ function _파싱_세로형(데이터) {
   const 건 = {};
   필드정의.forEach(정의 => {
     if (!정의.excelAliases) return;
-    건[정의.sheetColumn] = _맵값(맵, _별칭합치기(정의.sheetColumn, 정의.excelAliases));
+    const 원본값 = _맵값(맵, _별칭합치기(정의.sheetColumn, 정의.excelAliases));
+    건[정의.sheetColumn] = _엑셀정의값정규화(정의, 원본값);
   });
   건.원본맵 = 맵;
   return 건;
+}
+
+/** Excel 입력도 JSON 입력과 동일한 정의 formatter를 적용한다. */
+function _엑셀정의값정규화(정의, 값) {
+  return _정의포매터적용(정의, String(값 ?? '').trim(), null);
 }
 
 /**

@@ -35,8 +35,7 @@
  *                     | 'date' | 'joinField' | 'index1' — JSON 변환에만 적용.
  *   - required      : 문서화 목적 메타데이터 (입력폼_명세서.md 기준 필수여부). 현재는
  *                     구조 검증에는 쓰이지 않고 향후 필드 단위 검증을 붙일 때 참조하는 용도
- *   - formatter     : type 처리 후 추가로 적용할 포매터의 키 이름 (예: 사업자번호 재포맷).
- *                     JSON 변환에만 적용.
+ *   - formatter     : 입력값에 공통 적용할 포매터의 키 이름 (예: 사업자번호 재포맷).
  *   - fixedValue    : path 없이 항상 고정값을 쓰는 경우(첨부파일 등, 관리자 결정으로 제외).
  *                     JSON 변환에만 적용 — 엑셀은 excelAliases로 별도 값을 읽을 수 있다.
  * ============================================================
@@ -79,15 +78,43 @@ const 코드값매핑표 = {
 };
 
 // ─────────────────────────────────────────────
-// 3. 개별 포매터 (범용 type으로 표현하기 어려운 경우만, JSON 변환 전용)
+// 3. 개별 포매터 (범용 type으로 표현하기 어려운 경우만, Excel·JSON 공용)
 // ─────────────────────────────────────────────
 const 포매터 = {
   사업자번호정규화(값) {
-    const 숫자만 = String(값 || '').replace(/[^0-9]/g, '');
-    if (숫자만.length !== 10) return String(값 || '').trim();
-    return `${숫자만.slice(0, 3)}-${숫자만.slice(3, 5)}-${숫자만.slice(5)}`;
+    let 숫자 = String(값 || '').replace(/[^0-9]/g, '');
+    // 사업자등록번호는 10자리 고정. Excel 숫자 셀에서 탈락한 선행 0을 복원한다.
+    if (숫자 && 숫자.length < 10) 숫자 = 숫자.padStart(10, '0');
+    return 숫자.length === 10
+      ? `${숫자.slice(0, 3)}-${숫자.slice(3, 5)}-${숫자.slice(5)}`
+      : 숫자;
+  },
+  전화번호정규화(값) {
+    let 숫자 = String(값 || '').replace(/[^0-9]/g, '');
+    if (!숫자) return 숫자;
+    // Excel이 숫자 셀로 내보내 선행 0을 없앤 국내 휴대전화·지역번호만 복원한다.
+    // 15xx/16xx/18xx 대표번호처럼 원래 0으로 시작하지 않는 번호는 그대로 둔다.
+    if (!숫자.startsWith('0')) {
+      if (/^1(?:0|1|6|7|8|9)\d{7,8}$/.test(숫자)) 숫자 = '0' + 숫자;
+      else if (/^2\d{7,8}$/.test(숫자)) 숫자 = '0' + 숫자;
+      else if (/^(3[1-3]|4[1-4]|5[1-5]|6[1-4])\d{7,8}$/.test(숫자)) 숫자 = '0' + 숫자;
+      else if (/^(5|7|8)0\d{7,9}$/.test(숫자)) 숫자 = '0' + 숫자;
+    }
+    if (/^1\d{7}$/.test(숫자)) return `${숫자.slice(0, 4)}-${숫자.slice(4)}`;
+    if (/^02\d{7,8}$/.test(숫자)) return `02-${숫자.slice(2, -4)}-${숫자.slice(-4)}`;
+    if (/^050\d{9}$/.test(숫자)) return `${숫자.slice(0, 4)}-${숫자.slice(4, 8)}-${숫자.slice(8)}`;
+    if (/^0\d{2}\d{7,8}$/.test(숫자)) return `${숫자.slice(0, 3)}-${숫자.slice(3, -4)}-${숫자.slice(-4)}`;
+    return 숫자;
   },
 };
+
+/** Excel·JSON 어댑터가 공유하는 formatter 디스패처. */
+function _정의포매터적용(정의, 값, 원본객체) {
+  if (정의 && 정의.formatter && 포매터[정의.formatter]) {
+    return 포매터[정의.formatter](값, 원본객체 || null, 정의);
+  }
+  return 값;
+}
 
 // ─────────────────────────────────────────────
 // 4. "건" 객체 필드 정의 — 접수대장/일정관리 공용 (_Sheets에등록이 참조하는 키와 동일)
@@ -98,7 +125,7 @@ const 포매터 = {
 const 필드정의 = [
   {
     sheetColumn: '기업명', path: 'applicant.companyNm', required: true,
-    excelAliases: ['상호(사업자명)', '기업명'],
+    excelAliases: ['상호명', '상호(사업자명)', '기업명'],
   },
   {
     sheetColumn: '사업자번호', path: 'applicant.businessNo', required: true, formatter: '사업자번호정규화',
@@ -116,14 +143,21 @@ const 필드정의 = [
     sheetColumn: '담당자명', path: 'applicant.managerNm', required: true,
     excelAliases: ['업무담당자', '담당자명', '담당자'],
   },
-  // 관리자 결정: 휴대전화 우선, 없으면 일반전화 — path의 fallback 배열로 표현
   {
-    sheetColumn: '연락처', path: ['applicant.managerMobile', 'applicant.managerTel'], required: true,
-    excelAliases: ['담당자 전화번호', '연락처', '전화번호'],
+    sheetColumn: '담당자직급', path: ['applicant.managerPosition', 'applicant.managerRank'], required: false,
+    excelAliases: ['담당자직급', '담당자 직급', '직급'],
+  },
+  {
+    sheetColumn: '담당자전화', path: 'applicant.managerTel', required: false, formatter: '전화번호정규화',
+    excelAliases: ['담당자전화', '담당자 전화', '담당자 일반전화', '담당자 전화번호', '일반전화'],
+  },
+  {
+    sheetColumn: '담당자휴대전화', path: 'applicant.managerMobile', required: false, formatter: '전화번호정규화',
+    excelAliases: ['담당자휴대전화', '담당자 휴대전화', '담당자 휴대폰', '휴대전화', '휴대폰', '연락처'],
   },
   {
     sheetColumn: '이메일', path: 'applicant.managerEmail', required: true,
-    excelAliases: ['담당자 이메일주소', '이메일', 'email', 'e-mail'],
+    excelAliases: ['담당자이메일', '담당자 이메일주소', '이메일', 'email', 'e-mail'],
   },
   // 관리자 결정: keyId(Base36)를 접수번호로 그대로 채택
   {
@@ -141,12 +175,15 @@ const 필드정의 = [
   },
   {
     sheetColumn: '제품분류', path: 'serviceInfo.aiTechCategory', type: 'enum', enumCategory: '제품분류', required: true,
-    excelAliases: ['인공지능 제품·서비스 분류', 'AI 제품 분류', 'AI제품분류', '제품분류'],
+    excelAliases: ['제품 서비스 분류', '인공지능 제품·서비스 분류', 'AI 제품 분류', 'AI제품분류', '제품분류'],
   },
   {
     sheetColumn: '개요', path: 'serviceInfo.productSummary', required: true,
     excelAliases: ['개요'],
   },
+  { sheetColumn: '제공형태기타', path: 'serviceInfo.serviceTypeEtc', required: false, excelAliases: ['제공형태 기타'] },
+  { sheetColumn: '제품분류기타', path: 'serviceInfo.aiTechCategoryEtc', required: false, excelAliases: ['제품 서비스 분류 기타'] },
+  { sheetColumn: '서비스도메인', path: 'serviceInfo.serviceDomain', required: false, excelAliases: ['서비스도메인'] },
   {
     sheetColumn: '인공지능적용목적', path: 'serviceInfo.aiTechPurpose', required: true,
     excelAliases: ['인공지능 적용 목적', 'AI 적용 목적', '인공지능적용목적'],
@@ -175,31 +212,37 @@ const 필드정의 = [
     presentValue: '보유(상세 확인 필요)',
     absentValue: '해당없음',
     required: false,
-    excelAliases: ['보유 인증', '보유인증'],
+    excelAliases: ['인증유형', '보유 인증', '보유인증'],
   },
+  { sheetColumn: '기타인증명', fixedValue: '', required: false, excelAliases: ['기타인증명'] },
+  { sheetColumn: '인증비고', fixedValue: '', required: false, excelAliases: ['인증비고'] },
 
   {
     sheetColumn: '열람이용동의여부', path: 'agreements.documentConsent', type: 'boolean', required: true,
-    excelAliases: ['열람·이용동의', '열람이용동의여부'],
+    excelAliases: ['열람이용동의', '열람·이용동의', '열람이용동의여부'],
+  },
+  {
+    sheetColumn: '최종신청동의여부', path: 'agreements.finalSubmissionConsent', type: 'boolean', required: true,
+    excelAliases: ['최종신청동의'],
   },
   {
     sheetColumn: '개인정보수집이용동의여부', path: 'agreements.privacyConsent', type: 'boolean', required: true,
-    excelAliases: ['개인정보 수집·이용', '개인정보수집이용동의여부'],
+    excelAliases: ['개인정보수집동의', '개인정보 수집·이용', '개인정보수집이용동의여부'],
   },
   {
     sheetColumn: '개인정보3자제공동의여부', path: 'agreements.thirdPartyConsent', type: 'boolean', required: true,
-    excelAliases: ['개인정보 제3자 제공', '개인정보3자제공동의여부'],
+    excelAliases: ['제3자제공동의', '개인정보 제3자 제공', '개인정보3자제공동의여부'],
   },
   {
     sheetColumn: '특기사항', path: 'serviceInfo.remark', required: false,
     excelAliases: ['특기사항'],
   },
 
-  // 관리자 결정: JSON에 신청일 필드가 없으므로 TTA 파싱 시각으로 대체.
+  // JSON에 접수일자 필드가 없으면 TTA 파싱 시각으로 대체한다.
   // TODO: KOSA가 submittedAt(또는 동일 의미 필드)을 추가하면 path 배열에 필드명만 추가.
   {
-    sheetColumn: '신청일', path: ['submittedAt', 'applicationDate', 'appliedAt'], type: 'date', fallback: 'now', required: true,
-    excelAliases: ['신청일자', '신청일'],
+    sheetColumn: '접수일자', path: ['submittedAt', 'applicationDate', 'appliedAt'], type: 'date', fallback: 'now', required: true,
+    excelAliases: ['접수일자', '신청일자', '신청일'],
   },
 
   // 등록 후 _접수대장기능수갱신이 재계산 — 초기값 용도
@@ -247,19 +290,19 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '인공지능역할', path: 'f.funcRole', required: true,
-    excelAliases: ['인공지능역할', '인공지능 역할', '역할', 'AI 역할'],
+    excelAliases: ['인공지능의 역할', '인공지능역할', '인공지능 역할', '역할', 'AI 역할'],
   },
   {
     sheetColumn: '입력', path: 'f.inputData', required: true,
-    excelAliases: ['입력'],
+    excelAliases: ['입력 데이터', '입력'],
   },
   {
     sheetColumn: '출력', path: 'f.outputData', required: true,
-    excelAliases: ['출력'],
+    excelAliases: ['출력 데이터', '출력'],
   },
   {
     sheetColumn: '레퍼런스참조위치', path: 'f.reference', required: true,
-    excelAliases: ['레퍼런스참조위치', '레퍼런스 참조위치', '설명서참조위치', '설명서 참조 위치'],
+    excelAliases: ['매뉴얼 참조 위치', '레퍼런스참조위치', '레퍼런스 참조위치', '설명서참조위치', '설명서 참조 위치'],
   },
   {
     sheetColumn: '구현방식', path: 'impl.aiImplementationMethod', required: true,
@@ -267,11 +310,11 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '연산자원요약', path: 'impl.aiComputeResource', required: true,
-    excelAliases: ['AI 연산 자원 요약', '연산자원요약', '연산자원', '연산 자원'],
+    excelAliases: ['연산자원', 'AI 연산 자원 요약', '연산자원요약', '연산 자원'],
   },
   {
     sheetColumn: '실행환경요약', path: 'impl.aiRuntimeDetail', required: false,
-    excelAliases: ['AI 실행 환경 요약', '실행환경요약', '실행환경', '실행 환경'],
+    excelAliases: ['실행환경세부', 'AI 실행 환경 요약', '실행환경요약', '실행환경', '실행 환경'],
   },
   {
     sheetColumn: '학습데이터사양', path: 'impl.learningDataSpec', required: false,
@@ -279,11 +322,11 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '개발환경라이브러리알고리즘', path: 'impl.developmentEnvironment', required: false,
-    excelAliases: ['개발환경·라이브러리·알고리즘', '개발환경라이브러리알고리즘'],
+    excelAliases: ['개발환경/알고리즘', '개발환경·라이브러리·알고리즘', '개발환경라이브러리알고리즘'],
   },
   {
     sheetColumn: 'BaseModel명칭', path: 'impl.baseModelName', required: false,
-    excelAliases: ['Base Model 명칭', 'BaseModel명칭', 'BaseModel', 'Base Model', '베이스'],
+    excelAliases: ['베이스모델명', 'Base Model 명칭', 'BaseModel명칭', 'BaseModel', 'Base Model', '베이스'],
   },
   {
     sheetColumn: '튜닝방법', path: 'impl.tuningMethod', required: false,
@@ -295,11 +338,11 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '외부API정보', path: 'impl.outApiModel', required: false,
-    excelAliases: ['외부 API 정보', '외부API정보', '외부 API', '외부API', '외부API모델'],
+    excelAliases: ['외부API모델', '외부 API 정보', '외부API정보', '외부 API', '외부API'],
   },
   {
     sheetColumn: '타겟HW_OS', path: 'impl.targetDeviceHardware', required: false,
-    excelAliases: ['타겟 하드웨어·OS', '타겟HW_OS', '타겟', 'HW', 'OS'],
+    excelAliases: ['타겟하드웨어', '타겟 하드웨어·OS', '타겟HW_OS', '타겟', 'HW', 'OS'],
   },
   {
     sheetColumn: '추론런타임', path: 'impl.aiModelRuntimeEngine', required: false,
@@ -311,7 +354,7 @@ const 기능상세필드정의 = [
   },
   {
     sheetColumn: '모델별역할및입출력흐름', path: 'impl.modelSpecificRoles', required: false,
-    excelAliases: ['모델별 역할 및 입출력 흐름', '모델별역할및입출력흐름', '세부구성요소별설명'],
+    excelAliases: ['모델별역할흐름', '모델별 역할 및 입출력 흐름', '모델별역할및입출력흐름', '세부구성요소별설명'],
   },
   {
     sheetColumn: '입력데이터설명', path: 'impl.inputDataDescription', required: true,
@@ -321,5 +364,6 @@ const 기능상세필드정의 = [
     sheetColumn: '출력데이터설명', path: 'impl.outputDataDescription', required: true,
     excelAliases: ['출력데이터설명'],
   },
-  { sheetColumn: '기타참고자료파일명', fixedValue: '', required: false, excelAliases: ['기타참고자료', '기타 참고자료'] },
+  { sheetColumn: '기타참고자료파일명', fixedValue: '', required: false, excelAliases: ['기타참고자료파일명', '기타참고자료', '기타 참고자료'] },
+  { sheetColumn: '흐름도파일명', fixedValue: '', required: false, excelAliases: ['흐름도파일명'] },
 ];
