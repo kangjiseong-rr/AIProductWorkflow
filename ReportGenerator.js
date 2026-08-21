@@ -755,8 +755,28 @@ function 구조도원본정리(접수번호) {
   return { ok: true, folder: 하위.getUrl(), copied: 복사수 };
 }
 
-/** 보관루트/접수번호 폴더 준비 */
-function _보관폴더준비(접수번호) {
+/** Drive 폴더명에 사용할 값을 한 줄로 정리한다. */
+function _폴더명값정리_(값) {
+  return String(값 || '').replace(/[\r\n]+/g, ' ').replace(/[\\/]+/g, '／').replace(/\s+/g, ' ').trim();
+}
+
+/** 신규 접수 폴더명: 017.(접수번호)기업명, 제품명 */
+function _접수폴더명_(접수번호, 정보) {
+  const 순번 = String(Number(정보 && 정보.순번) || 0).padStart(3, '0');
+  const 번호 = _폴더명값정리_(접수번호);
+  const 기업명 = _폴더명값정리_(정보 && 정보.기업명);
+  const 제품명 = _폴더명값정리_(정보 && 정보.제품명);
+  return `${순번}.(${번호})${기업명}, ${제품명}`;
+}
+
+/** 접수 폴더 아래의 표준 하위 폴더가 없으면 생성한다. */
+function _접수하위폴더준비_(접수폴더, 이름) {
+  const 기존 = 접수폴더.getFoldersByName(이름);
+  return 기존.hasNext() ? 기존.next() : 접수폴더.createFolder(이름);
+}
+
+/** 보관루트/접수번호 폴더 준비. 기존 접수번호 단독 폴더도 계속 재사용한다. */
+function _보관폴더준비(접수번호, 정보) {
   let 루트;
   if (CONFIG.드라이브폴더ID) {
     루트 = DriveApp.getFolderById(CONFIG.드라이브폴더ID);
@@ -765,14 +785,46 @@ function _보관폴더준비(접수번호) {
     const 기존 = DriveApp.getFoldersByName(이름);
     루트 = 기존.hasNext() ? 기존.next() : DriveApp.createFolder(이름);
   }
-  const 하위 = 루트.getFoldersByName(접수번호);
-  return 하위.hasNext() ? 하위.next() : 루트.createFolder(접수번호);
+
+  const 정규화접수번호 = _폴더명값정리_(접수번호);
+  let 접수폴더 = null;
+  if (정보 && 정보.순번) {
+    const 신규이름 = _접수폴더명_(정규화접수번호, 정보);
+    const 동일이름 = 루트.getFoldersByName(신규이름);
+    if (동일이름.hasNext()) 접수폴더 = 동일이름.next();
+  }
+  if (!접수폴더) {
+    const 구형폴더 = 루트.getFoldersByName(정규화접수번호);
+    if (구형폴더.hasNext()) 접수폴더 = 구형폴더.next();
+  }
+  if (!접수폴더) {
+    const 폴더목록 = 루트.getFolders();
+    const 표시 = `(${정규화접수번호})`;
+    while (폴더목록.hasNext()) {
+      const 후보 = 폴더목록.next();
+      if (후보.getName().indexOf(표시) >= 0) {
+        접수폴더 = 후보;
+        break;
+      }
+    }
+  }
+  if (!접수폴더) {
+    const 생성이름 = 정보 && 정보.순번
+      ? _접수폴더명_(정규화접수번호, 정보)
+      : 정규화접수번호;
+    접수폴더 = 루트.createFolder(생성이름);
+  }
+
+  _접수하위폴더준비_(접수폴더, '01.신청서');
+  _접수하위폴더준비_(접수폴더, '02.보고서');
+  return 접수폴더;
 }
 
 /** 생성된 보고서 파일을 보관루트/접수번호 폴더로 옮김 (동일 이름 이전 파일은 휴지통 처리) */
 function _보고서를접수번호폴더로저장_(file, 접수번호) {
   try {
-    const 폴더 = _보관폴더준비(접수번호);
+    const 접수폴더 = _보관폴더준비(접수번호);
+    const 폴더 = _접수하위폴더준비_(접수폴더, '02.보고서');
     const 기존 = 폴더.getFilesByName(file.getName());
     while (기존.hasNext()) {
       const f = 기존.next();

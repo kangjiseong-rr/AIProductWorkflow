@@ -60,11 +60,20 @@ vm.runInContext(
   fs.readFileSync(path.join(root, 'FieldDefinition.js'), 'utf8') +
   '\n' + parserSource +
   '\n' + reportSource +
-  '\nglobalThis.__schemaTest = { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시 };',
+  '\nglobalThis.__schemaTest = { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시, _접수폴더명_ };',
   context
 );
 
-const { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시 } = context.__schemaTest;
+const { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시, _접수폴더명_ } = context.__schemaTest;
+
+const receiptFolderName = _접수폴더명_('AI20260807-0008', {
+  순번: 17,
+  기업명: '(주) 에스엠테크',
+  제품명: '지니워크',
+});
+if (receiptFolderName !== '017.(AI20260807-0008)(주) 에스엠테크, 지니워크') {
+  throw new Error(`접수 공유 폴더명 생성 실패: ${receiptFolderName}`);
+}
 
 const scheduleContext = {
   console,

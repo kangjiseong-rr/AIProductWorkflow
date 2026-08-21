@@ -396,7 +396,7 @@ function _Sheets에등록(건, 파일명, 등록컨텍스트) {
   ]);
 
   Logger.log(`등록: ${접수번호} / ${건.제품명}`);
-  return { 접수번호, 신규: true };
+  return { 접수번호, 신규: true, 순번: 접수대장순번 };
 }
 
 
