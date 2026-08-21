@@ -31,6 +31,13 @@ if (!/getRange\(1, 1, Math\.max\(1, 시트\.getMaxRows\(\)\), lastCol\)\s*\.setF
 }
 const context = { console };
 const reportSource = fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8');
+if ((reportSource.match(/_보고서PDF저장_\(보고서파일, 접수번호\)/g) || []).length !== 1) {
+  throw new Error('Google Docs 보고서 생성 경로에 PDF 자동 생성 호출이 남아 있습니다.');
+}
+if (!reportSource.includes('function 기술심사보고서PDF생성()') ||
+    !mainSource.includes(".addItem('📄 기술심사보고서 PDF 생성 (선택 행)', '기술심사보고서PDF생성')")) {
+  throw new Error('기술심사보고서 PDF 별도 생성 메뉴가 없습니다.');
+}
 for (const section of [
   '1. 심사 개요',
   '3. 심사 대상 제품',

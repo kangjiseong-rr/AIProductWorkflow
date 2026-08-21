@@ -366,8 +366,41 @@ function _증적명세서Docs생성(ss, 건) {
   doc.saveAndClose();
   const 보고서파일 = DriveApp.getFileById(doc.getId());
   _보고서를접수번호폴더로저장_(보고서파일, 접수번호);
-  _보고서PDF저장_(보고서파일, 접수번호);
   return doc;
+}
+
+/** 선택 행의 기존 Google Docs 기술심사보고서를 PDF로 별도 생성한다. */
+function 기술심사보고서PDF생성() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 접수번호 = _활성행접수번호(ss);
+  if (!접수번호) {
+    ui.alert('접수번호가 있는 데이터 행을 선택한 뒤 실행해주세요.\n(일정관리 또는 접수대장 탭)');
+    return;
+  }
+
+  try {
+    const 폴더 = _보관폴더준비(접수번호);
+    const 문서이름 = `(${접수번호}) 기술심사보고서`;
+    const 후보 = 폴더.getFilesByName(문서이름);
+    let 보고서파일 = null;
+    while (후보.hasNext()) {
+      const 파일 = 후보.next();
+      if (파일.getMimeType() !== MimeType.GOOGLE_DOCS) continue;
+      if (!보고서파일 || 파일.getLastUpdated().getTime() > 보고서파일.getLastUpdated().getTime()) {
+        보고서파일 = 파일;
+      }
+    }
+    if (!보고서파일) {
+      ui.alert(`Google Docs 기술심사보고서를 찾을 수 없습니다. 먼저 보고서를 생성해주세요.\n\n접수번호: ${접수번호}`);
+      return;
+    }
+
+    const pdf파일 = _보고서PDF저장_(보고서파일, 접수번호);
+    ui.alert(`기술심사보고서 PDF가 생성되었습니다.\n\n${pdf파일.getUrl()}`);
+  } catch (e) {
+    ui.alert('기술심사보고서 PDF 생성 실패: ' + e.message);
+  }
 }
 
 /** 본문·표·머리글의 모든 텍스트를 단일 글꼴로 강제해 DOCX 내 글꼴 혼용을 방지한다. */
@@ -792,14 +825,10 @@ function _보고서를접수번호폴더로저장_(file, 접수번호) {
 
 /** 공식 배포·보관용 PDF 생성. PDF는 글꼴 렌더링이 고정되어 열람 환경 영향을 받지 않는다. */
 function _보고서PDF저장_(googleDocFile, 접수번호) {
-  try {
-    const 폴더 = _보관폴더준비(접수번호);
-    const pdf이름 = googleDocFile.getName() + '.pdf';
-    const 기존 = 폴더.getFilesByName(pdf이름);
-    while (기존.hasNext()) 기존.next().setTrashed(true);
-    const pdfBlob = googleDocFile.getAs(MimeType.PDF).setName(pdf이름);
-    폴더.createFile(pdfBlob);
-  } catch (e) {
-    Logger.log('보고서 PDF 생성 실패: ' + e.message);
-  }
+  const 폴더 = _보관폴더준비(접수번호);
+  const pdf이름 = googleDocFile.getName() + '.pdf';
+  const 기존 = 폴더.getFilesByName(pdf이름);
+  while (기존.hasNext()) 기존.next().setTrashed(true);
+  const pdfBlob = googleDocFile.getAs(MimeType.PDF).setName(pdf이름);
+  return 폴더.createFile(pdfBlob);
 }
