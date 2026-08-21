@@ -83,6 +83,28 @@ const lookupFormula = scheduleContext.__formulaTest(['순번', '접수번호', '
 if (!lookupFormula.includes('$B:$B') || !lookupFormula.includes('$C:$C') || lookupFormula.includes('VLOOKUP')) {
   throw new Error(`컬럼 이동 안전 조회 수식 생성 실패: ${lookupFormula}`);
 }
+
+const writerContext = { console, SHEET: { AI기능상세: '인공지능기능상세' } };
+vm.createContext(writerContext);
+vm.runInContext(
+  fs.readFileSync(path.join(root, 'SheetWriter.js'), 'utf8') +
+  '\nglobalThis.__aiDetailLookup = _AI기능상세조회;',
+  writerContext
+);
+const reorderedAiRows = [
+  ['순번', '기능명', '접수번호', '기능번호'],
+  [1, '문서 분류', ' AI-2026-001 ', 1],
+  [2, '요약 생성', 'AI-2026-002', 1],
+];
+const fakeAiSheet = {
+  getLastRow: () => reorderedAiRows.length,
+  getDataRange: () => ({ getValues: () => reorderedAiRows }),
+};
+const fakeAiSs = { getSheetByName: () => fakeAiSheet };
+const aiDetails = writerContext.__aiDetailLookup(fakeAiSs, 'AI-2026-001');
+if (aiDetails.length !== 1 || aiDetails[0]['기능명'] !== '문서 분류') {
+  throw new Error(`인공지능기능상세 컬럼 이동 안전 조회 실패: ${JSON.stringify(aiDetails)}`);
+}
 const 날짜필드 = 필드정의.find(f => f.sheetColumn === '접수일자');
 if (!날짜필드 || !날짜필드.excelAliases.includes('접수일자')) {
   throw new Error('접수일자 필드 매핑이 없습니다.');

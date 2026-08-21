@@ -491,10 +491,13 @@ function _건조회(ss, 접수번호) {
 
 function _AI기능상세조회(ss, 접수번호) {
   const 시트 = ss.getSheetByName(SHEET.AI기능상세);
+  if (!시트 || 시트.getLastRow() < 2) return [];
   const 모든행 = 시트.getDataRange().getValues();
-  const 헤더 = 모든행[0];
+  const 헤더 = 모든행[0].map(v => String(v).trim());
+  const iNo = 헤더.indexOf('접수번호');
+  if (iNo < 0) return [];
   return 모든행.slice(1)
-    .filter(행 => 행[0] === 접수번호)
+    .filter(행 => String(행[iNo]).trim() === String(접수번호).trim())
     .map(행 => {
       const obj = {};
       헤더.forEach((h, i) => { obj[h] = 행[i]; });
