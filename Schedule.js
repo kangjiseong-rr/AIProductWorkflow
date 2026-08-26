@@ -104,7 +104,17 @@ function _일정관리조건부서식적용_(일정시트) {
   const 상태 = 헤더값('상태');
   const 보완요청 = 헤더값('보완요청일');
   const 연장마감 = 헤더값('연장마감일');
-  const 전체범위 = 일정시트.getRange(`A2:${끝열문자}1000`);
+
+  // 특이사항은 사용자가 자유롭게 글자색·굵기를 지정하는 메모 컬럼이므로,
+  // 상태별 행 색칠 범위에서 제외해 수동 서식이 항상 우선하도록 한다.
+  const iD특이사항 = 일정H.indexOf('특이사항') + 1;
+  const 전체범위 = [];
+  if (iD특이사항 > 0) {
+    if (iD특이사항 > 1) 전체범위.push(일정시트.getRange(2, 1, 999, iD특이사항 - 1));
+    if (iD특이사항 < 일정H.length) 전체범위.push(일정시트.getRange(2, iD특이사항 + 1, 999, 일정H.length - iD특이사항));
+  } else {
+    전체범위.push(일정시트.getRange(`A2:${끝열문자}1000`));
+  }
 
   // ① 기한 초과 & 미완료
   const 초과 = SpreadsheetApp.newConditionalFormatRule()
@@ -112,31 +122,31 @@ function _일정관리조건부서식적용_(일정시트) {
       `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`
     )
     .setBackground('#F4CCCC').setFontColor('#990000')
-    .setRanges([전체범위]).build();
+    .setRanges(전체범위).build();
 
   // ② 완료(적합) → 연녹색 (구버전 '완료' 값도 호환)
   const 완료 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=OR(${상태}="완료(적합)",${상태}="완료")`)
     .setBackground('#D9EAD3').setFontColor('#38761D')
-    .setRanges([전체범위]).build();
+    .setRanges(전체범위).build();
 
   // ③ 종료(부적합) → 진한 회색
   const 종료 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=${상태}="종료(부적합)"`)
     .setBackground('#666666').setFontColor('#FFFFFF')
-    .setRanges([전체범위]).build();
+    .setRanges(전체범위).build();
 
   // ④ 보완 → 머스터드(짙은 노랑)
   const 보완 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=${상태}="보완"`)
     .setBackground('#F9CB9C').setFontColor('#783F04')
-    .setRanges([전체범위]).build();
+    .setRanges(전체범위).build();
 
   // ⑤ 심사중 → 연노랑
   const 심사중 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=${상태}="심사중"`)
     .setBackground('#FCE8B2').setFontColor('#7F6000')
-    .setRanges([전체범위]).build();
+    .setRanges(전체범위).build();
 
   // 대기(무색)는 규칙 없음
   일정시트.setConditionalFormatRules([초과, 완료, 종료, 보완, 심사중]);
