@@ -56,12 +56,98 @@ function _일정관리헤더색적용_(시트) {
   }
 }
 
+/**
+ * 일정관리 시트의 상태별 행 색칠 조건부서식을 현재 헤더 폭 전체로 (재)적용한다.
+ * 안전컬럼갱신()으로 새 컬럼이 오른쪽 끝에 추가된 뒤에도 호출되므로,
+ * 매번 현재 마지막 열을 기준으로 다시 계산해 새 컬럼도 빠짐없이 덮는다.
+ *
+ * 수식은 열 문자를 하드코딩하지 않고, 매 평가 시점에 1행 헤더에서
+ * MATCH로 컬럼을 찾아 값을 읽는다(INDEX+MATCH). 그래서 사용자가 시트에서
+ * 컬럼을 드래그로 옮기거나 순서를 바꿔도 — 이 함수를 다시 실행하지 않아도 —
+ * 수식이 항상 올바른 헤더를 따라간다. 헤더 이름 자체가 없어지는 경우만
+ * 대응이 필요하므로, 아래에서 4개 헤더 존재 여부만 먼저 확인한다.
+ */
+function _일정관리조건부서식적용_(일정시트) {
+  const 일정H = 일정시트.getRange(1, 1, 1, Math.max(1, 일정시트.getLastColumn()))
+    .getValues()[0].map(v => String(v).trim());
+  const iD마감 = 일정H.indexOf('마감예정일') + 1;
+  const iD상태 = 일정H.indexOf('상태') + 1;
+  const iD보완요청 = 일정H.indexOf('보완요청일') + 1;
+  const iD연장마감 = 일정H.indexOf('연장마감일') + 1;
+  if (!iD마감 || !iD상태 || !iD보완요청 || !iD연장마감) {
+    const 누락헤더 = [['마감예정일', iD마감], ['상태', iD상태], ['보완요청일', iD보완요청], ['연장마감일', iD연장마감]]
+      .filter(([, v]) => !v).map(([n]) => n);
+    try {
+      SpreadsheetApp.getUi().alert(
+        '조건부서식을 다시 적용하지 못했습니다.\n\n' +
+        '다음 헤더를 1행에서 찾을 수 없습니다: ' + 누락헤더.join(', ') + '\n\n' +
+        '현재 1행 헤더(왼쪽부터): ' + 일정H.join(' | ')
+      );
+    } catch (e) { /* UI 없는 환경 */ }
+    return;
+  }
+
+  // 규칙 우선순위: 위에서부터 먼저 적용됨.
+  //   ① 기한 초과(미완료)  → 연빨강   (상태색보다 우선)
+  //   ② 완료(적합)         → 연녹색
+  //   ③ 종료(부적합)       → 진한 회색
+  //   ④ 보완               → 머스터드(짙은 노랑)
+  //   ⑤ 심사중             → 연노랑
+  //   ⑥ 대기               → 무색 (규칙 없음)
+  // 조건부서식 커스텀 수식은 "1:1000" 같은 전체 행 참조를 지원하지 않아
+  // #REF! 오류가 나므로, 실제 사용 중인 열까지로 범위를 명시해 참조한다.
+  const 끝열문자 = columnLetter(일정H.length);
+  const 헤더행범위 = `$A$1:$${끝열문자}$1`;
+  const 데이터범위 = `$A$1:$${끝열문자}1000`;
+  const 헤더값 = 헤더명 => `INDEX(${데이터범위},ROW(),MATCH("${헤더명}",${헤더행범위},0))`;
+  const 마감 = 헤더값('마감예정일');
+  const 상태 = 헤더값('상태');
+  const 보완요청 = 헤더값('보완요청일');
+  const 연장마감 = 헤더값('연장마감일');
+  const 전체범위 = 일정시트.getRange(`A2:${끝열문자}1000`);
+
+  // ① 기한 초과 & 미완료
+  const 초과 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(
+      `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`
+    )
+    .setBackground('#F4CCCC').setFontColor('#990000')
+    .setRanges([전체범위]).build();
+
+  // ② 완료(적합) → 연녹색 (구버전 '완료' 값도 호환)
+  const 완료 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=OR(${상태}="완료(적합)",${상태}="완료")`)
+    .setBackground('#D9EAD3').setFontColor('#38761D')
+    .setRanges([전체범위]).build();
+
+  // ③ 종료(부적합) → 진한 회색
+  const 종료 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=${상태}="종료(부적합)"`)
+    .setBackground('#666666').setFontColor('#FFFFFF')
+    .setRanges([전체범위]).build();
+
+  // ④ 보완 → 머스터드(짙은 노랑)
+  const 보완 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=${상태}="보완"`)
+    .setBackground('#F9CB9C').setFontColor('#783F04')
+    .setRanges([전체범위]).build();
+
+  // ⑤ 심사중 → 연노랑
+  const 심사중 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=${상태}="심사중"`)
+    .setBackground('#FCE8B2').setFontColor('#7F6000')
+    .setRanges([전체범위]).build();
+
+  // 대기(무색)는 규칙 없음
+  일정시트.setConditionalFormatRules([초과, 완료, 종료, 보완, 심사중]);
+}
+
 function _일정관리서식적용_(시트, 요약뷰) {
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
   // 일정관리 날짜는 실제 날짜값을 유지하고 화면에는 두 자리 연도로 간결하게 표시
-  ['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일'].forEach(날짜헤더 => {
+  ['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일', '적합통보일'].forEach(날짜헤더 => {
     const 열 = 헤더.indexOf(날짜헤더) + 1;
     if (열 > 0) 시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd');
   });
@@ -88,7 +174,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
   const 너비맵 = {
     '순번': 45, '접수번호': 115,
     '접수일자': 90, '심사접수일': 95, '마감예정일': 95,
-    '상태': 75, '보완요청일': 95, '연장마감일': 95, '담당심사원': 95, '특이사항': 260,
+    '상태': 75, '보완요청일': 95, '연장마감일': 95, '적합통보일': 95, '담당심사원': 95, '특이사항': 260,
     '기업명': 155, '담당자명': 85, '담당자직급': 80, '담당자전화': 115, '담당자휴대전화': 115, '이메일': 180, '소재지': 200,
     '제품명': 190, '제품수': 65, '개요': 260,
     '제공형태': 110, '제품분류': 100,
@@ -105,7 +191,7 @@ function _일정관리서식적용_(시트, 요약뷰) {
     const 표시컬럼 = new Set([
       '순번', '접수번호',
       '접수일자', '심사접수일', '마감예정일',
-      '상태', '보완요청일', '연장마감일', '담당심사원', '특이사항',
+      '상태', '보완요청일', '연장마감일', '적합통보일', '담당심사원', '특이사항',
       '기업명', '담당자명', '담당자직급', '담당자전화', '담당자휴대전화', '소재지',
       '제품명', '제품수', '제공형태', '제품분류',
       '인공지능기능수',
@@ -159,7 +245,7 @@ function _일정관리구글표적용_(시트, 헤더) {
 
 function _일정관리표컬럼타입_(헤더명) {
   if (['순번', '제품수', '인공지능기능수'].indexOf(헤더명) >= 0) return 'DOUBLE';
-  if (['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일'].indexOf(헤더명) >= 0) return 'DATE';
+  if (['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일', '적합통보일'].indexOf(헤더명) >= 0) return 'DATE';
   return 'TEXT';
 }
 
