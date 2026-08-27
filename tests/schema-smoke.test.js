@@ -52,8 +52,13 @@ for (const section of [
 if (!reportSource.includes('p.setLineSpacing(1.0)') || !reportSource.includes('setFontSize(11)')) {
   throw new Error('심사결과 요약 표의 11pt·한 줄 간격 설정이 없습니다.');
 }
-if (!reportSource.includes('function _모든표공통스타일_') || !reportSource.includes('setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER)')) {
+if (!reportSource.includes('function _셀스타일적용_') ||
+    !reportSource.includes('DocumentApp.Attribute.VERTICAL_ALIGNMENT') ||
+    !reportSource.includes('DocumentApp.Attribute.LINE_SPACING')) {
   throw new Error('보고서 전체 표의 한 줄 간격·세로 가운데 정렬 설정이 없습니다.');
+}
+if ((reportSource.match(/_셀스타일적용_\(cell/g) || []).length < 3) {
+  throw new Error('표 스타일 함수들이 _셀스타일적용_을 호출하지 않는 것으로 보입니다.');
 }
 vm.createContext(context);
 vm.runInContext(

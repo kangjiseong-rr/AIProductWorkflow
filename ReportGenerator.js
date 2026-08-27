@@ -176,6 +176,37 @@ function 증적명세서생성_byId(접수번호) {
   return { url: doc.getUrl(), name: doc.getName() };
 }
 
+/**
+ * 보고서 생성 전용 — 접수 폴더·"02.보고서" 하위 폴더가 이미 있다고 가정하고
+ * 정확한 이름으로 한 번만 조회한다. 엑셀 등록 시(_보관폴더준비, ExcelParser.js)
+ * 폴더가 이미 만들어지므로, 여기서는 검색·자동생성을 시도하지 않고 없으면 즉시 실패한다.
+ * (JSON 등록처럼 애초에 폴더가 안 만들어지는 경로로 들어온 건도 여기서 동일하게 실패한다 —
+ * 별도로 구분해서 처리하지 않는다.)
+ */
+function _보고서폴더조회_(접수번호, 정보) {
+  let 루트;
+  if (CONFIG.드라이브폴더ID) {
+    루트 = DriveApp.getFolderById(CONFIG.드라이브폴더ID);
+  } else {
+    const 기존루트 = DriveApp.getFoldersByName('심사증적_원본보관');
+    if (!기존루트.hasNext()) throw new Error('보관 루트 폴더("심사증적_원본보관")를 찾을 수 없습니다.');
+    루트 = 기존루트.next();
+  }
+
+  const 접수폴더명 = _접수폴더명_(_폴더명값정리_(접수번호), 정보);
+  const 접수폴더검색 = 루트.getFoldersByName(접수폴더명);
+  if (!접수폴더검색.hasNext()) {
+    throw new Error(`접수 폴더를 찾을 수 없습니다: "${접수폴더명}" — 엑셀 등록 시 폴더가 생성됐는지 확인하세요.`);
+  }
+  const 접수폴더 = 접수폴더검색.next();
+
+  const 보고서폴더검색 = 접수폴더.getFoldersByName('02.보고서');
+  if (!보고서폴더검색.hasNext()) {
+    throw new Error(`"02.보고서" 하위 폴더를 찾을 수 없습니다: "${접수폴더명}"`);
+  }
+  return 보고서폴더검색.next();
+}
+
 function _증적명세서Docs생성(ss, 건) {
   const 접수번호 = 건['접수번호'];
   const 오늘 = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy년 MM월 dd일');
@@ -189,6 +220,16 @@ function _증적명세서Docs생성(ss, 건) {
   const 결과행 = 체크항목정의.filter(d => d.id !== 'C12').map(d => [d.no, d.구분 || '', d.항목, '', '']);
 
   const 제목문 = `(${접수번호}) 기술심사보고서`;
+
+  // 문서를 만들기 전에 폴더·중복 파일 여부부터 확인한다 — 실패할 상황이면
+  // 무거운 문서 작성 작업(표·이미지 등)을 낭비하지 않고 바로 실패시킨다.
+  const 보고서폴더 = _보고서폴더조회_(접수번호, {
+    순번: 건['순번'], 기업명: 건['기업명'], 제품명: 건['제품명'],
+  });
+  if (보고서폴더.getFilesByName(제목문).hasNext()) {
+    throw new Error(`이미 같은 이름의 보고서 파일이 있습니다: "${제목문}". 기존 파일을 정리한 뒤 다시 생성하세요.`);
+  }
+
   const doc = DocumentApp.create(제목문);
   const body = doc.getBody();
   _문서여백설정(body, 1, 2, 2, 2);
@@ -360,26 +401,27 @@ function _증적명세서Docs생성(ss, 건) {
 
   _보고서폰트통일_(doc, 보고서_기본폰트);
   doc.saveAndClose();
+
+  // 폴더는 함수 시작 시점에 이미 확인해뒀으므로 다시 찾지 않고 바로 옮긴다.
   const 보고서파일 = DriveApp.getFileById(doc.getId());
-  _보고서를접수번호폴더로저장_(보고서파일, 접수번호, 건);
+  const 부모목록 = 보고서파일.getParents();
+  보고서폴더.addFile(보고서파일);
+  while (부모목록.hasNext()) {
+    const 부모 = 부모목록.next();
+    if (부모.getId() !== 보고서폴더.getId()) 부모.removeFile(보고서파일);
+  }
   return doc;
 }
 
 /** 본문·표·머리글의 모든 텍스트를 단일 글꼴로 강제해 DOCX 내 글꼴 혼용을 방지한다. */
 function _보고서폰트통일_(doc, fontFamily) {
-  const 적용 = element => {
-    if (!element) return;
-    if (element.getType && element.getType() === DocumentApp.ElementType.TEXT) {
-      element.asText().setFontFamily(fontFamily);
-      return;
-    }
-    if (element.getNumChildren) {
-      for (let i = 0; i < element.getNumChildren(); i++) 적용(element.getChild(i));
-    }
-  };
-  적용(doc.getBody());
-  적용(doc.getHeader());
-  적용(doc.getFooter());
+  // 텍스트 조각(리프 노드)마다 개별 호출하는 대신, 컨테이너 전체를 하나의 Text 범위로
+  // 얻어 한 번에 적용한다 — 표 안 텍스트까지 포함해서 호출 횟수를 최소화한다.
+  doc.getBody().editAsText().setFontFamily(fontFamily);
+  const 머리글 = doc.getHeader();
+  if (머리글) 머리글.editAsText().setFontFamily(fontFamily);
+  const 바닥글 = doc.getFooter();
+  if (바닥글) 바닥글.editAsText().setFontFamily(fontFamily);
 }
 
 function _문서여백설정(body, topCm, bottomCm, leftCm, rightCm) {
@@ -443,22 +485,44 @@ function _심사항목별검토결과표(body, 결과행) {
   });
 }
 
+/**
+ * 셀 자체 속성(padding·너비·세로정렬)과 셀 안 문단 속성(가로정렬·줄간격)을
+ * 각각 한 번의 setAttributes 호출로 묶어 적용한다. 적용 대상(셀/문단)은 기존
+ * setPaddingTop 등 개별 호출과 동일하게 유지하고, 호출 횟수만 줄인다.
+ */
+function _셀스타일적용_(cell, width, horizontalAlignment) {
+  const 셀속성 = {};
+  셀속성[DocumentApp.Attribute.PADDING_TOP] = 4;
+  셀속성[DocumentApp.Attribute.PADDING_BOTTOM] = 4;
+  셀속성[DocumentApp.Attribute.PADDING_LEFT] = 6;
+  셀속성[DocumentApp.Attribute.PADDING_RIGHT] = 6;
+  셀속성[DocumentApp.Attribute.VERTICAL_ALIGNMENT] = DocumentApp.VerticalAlignment.CENTER;
+  if (width) 셀속성[DocumentApp.Attribute.WIDTH] = width;
+  cell.setAttributes(셀속성);
+
+  const 문단속성 = {};
+  문단속성[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = horizontalAlignment;
+  문단속성[DocumentApp.Attribute.LINE_SPACING] = 1.0;
+  for (let i = 0; i < cell.getNumChildren(); i++) {
+    const child = cell.getChild(i);
+    if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      child.asParagraph().setAttributes(문단속성);
+    }
+  }
+}
+
 function _기능세부표스타일(table) {
   const widths = [_cm(2), _cm(3), _cm(9.3), _cm(2.7)];
   for (let r = 0; r < table.getNumRows(); r++) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
       const cell = row.getCell(c);
-      cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
-      if (widths[c]) cell.setWidth(widths[c]);
-      if (c === 0 || c === 1) {
-        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
-      } else {
-        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.LEFT);
-      }
+      const alignment = (c === 0 || c === 1)
+        ? DocumentApp.HorizontalAlignment.CENTER
+        : DocumentApp.HorizontalAlignment.LEFT;
+      _셀스타일적용_(cell, widths[c], alignment);
     }
   }
-  _모든표공통스타일_(table);
 }
 
 function _두열표스타일(table, firstWidth, secondWidth, 첫행헤더) {
@@ -467,17 +531,15 @@ function _두열표스타일(table, firstWidth, secondWidth, 첫행헤더) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
       const cell = row.getCell(c);
-      cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
-      if (widths[c]) cell.setWidth(widths[c]);
-      if ((첫행헤더 === true && r === 0) || c === 0) {
-        cell.editAsText().setBold(true);
-        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.CENTER);
-      } else {
-        _셀문단정렬(cell, DocumentApp.HorizontalAlignment.LEFT);
-      }
+      const 헤더셀 = (첫행헤더 === true && r === 0) || c === 0;
+      if (헤더셀) cell.editAsText().setBold(true);
+      _셀스타일적용_(
+        cell,
+        widths[c],
+        헤더셀 ? DocumentApp.HorizontalAlignment.CENTER : DocumentApp.HorizontalAlignment.LEFT
+      );
     }
   }
-  _모든표공통스타일_(table);
 }
 
 function _심사결과표스타일(table) {
@@ -486,32 +548,10 @@ function _심사결과표스타일(table) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
       const cell = row.getCell(c);
-      cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
-      if (widths[c]) cell.setWidth(widths[c]);
-      _셀문단정렬(
-        cell,
-        r === 0 || (c !== 1 && c !== 3)
-          ? DocumentApp.HorizontalAlignment.CENTER
-          : DocumentApp.HorizontalAlignment.LEFT
-      );
-    }
-  }
-  _모든표공통스타일_(table);
-}
-
-/** 모든 보고서 표에 기본 한 줄 간격과 셀 세로 가운데 정렬을 적용한다. */
-function _모든표공통스타일_(table) {
-  for (let r = 0; r < table.getNumRows(); r++) {
-    const row = table.getRow(r);
-    for (let c = 0; c < row.getNumCells(); c++) {
-      const cell = row.getCell(c);
-      cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
-      for (let i = 0; i < cell.getNumChildren(); i++) {
-        const child = cell.getChild(i);
-        if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
-          child.asParagraph().setLineSpacing(1.0);
-        }
-      }
+      const alignment = r === 0 || (c !== 1 && c !== 3)
+        ? DocumentApp.HorizontalAlignment.CENTER
+        : DocumentApp.HorizontalAlignment.LEFT;
+      _셀스타일적용_(cell, widths[c], alignment);
     }
   }
 }
@@ -794,15 +834,11 @@ function _보관폴더준비(접수번호, 정보) {
     if (구형폴더.hasNext()) 접수폴더 = 구형폴더.next();
   }
   if (!접수폴더) {
-    const 폴더목록 = 루트.getFolders();
-    const 표시 = `(${정규화접수번호})`;
-    while (폴더목록.hasNext()) {
-      const 후보 = 폴더목록.next();
-      if (후보.getName().indexOf(표시) >= 0) {
-        접수폴더 = 후보;
-        break;
-      }
-    }
+    // 전체 폴더를 순회하며 이름을 비교하는 대신, Drive 서버 사이드 검색으로 대상만 걸러온다.
+    // 폴더 수가 많아져도(운영 누적) 속도가 거의 떨어지지 않는다.
+    const 검색어 = 정규화접수번호.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const 검색결과 = 루트.searchFolders(`title contains '(${검색어})'`);
+    if (검색결과.hasNext()) 접수폴더 = 검색결과.next();
   }
   if (!접수폴더) {
     const 생성이름 = 정보 && 정보.순번
@@ -814,29 +850,4 @@ function _보관폴더준비(접수번호, 정보) {
   _접수하위폴더준비_(접수폴더, '01.신청서');
   _접수하위폴더준비_(접수폴더, '02.보고서');
   return 접수폴더;
-}
-
-/** 생성된 보고서 파일을 보관루트/접수번호 폴더로 옮김 (동일 이름 이전 파일은 휴지통 처리) */
-function _보고서를접수번호폴더로저장_(file, 접수번호, 건) {
-  try {
-    const 접수폴더 = _보관폴더준비(접수번호, {
-      순번: 건 && 건['순번'],
-      기업명: 건 && 건['기업명'],
-      제품명: 건 && 건['제품명'],
-    });
-    const 폴더 = _접수하위폴더준비_(접수폴더, '02.보고서');
-    const 기존 = 폴더.getFilesByName(file.getName());
-    while (기존.hasNext()) {
-      const f = 기존.next();
-      if (f.getId() !== file.getId()) f.setTrashed(true);
-    }
-    const 부모목록 = file.getParents();
-    폴더.addFile(file);
-    while (부모목록.hasNext()) {
-      const 부모 = 부모목록.next();
-      if (부모.getId() !== 폴더.getId()) 부모.removeFile(file);
-    }
-  } catch (e) {
-    Logger.log('보고서 파일 폴더 이동 실패: ' + e.message);
-  }
 }
