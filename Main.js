@@ -156,7 +156,7 @@ const 시트헤더정의 = {
     '접수일자',      // 기산일 (엑셀 원본)
     '심사접수일',    // TTA 인수일
     '마감예정일',    // 접수일자 + 15 WD, 주말·공휴일 제외 (수식 자동 생성)
-    '상태',          // 대기 / 심사중 / 보완 / 완료(적합) / 종료(부적합)
+    '상태',          // 대기 / 심사중 / 보완 / 완료(적합) / 종료(부적합) / 종료(취소)
     '보완요청일',    // 내부 심사원이 직접 입력
     '연장마감일',    // 보완요청일 + 30 WD, 주말·공휴일 제외 (수식 자동 생성)
     '적합통보일',    // 관리자가 직접 입력
@@ -366,7 +366,7 @@ function 초기설정실행() {
   상태범위.createTextFinder('완료').matchEntireCell(true).replaceAllWith('완료(적합)');
   상태범위
     .setDataValidation(SpreadsheetApp.newDataValidation()
-      .requireValueInList(['대기', '심사중', '보완', '완료(적합)', '종료(부적합)'], true).build());
+      .requireValueInList(일정관리_상태목록, true).build());
   const 심사원관리시트 = ss.getSheetByName(SHEET.심사원관리);
   const 심사원관리H = 심사원관리시트
     ? 심사원관리시트.getRange(1, 1, 1, 심사원관리시트.getLastColumn()).getValues()[0].map(v => String(v).trim())

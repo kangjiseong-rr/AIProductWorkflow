@@ -9,6 +9,7 @@
  * ============================================================
  */
 
+const 일정관리_상태목록 = ['대기', '심사중', '보완', '완료(적합)', '종료(부적합)', '종료(취소)'];
 const 일정관리_헤더색 = '#1f3a5f';
 const 일정관리_특이사항헤더색 = '#dbe7f3';
 const 일정관리_특이사항헤더글자색 = '#1f3a5f';
@@ -91,9 +92,10 @@ function _일정관리조건부서식적용_(일정시트) {
   //   ① 기한 초과(미완료)  → 연빨강   (상태색보다 우선)
   //   ② 완료(적합)         → 연녹색
   //   ③ 종료(부적합)       → 진한 회색
-  //   ④ 보완               → 머스터드(짙은 노랑)
-  //   ⑤ 심사중             → 연노랑
-  //   ⑥ 대기               → 무색 (규칙 없음)
+  //   ④ 종료(취소)         → 연한 회색
+  //   ⑤ 보완               → 머스터드(짙은 노랑)
+  //   ⑥ 심사중             → 연노랑
+  //   ⑦ 대기               → 무색 (규칙 없음)
   // 조건부서식 커스텀 수식은 "1:1000" 같은 전체 행 참조를 지원하지 않아
   // #REF! 오류가 나므로, 실제 사용 중인 열까지로 범위를 명시해 참조한다.
   // 행 범위는 하드코딩된 값 대신 시트의 실제 그리드 크기를 쓴다.
@@ -102,6 +104,12 @@ function _일정관리조건부서식적용_(일정시트) {
   const 끝열문자 = columnLetter(일정H.length);
   const 마지막행 = Math.max(2, 일정시트.getMaxRows());
   const 행수 = 마지막행 - 1;
+
+  // 상태 드롭다운 목록도 함께 최신화한다. 초기설정 이후 새 상태값이
+  // 추가돼도(예: 종료(취소)) 이 함수가 재실행될 때 기존 행에 반영된다.
+  일정시트.getRange(2, iD상태, 행수, 1)
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(일정관리_상태목록, true).build());
+
   const 헤더행범위 = `$A$1:$${끝열문자}$1`;
   const 데이터범위 = `$A$1:$${끝열문자}${마지막행}`;
   const 헤더값 = 헤더명 => `INDEX(${데이터범위},ROW(),MATCH("${헤더명}",${헤더행범위},0))`;
@@ -124,7 +132,7 @@ function _일정관리조건부서식적용_(일정시트) {
   // ① 기한 초과 & 미완료
   const 초과 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(
-      `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`
+      `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`
     )
     .setBackground('#F4CCCC').setFontColor('#990000')
     .setRanges(전체범위).build();
@@ -141,20 +149,26 @@ function _일정관리조건부서식적용_(일정시트) {
     .setBackground('#666666').setFontColor('#FFFFFF')
     .setRanges(전체범위).build();
 
-  // ④ 보완 → 머스터드(짙은 노랑)
+  // ④ 종료(취소) → 연한 회색 (종료(부적합)과 구분되는 밝은 톤)
+  const 취소 = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=${상태}="종료(취소)"`)
+    .setBackground('#D9D9D9').setFontColor('#666666')
+    .setRanges(전체범위).build();
+
+  // ⑤ 보완 → 머스터드(짙은 노랑)
   const 보완 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=${상태}="보완"`)
     .setBackground('#F9CB9C').setFontColor('#783F04')
     .setRanges(전체범위).build();
 
-  // ⑤ 심사중 → 연노랑
+  // ⑥ 심사중 → 연노랑
   const 심사중 = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=${상태}="심사중"`)
     .setBackground('#FCE8B2').setFontColor('#7F6000')
     .setRanges(전체범위).build();
 
   // 대기(무색)는 규칙 없음
-  일정시트.setConditionalFormatRules([초과, 완료, 종료, 보완, 심사중]);
+  일정시트.setConditionalFormatRules([초과, 완료, 종료, 취소, 보완, 심사중]);
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
