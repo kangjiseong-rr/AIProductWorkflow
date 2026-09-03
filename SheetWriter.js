@@ -16,23 +16,27 @@ function _테이블행추가(sheet, 값배열, 헤더행, 텍스트헤더목록)
   const 마지막 = sheet.getLastRow();
   const 대상행 = 마지막 + 1;
   if (헤더행 && 텍스트헤더목록) {
-    텍스트헤더목록.forEach(헤더 => {
-      const 열 = 헤더행.indexOf(헤더) + 1;
-      if (열 < 1) return;
+    const 대상열목록 = 텍스트헤더목록
+      .map(헤더 => ({ 헤더, 열: 헤더행.indexOf(헤더) + 1 }))
+      .filter(x => x.열 > 0);
+    if (대상열목록.length) {
       try {
-        sheet.getRange(대상행, 열).setNumberFormat('@');
-        // Apps Script는 쓰기 호출을 즉시 실행하지 않고 큐에 모아뒀다가 다음 읽기
-        // 시점에 한꺼번에 반영한다. flush()로 즉시 반영을 강제해야 실패가 이
-        // try/catch 안에서 잡힌다 — 안 그러면 예외가 한참 뒤 무관한 읽기 지점에서
-        // 터져 나온다.
+        // 열마다 flush()하면 등록 1건당 왕복이 여러 번 생겨 느려지므로,
+        // 이 행의 서식 지정을 전부 큐에 올린 뒤 flush()는 한 번만 부른다.
+        // Apps Script가 쓰기를 즉시 실행하지 않고 큐에 모아뒀다가 다음 읽기
+        // 시점에 반영하기 때문에, 실패를 이 try/catch 안에서 잡으려면
+        // flush()로 반영을 강제해야 한다 — 안 그러면 예외가 한참 뒤 무관한
+        // 읽기 지점에서 터져 나온다.
+        대상열목록.forEach(({ 열 }) => sheet.getRange(대상행, 열).setNumberFormat('@'));
         SpreadsheetApp.flush();
       } catch (e) {
         // 시트에 수동으로 만든 구글 표가 있고 이 열에 타입(예: 숫자)이 지정돼 있으면
         // "유형이 적용된 열에는 셀의 숫자 형식을 설정할 수 없습니다" 예외가 난다.
-        // 서식 하나 실패했다고 등록 전체를 막지 않고, 값 쓰기는 계속 진행한다.
-        Logger.log(`${sheet.getName()} "${헤더}" 열 텍스트 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+        // 서식 하나(들) 실패했다고 등록 전체를 막지 않고, 값 쓰기는 계속 진행한다.
+        const 헤더목록 = 대상열목록.map(x => x.헤더).join(', ');
+        Logger.log(`${sheet.getName()} ${대상행}행 "${헤더목록}" 텍스트 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
       }
-    });
+    }
   }
   const 대상범위 = sheet.getRange(대상행, 1, 1, 값배열.length).setValues([값배열]);
   if (sheet.getName() === SHEET.접수대장 || sheet.getName() === SHEET.AI기능상세) {
@@ -44,22 +48,26 @@ function _테이블행추가(sheet, 값배열, 헤더행, 텍스트헤더목록)
 /**
  * 시트에 수동으로 만든 구글 표가 있고 그 열에 타입이 지정돼 있으면,
  * setNumberFormat()뿐 아니라 .setValue()도 "유형이 적용된 열에는 셀의
- * 숫자 형식을 설정할 수 없습니다" 예외를 던질 수 있다. 값 하나 실패했다고
+ * 숫자 형식을 설정할 수 없습니다" 예외를 던질 수 있다. 값 하나(들) 실패했다고
  * 등록 전체(또는 나머지 요약 갱신)를 막지 않도록 감싼다.
- * ⚠ 이 값은 실제로 반영되지 않은 것이므로 로그로 남긴다 — 반복되면
+ * ⚠ 이 값들은 실제로 반영되지 않은 것이므로 로그로 남긴다 — 반복되면
  * 표의 해당 열 유형을 "일반 텍스트"로 바꾸거나 표 자체를 없애는 게
  * 근본 해결책이다(관리자 메뉴 참고).
+ *
+ * @param {Array<[Range, *]>} 범위값쌍들 - 같은 행 등 관련된 여러 셀을 한 번에
+ *   묶어서 넘기면 flush()를 1번만 호출해 왕복 비용을 줄인다.
  */
-function _안전셀쓰기_(range, value) {
+function _안전셀쓰기_(범위값쌍들) {
   try {
-    range.setValue(value);
+    범위값쌍들.forEach(([range, value]) => range.setValue(value));
     // flush()로 즉시 반영을 강제해야 타입 충돌 실패가 이 try/catch 안에서 잡힌다.
     // 안 그러면 Apps Script가 쓰기를 큐에 모아뒀다가 나중 읽기 시점에 반영하면서
     // 예외가 전혀 무관한 곳(예: 다음 getDataRange() 호출)에서 터져 나온다.
     SpreadsheetApp.flush();
     return true;
   } catch (e) {
-    Logger.log(`셀 쓰기 실패(표 열 타입 충돌 가능) [${range.getSheet().getName()} ${range.getA1Notation()}]: ${e.message}`);
+    const 위치 = 범위값쌍들.map(([range]) => `${range.getSheet().getName()} ${range.getA1Notation()}`).join(', ');
+    Logger.log(`셀 쓰기 실패(표 열 타입 충돌 가능) [${위치}]: ${e.message}`);
     return false;
   }
 }
@@ -259,8 +267,10 @@ function _접수대장제품모델요약갱신(ss, 접수번호, 모델목록) {
 
   for (let r = 1; r < D.length; r++) {
     if (String(D[r][iNo]).trim() !== String(접수번호).trim()) continue;
-    if (i제품명 >= 0 && 대표모델명) _안전셀쓰기_(대장시트.getRange(r + 1, i제품명 + 1), 대표모델명);
-    if (i제품수 >= 0) _안전셀쓰기_(대장시트.getRange(r + 1, i제품수 + 1), 모델목록.length);
+    const 쓰기목록 = [];
+    if (i제품명 >= 0 && 대표모델명) 쓰기목록.push([대장시트.getRange(r + 1, i제품명 + 1), 대표모델명]);
+    if (i제품수 >= 0) 쓰기목록.push([대장시트.getRange(r + 1, i제품수 + 1), 모델목록.length]);
+    if (쓰기목록.length) _안전셀쓰기_(쓰기목록);
     break;
   }
 }
@@ -309,15 +319,17 @@ function _접수대장기능수갱신(접수번호, 기능목록) {
   const i방식 = H.indexOf('구현방식(요약)');
   for (let r = 1; r < D.length; r++) {
     if (D[r][iNo] === 접수번호) {
-      if (i수 >= 0) _안전셀쓰기_(대장시트.getRange(r + 1, i수 + 1), 기능목록.length);
-      if (i명 >= 0) _안전셀쓰기_(
+      const 쓰기목록 = [];
+      if (i수 >= 0) 쓰기목록.push([대장시트.getRange(r + 1, i수 + 1), 기능목록.length]);
+      if (i명 >= 0) 쓰기목록.push([
         대장시트.getRange(r + 1, i명 + 1),
-        기능목록.map(f => f.기능명).filter(Boolean).join(' / ')
-      );
-      if (i방식 >= 0) _안전셀쓰기_(
+        기능목록.map(f => f.기능명).filter(Boolean).join(' / '),
+      ]);
+      if (i방식 >= 0) 쓰기목록.push([
         대장시트.getRange(r + 1, i방식 + 1),
-        [...new Set(기능목록.map(f => f.구현방식).filter(Boolean))].join(', ')
-      );
+        [...new Set(기능목록.map(f => f.구현방식).filter(Boolean))].join(', '),
+      ]);
+      if (쓰기목록.length) _안전셀쓰기_(쓰기목록);
       break;
     }
   }

@@ -177,18 +177,23 @@ function _일정관리서식적용_(시트, 요약뷰) {
 
   // 일정관리 날짜는 실제 날짜값을 유지하고 화면에는 두 자리 연도로 간결하게 표시.
   // 구글 표의 열에 타입이 지정된 상태(예: DATE)에서는 setNumberFormat이 예외를
-  // 던지므로, 서식 하나 실패했다고 이후 처리(조건부서식 등)까지 막지 않도록 감싼다.
-  ['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일', '적합통보일'].forEach(날짜헤더 => {
-    const 열 = 헤더.indexOf(날짜헤더) + 1;
-    if (열 < 1) return;
+  // 던지므로, 서식 실패가 이후 처리(조건부서식 등)까지 막지 않도록 감싼다.
+  // 열마다 flush()하면 이 함수가 행 추가마다 호출되는 만큼 왕복이 누적되므로,
+  // 날짜 컬럼 전체를 큐에 올린 뒤 flush()는 한 번만 부른다.
+  const 날짜열목록 = ['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일', '적합통보일']
+    .map(날짜헤더 => ({ 헤더: 날짜헤더, 열: 헤더.indexOf(날짜헤더) + 1 }))
+    .filter(x => x.열 > 0);
+  if (날짜열목록.length) {
     try {
-      시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd');
-      // flush()로 즉시 반영해야 타입 충돌 실패가 이 try/catch 안에서 잡힌다.
+      날짜열목록.forEach(({ 열 }) =>
+        시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd')
+      );
       SpreadsheetApp.flush();
     } catch (e) {
-      Logger.log(`일정관리 "${날짜헤더}" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+      const 헤더목록 = 날짜열목록.map(x => x.헤더).join(', ');
+      Logger.log(`일정관리 "${헤더목록}" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
     }
-  });
+  }
 
   시트.setHiddenGridlines(false);
   시트.setFrozenRows(1);
