@@ -21,6 +21,11 @@ function _테이블행추가(sheet, 값배열, 헤더행, 텍스트헤더목록)
       if (열 < 1) return;
       try {
         sheet.getRange(대상행, 열).setNumberFormat('@');
+        // Apps Script는 쓰기 호출을 즉시 실행하지 않고 큐에 모아뒀다가 다음 읽기
+        // 시점에 한꺼번에 반영한다. flush()로 즉시 반영을 강제해야 실패가 이
+        // try/catch 안에서 잡힌다 — 안 그러면 예외가 한참 뒤 무관한 읽기 지점에서
+        // 터져 나온다.
+        SpreadsheetApp.flush();
       } catch (e) {
         // 시트에 수동으로 만든 구글 표가 있고 이 열에 타입(예: 숫자)이 지정돼 있으면
         // "유형이 적용된 열에는 셀의 숫자 형식을 설정할 수 없습니다" 예외가 난다.
@@ -48,6 +53,10 @@ function _테이블행추가(sheet, 값배열, 헤더행, 텍스트헤더목록)
 function _안전셀쓰기_(range, value) {
   try {
     range.setValue(value);
+    // flush()로 즉시 반영을 강제해야 타입 충돌 실패가 이 try/catch 안에서 잡힌다.
+    // 안 그러면 Apps Script가 쓰기를 큐에 모아뒀다가 나중 읽기 시점에 반영하면서
+    // 예외가 전혀 무관한 곳(예: 다음 getDataRange() 호출)에서 터져 나온다.
+    SpreadsheetApp.flush();
     return true;
   } catch (e) {
     Logger.log(`셀 쓰기 실패(표 열 타입 충돌 가능) [${range.getSheet().getName()} ${range.getA1Notation()}]: ${e.message}`);

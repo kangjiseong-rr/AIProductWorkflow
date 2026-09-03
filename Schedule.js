@@ -183,6 +183,8 @@ function _일정관리서식적용_(시트, 요약뷰) {
     if (열 < 1) return;
     try {
       시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd');
+      // flush()로 즉시 반영해야 타입 충돌 실패가 이 try/catch 안에서 잡힌다.
+      SpreadsheetApp.flush();
     } catch (e) {
       Logger.log(`일정관리 "${날짜헤더}" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
     }
@@ -605,6 +607,7 @@ function _마감예정일수식갱신_(ss) {
   시트.getRange(2, 마감열, 행수, 1).setFormulas(수식);
   try {
     시트.getRange(2, 마감열, 행수, 1).setNumberFormat('yy-mm-dd');
+    SpreadsheetApp.flush();
   } catch (e) {
     Logger.log(`일정관리 "마감예정일" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
   }
@@ -622,6 +625,7 @@ function _마감예정일수식갱신_(ss) {
       .setFormulas(연장수식);
     try {
       시트.getRange(2, 연장마감열, 행수, 1).setNumberFormat('yy-mm-dd');
+      SpreadsheetApp.flush();
     } catch (e) {
       Logger.log(`일정관리 "연장마감일" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
     }
