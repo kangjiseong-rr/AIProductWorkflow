@@ -36,6 +36,25 @@ function _테이블행추가(sheet, 값배열, 헤더행, 텍스트헤더목록)
   return 대상행;
 }
 
+/**
+ * 시트에 수동으로 만든 구글 표가 있고 그 열에 타입이 지정돼 있으면,
+ * setNumberFormat()뿐 아니라 .setValue()도 "유형이 적용된 열에는 셀의
+ * 숫자 형식을 설정할 수 없습니다" 예외를 던질 수 있다. 값 하나 실패했다고
+ * 등록 전체(또는 나머지 요약 갱신)를 막지 않도록 감싼다.
+ * ⚠ 이 값은 실제로 반영되지 않은 것이므로 로그로 남긴다 — 반복되면
+ * 표의 해당 열 유형을 "일반 텍스트"로 바꾸거나 표 자체를 없애는 게
+ * 근본 해결책이다(관리자 메뉴 참고).
+ */
+function _안전셀쓰기_(range, value) {
+  try {
+    range.setValue(value);
+    return true;
+  } catch (e) {
+    Logger.log(`셀 쓰기 실패(표 열 타입 충돌 가능) [${range.getSheet().getName()} ${range.getA1Notation()}]: ${e.message}`);
+    return false;
+  }
+}
+
 /** 접수대장 헤더에서 컬럼의 1-based 번호 반환 */
 function _대장열번호(컬럼명, 대장H) {
   return 대장H.indexOf(컬럼명) + 1;
@@ -231,8 +250,8 @@ function _접수대장제품모델요약갱신(ss, 접수번호, 모델목록) {
 
   for (let r = 1; r < D.length; r++) {
     if (String(D[r][iNo]).trim() !== String(접수번호).trim()) continue;
-    if (i제품명 >= 0 && 대표모델명) 대장시트.getRange(r + 1, i제품명 + 1).setValue(대표모델명);
-    if (i제품수 >= 0) 대장시트.getRange(r + 1, i제품수 + 1).setValue(모델목록.length);
+    if (i제품명 >= 0 && 대표모델명) _안전셀쓰기_(대장시트.getRange(r + 1, i제품명 + 1), 대표모델명);
+    if (i제품수 >= 0) _안전셀쓰기_(대장시트.getRange(r + 1, i제품수 + 1), 모델목록.length);
     break;
   }
 }
@@ -281,11 +300,15 @@ function _접수대장기능수갱신(접수번호, 기능목록) {
   const i방식 = H.indexOf('구현방식(요약)');
   for (let r = 1; r < D.length; r++) {
     if (D[r][iNo] === 접수번호) {
-      if (i수 >= 0) 대장시트.getRange(r + 1, i수 + 1).setValue(기능목록.length);
-      if (i명 >= 0) 대장시트.getRange(r + 1, i명 + 1)
-        .setValue(기능목록.map(f => f.기능명).filter(Boolean).join(' / '));
-      if (i방식 >= 0) 대장시트.getRange(r + 1, i방식 + 1)
-        .setValue([...new Set(기능목록.map(f => f.구현방식).filter(Boolean))].join(', '));
+      if (i수 >= 0) _안전셀쓰기_(대장시트.getRange(r + 1, i수 + 1), 기능목록.length);
+      if (i명 >= 0) _안전셀쓰기_(
+        대장시트.getRange(r + 1, i명 + 1),
+        기능목록.map(f => f.기능명).filter(Boolean).join(' / ')
+      );
+      if (i방식 >= 0) _안전셀쓰기_(
+        대장시트.getRange(r + 1, i방식 + 1),
+        [...new Set(기능목록.map(f => f.구현방식).filter(Boolean))].join(', ')
+      );
       break;
     }
   }
