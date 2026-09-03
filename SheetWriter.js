@@ -18,7 +18,15 @@ function _테이블행추가(sheet, 값배열, 헤더행, 텍스트헤더목록)
   if (헤더행 && 텍스트헤더목록) {
     텍스트헤더목록.forEach(헤더 => {
       const 열 = 헤더행.indexOf(헤더) + 1;
-      if (열 > 0) sheet.getRange(대상행, 열).setNumberFormat('@');
+      if (열 < 1) return;
+      try {
+        sheet.getRange(대상행, 열).setNumberFormat('@');
+      } catch (e) {
+        // 시트에 수동으로 만든 구글 표가 있고 이 열에 타입(예: 숫자)이 지정돼 있으면
+        // "유형이 적용된 열에는 셀의 숫자 형식을 설정할 수 없습니다" 예외가 난다.
+        // 서식 하나 실패했다고 등록 전체를 막지 않고, 값 쓰기는 계속 진행한다.
+        Logger.log(`${sheet.getName()} "${헤더}" 열 텍스트 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+      }
     });
   }
   const 대상범위 = sheet.getRange(대상행, 1, 1, 값배열.length).setValues([값배열]);

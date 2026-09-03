@@ -175,10 +175,17 @@ function _일정관리서식적용_(시트, 요약뷰) {
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
-  // 일정관리 날짜는 실제 날짜값을 유지하고 화면에는 두 자리 연도로 간결하게 표시
+  // 일정관리 날짜는 실제 날짜값을 유지하고 화면에는 두 자리 연도로 간결하게 표시.
+  // 구글 표의 열에 타입이 지정된 상태(예: DATE)에서는 setNumberFormat이 예외를
+  // 던지므로, 서식 하나 실패했다고 이후 처리(조건부서식 등)까지 막지 않도록 감싼다.
   ['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일', '적합통보일'].forEach(날짜헤더 => {
     const 열 = 헤더.indexOf(날짜헤더) + 1;
-    if (열 > 0) 시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd');
+    if (열 < 1) return;
+    try {
+      시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd');
+    } catch (e) {
+      Logger.log(`일정관리 "${날짜헤더}" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+    }
   });
 
   시트.setHiddenGridlines(false);
@@ -593,7 +600,14 @@ function _마감예정일수식갱신_(ss) {
     const 신청셀 = `${신청열문자}${행}`;
     return [`=IF(${신청셀}="","",WORKDAY(${신청셀},15,'${공휴일시트명}'!$A$2:$A))`];
   });
-  시트.getRange(2, 마감열, 행수, 1).setFormulas(수식).setNumberFormat('yy-mm-dd');
+  // 구글 표의 열에 타입(DATE)이 지정된 상태에서는 setNumberFormat이 예외를
+  // 던지므로, 수식 입력(핵심 동작)과 분리해 서식 실패가 수식 갱신을 막지 않게 한다.
+  시트.getRange(2, 마감열, 행수, 1).setFormulas(수식);
+  try {
+    시트.getRange(2, 마감열, 행수, 1).setNumberFormat('yy-mm-dd');
+  } catch (e) {
+    Logger.log(`일정관리 "마감예정일" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+  }
   if (보완요청열 > 0 && 연장마감열 > 0) {
     const 보완요청열문자 = columnLetter(보완요청열);
     const 연장수식 = 신청값.map((_, i) => {
@@ -605,8 +619,12 @@ function _마감예정일수식갱신_(ss) {
     // 자동 수식 입력 시 "날짜를 직접 선택" 유효성 검사 예외가 발생하지 않는다.
     시트.getRange(2, 연장마감열, 행수, 1)
       .clearDataValidations()
-      .setFormulas(연장수식)
-      .setNumberFormat('yy-mm-dd');
+      .setFormulas(연장수식);
+    try {
+      시트.getRange(2, 연장마감열, 행수, 1).setNumberFormat('yy-mm-dd');
+    } catch (e) {
+      Logger.log(`일정관리 "연장마감일" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+    }
   }
   return 행수;
 }
