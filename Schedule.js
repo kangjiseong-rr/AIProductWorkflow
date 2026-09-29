@@ -167,8 +167,20 @@ function _일정관리조건부서식적용_(일정시트) {
     .setBackground('#FCE8B2').setFontColor('#7F6000')
     .setRanges(전체범위).build();
 
-  // 대기(무색)는 규칙 없음
-  일정시트.setConditionalFormatRules([초과, 완료, 종료, 취소, 보완, 심사중]);
+  // 정확히 D-3인 마감 셀만 버건디로 표시한다. 다른 시트의 공휴일은
+  // 조건부서식에서 직접 참조할 수 없으므로 INDIRECT를 사용한다.
+  const 현재셀 = `INDEX(${데이터범위},ROW(),COLUMN())`;
+  const 임박조건 = `IFERROR(AND(ISNUMBER(${현재셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()=WORKDAY(${현재셀},-3,INDIRECT("'${공휴일시트명}'!A2:A"))),FALSE)`;
+  const 마감범위 = [iD마감, iD연장마감].map(열 => 일정시트.getRange(2, 열, 행수, 1));
+  // Sheets는 첫 일치 규칙을 적용하므로 상태별 배경도 함께 복사한다.
+  const 임박규칙 = [초과, 보완, 심사중].map(규칙 => 규칙.copy()
+    .whenFormulaSatisfied(`=AND(${임박조건},${규칙.getBooleanCondition().getCriteriaValues()[0].replace(/^=/, '')})`)
+    .setFontColor('#800020').setRanges(마감범위).build());
+  임박규칙.push(SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=${임박조건}`)
+    .setFontColor('#800020').setRanges(마감범위).build());
+
+  일정시트.setConditionalFormatRules(임박규칙.concat([초과, 완료, 종료, 취소, 보완, 심사중]));
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
@@ -667,6 +679,9 @@ function _일정관리공휴일연도만확보_(ss) {
 
 /** 관리자 수동 실행용: 공휴일과 기존 마감예정일 수식을 즉시 갱신 */
 function 마감예정일갱신() {
-  const 갱신건수 = _마감예정일수식갱신_(SpreadsheetApp.getActiveSpreadsheet());
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 갱신건수 = _마감예정일수식갱신_(ss);
+  const 일정시트 = ss.getSheetByName(SHEET.일정관리);
+  if (일정시트) _일정관리조건부서식적용_(일정시트);
   SpreadsheetApp.getUi().alert(`마감일 갱신 완료: ${갱신건수}건\n기본: 접수일자 + 15 WD\n보완: 보완요청일 + 30 WD\n(주말·공휴일 제외)`);
 }
