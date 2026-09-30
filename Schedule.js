@@ -159,18 +159,22 @@ function _일정관리조건부서식적용_(일정시트) {
   // ⑥ 심사중 → 연노랑
   const 심사중 = 단일범위규칙들(`=${상태}="심사중"`, '#FCE8B2', '#7F6000');
 
-  // 3영업일 전부터 마감 당일까지(사이의 휴일 포함) 노란 배경과 버건디 글자로 표시한다.
-  // 기한 초과는 기존 초과 규칙에 맡긴다. 다른 시트의 공휴일은
-  // 조건부서식에서 직접 참조할 수 없으므로 INDIRECT를 사용한다.
-  const 임박규칙 = [iD마감, iD연장마감].map(열 => {
-  const 현재셀 = 행셀(열);
-  const 임박조건 = `IFERROR(AND(ISNUMBER(${현재셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=WORKDAY(${현재셀},-3,INDIRECT("'${공휴일시트명}'!A2:A")),TODAY()<=${현재셀}),FALSE)`;
-  // 마감 셀의 노란 배경을 상태별 행 색상보다 우선 적용한다.
-  return SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${임박조건}`)
-    .setBackground('#FFFF00').setFontColor('#800020')
-    .setRanges([일정시트.getRange(2, 열, 행수, 1)]).build();
-  });
+  // 2026-09-30: 상태색 렌더링이 "고치면 잠깐 보였다가 다시 하얗게" 반복되는
+  // 현상이 이 규칙(버건디 D-3 강조) 도입 이후부터 계속된다는 의심 아래
+  // 임시로 롤백한다. 이 규칙만 TODAY()/WORKDAY()/INDIRECT(휘발성, 매 재계산
+  // 마다 부하 큼)를 쓰고 나머지 6개는 단순 텍스트 비교라, 이 규칙이 조건부
+  // 서식 전체의 재계산을 불안정하게 만들었을 가능성을 테스트한다.
+  // 원상복구 시 아래 주석을 풀고 setConditionalFormatRules 인자에 임박규칙을 다시 넣는다.
+  const 임박규칙 = [];
+  // const 임박규칙 = [iD마감, iD연장마감].map(열 => {
+  // const 현재셀 = 행셀(열);
+  // const 임박조건 = `IFERROR(AND(ISNUMBER(${현재셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=WORKDAY(${현재셀},-3,INDIRECT("'${공휴일시트명}'!A2:A")),TODAY()<=${현재셀}),FALSE)`;
+  // // 마감 셀의 노란 배경을 상태별 행 색상보다 우선 적용한다.
+  // return SpreadsheetApp.newConditionalFormatRule()
+  //   .whenFormulaSatisfied(`=${임박조건}`)
+  //   .setBackground('#FFFF00').setFontColor('#800020')
+  //   .setRanges([일정시트.getRange(2, 열, 행수, 1)]).build();
+  // });
 
   일정시트.setConditionalFormatRules(임박규칙.concat(초과, 완료, 종료, 취소, 보완, 심사중));
   return true;
