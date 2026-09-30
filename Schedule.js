@@ -763,15 +763,20 @@ function 일정관리조건부서식수식테스트() {
   ];
 
   // ⚠️ 이전 버전은 별도 임시 시트에 수식을 써서 계산했는데, $I2 같은 참조가
-  // "그 임시 시트의" I2(빈 칸)를 가리켜 버려 결과가 전부 잘못 나왔다.
-  // 반드시 같은 일정관리 시트 안의, 실제 데이터와 안 겹치는 빈 열에 써야
-  // $I2가 이 시트의 상태 열을 정확히 가리킨다.
-  const 필요열 = 일정H.length + 3;
-  if (시트.getMaxColumns() < 필요열) 시트.insertColumnsAfter(시트.getMaxColumns(), 필요열 - 시트.getMaxColumns());
-  시트.getRange(1, 필요열, 수식목록.length, 1).setFormulas(수식목록.map(([, f]) => [`=${f}`]));
+  // "그 임시 시트의" I2(빈 칸)를 가리켜 버려 결과가 전부 잘못 나왔다. 그래서
+  // 같은 일정관리 시트의 빈 열 1행에 썼더니, 이번엔 이 시트가 아직 구글
+  // "표(Table)"로 감싸여 있어 "표 헤더 행에는 수식이 지원되지 않습니다"로
+  // 막혔다. 표의 행·열 범위 양쪽 다 확실히 벗어난, 맨 아래쪽 빈 행에 쓴다.
+  const 스크래치행 = Math.max(시트.getLastRow(), 시트.getMaxRows()) + 20;
+  const 스크래치열 = 일정H.length + 3;
+  if (시트.getMaxRows() < 스크래치행 + 수식목록.length) {
+    시트.insertRowsAfter(시트.getMaxRows(), 스크래치행 + 수식목록.length - 시트.getMaxRows());
+  }
+  if (시트.getMaxColumns() < 스크래치열) 시트.insertColumnsAfter(시트.getMaxColumns(), 스크래치열 - 시트.getMaxColumns());
+  시트.getRange(스크래치행, 스크래치열, 수식목록.length, 1).setFormulas(수식목록.map(([, f]) => [`=${f}`]));
   SpreadsheetApp.flush();
-  const 결과 = 시트.getRange(1, 필요열, 수식목록.length, 1).getDisplayValues();
-  시트.getRange(1, 필요열, 수식목록.length, 1).clearContent();
+  const 결과 = 시트.getRange(스크래치행, 스크래치열, 수식목록.length, 1).getDisplayValues();
+  시트.getRange(스크래치행, 스크래치열, 수식목록.length, 1).clearContent();
 
   const 규칙목록 = 시트.getConditionalFormatRules();
   const 규칙범위요약 = 규칙목록.map((r, i) => {
