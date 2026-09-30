@@ -62,11 +62,9 @@ function _일정관리헤더색적용_(시트) {
  * 안전컬럼갱신()으로 새 컬럼이 오른쪽 끝에 추가된 뒤에도 호출되므로,
  * 매번 현재 마지막 열을 기준으로 다시 계산해 새 컬럼도 빠짐없이 덮는다.
  *
- * 수식은 열 문자를 하드코딩하지 않고, 매 평가 시점에 1행 헤더에서
- * MATCH로 컬럼을 찾아 값을 읽는다(INDEX+MATCH). 그래서 사용자가 시트에서
- * 컬럼을 드래그로 옮기거나 순서를 바꿔도 — 이 함수를 다시 실행하지 않아도 —
- * 수식이 항상 올바른 헤더를 따라간다. 헤더 이름 자체가 없어지는 경우만
- * 대응이 필요하므로, 아래에서 4개 헤더 존재 여부만 먼저 확인한다.
+ * 생성 시 현재 헤더에서 열을 찾아 $I2 같은 열 고정·행 상대 참조를 만든다.
+ * 각 셀 평가마다 전체 데이터 범위를 INDEX/MATCH로 조회하지 않는다.
+ * 열 구성이 변경된 경우 색상 서식 갱신으로 현재 헤더 기준 규칙을 재생성한다.
  */
 function _일정관리조건부서식적용_(일정시트) {
   const 일정H = 일정시트.getRange(1, 1, 1, Math.max(1, 일정시트.getLastColumn()))
@@ -85,7 +83,7 @@ function _일정관리조건부서식적용_(일정시트) {
         '현재 1행 헤더(왼쪽부터): ' + 일정H.join(' | ')
       );
     } catch (e) { /* UI 없는 환경 */ }
-    return;
+    return false;
   }
 
   // 규칙 우선순위: 위에서부터 먼저 적용됨.
@@ -96,12 +94,9 @@ function _일정관리조건부서식적용_(일정시트) {
   //   ⑤ 보완               → 머스터드(짙은 노랑)
   //   ⑥ 심사중             → 연노랑
   //   ⑦ 대기               → 무색 (규칙 없음)
-  // 조건부서식 커스텀 수식은 "1:1000" 같은 전체 행 참조를 지원하지 않아
-  // #REF! 오류가 나므로, 실제 사용 중인 열까지로 범위를 명시해 참조한다.
   // 행 범위는 하드코딩된 값 대신 시트의 실제 그리드 크기를 쓴다.
   // 데이터가 늘어 시트 행이 추가돼도, 이 함수가 다시 실행될 때
   // (안전컬럼갱신 등) 늘어난 범위까지 자동으로 다시 덮는다.
-  const 끝열문자 = columnLetter(일정H.length);
   const 마지막행 = Math.max(2, 일정시트.getMaxRows());
   const 행수 = 마지막행 - 1;
 
@@ -110,13 +105,11 @@ function _일정관리조건부서식적용_(일정시트) {
   일정시트.getRange(2, iD상태, 행수, 1)
     .setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(일정관리_상태목록, true).build());
 
-  const 헤더행범위 = `$A$1:$${끝열문자}$1`;
-  const 데이터범위 = `$A$1:$${끝열문자}${마지막행}`;
-  const 헤더값 = 헤더명 => `INDEX(${데이터범위},ROW(),MATCH("${헤더명}",${헤더행범위},0))`;
-  const 마감 = 헤더값('마감예정일');
-  const 상태 = 헤더값('상태');
-  const 보완요청 = 헤더값('보완요청일');
-  const 연장마감 = 헤더값('연장마감일');
+  const 행셀 = 열 => `$${columnLetter(열)}2`;
+  const 마감 = 행셀(iD마감);
+  const 상태 = 행셀(iD상태);
+  const 보완요청 = 행셀(iD보완요청);
+  const 연장마감 = 행셀(iD연장마감);
 
   // 특이사항은 사용자가 자유롭게 글자색·굵기를 지정하는 메모 컬럼이므로,
   // 상태별 행 색칠 범위에서 제외해 수동 서식이 항상 우선하도록 한다.
@@ -167,20 +160,21 @@ function _일정관리조건부서식적용_(일정시트) {
     .setBackground('#FCE8B2').setFontColor('#7F6000')
     .setRanges(전체범위).build();
 
-  // 정확히 D-3인 마감 셀만 버건디로 표시한다. 다른 시트의 공휴일은
+  // 3영업일 전부터 마감 당일까지(사이의 휴일 포함) 노란 배경과 버건디 글자로 표시한다.
+  // 기한 초과는 기존 초과 규칙에 맡긴다. 다른 시트의 공휴일은
   // 조건부서식에서 직접 참조할 수 없으므로 INDIRECT를 사용한다.
-  const 현재셀 = `INDEX(${데이터범위},ROW(),COLUMN())`;
-  const 임박조건 = `IFERROR(AND(ISNUMBER(${현재셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()=WORKDAY(${현재셀},-3,INDIRECT("'${공휴일시트명}'!A2:A"))),FALSE)`;
-  const 마감범위 = [iD마감, iD연장마감].map(열 => 일정시트.getRange(2, 열, 행수, 1));
-  // Sheets는 첫 일치 규칙을 적용하므로 상태별 배경도 함께 복사한다.
-  const 임박규칙 = [초과, 보완, 심사중].map(규칙 => 규칙.copy()
-    .whenFormulaSatisfied(`=AND(${임박조건},${규칙.getBooleanCondition().getCriteriaValues()[0].replace(/^=/, '')})`)
-    .setFontColor('#800020').setRanges(마감범위).build());
-  임박규칙.push(SpreadsheetApp.newConditionalFormatRule()
+  const 임박규칙 = [iD마감, iD연장마감].map(열 => {
+  const 현재셀 = 행셀(열);
+  const 임박조건 = `IFERROR(AND(ISNUMBER(${현재셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=WORKDAY(${현재셀},-3,INDIRECT("'${공휴일시트명}'!A2:A")),TODAY()<=${현재셀}),FALSE)`;
+  // 마감 셀의 노란 배경을 상태별 행 색상보다 우선 적용한다.
+  return SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=${임박조건}`)
-    .setFontColor('#800020').setRanges(마감범위).build());
+    .setBackground('#FFFF00').setFontColor('#800020')
+    .setRanges([일정시트.getRange(2, 열, 행수, 1)]).build();
+  });
 
   일정시트.setConditionalFormatRules(임박규칙.concat([초과, 완료, 종료, 취소, 보완, 심사중]));
+  return true;
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
@@ -257,6 +251,15 @@ function _일정관리서식적용_(시트, 요약뷰) {
   }
 }
 
+/**
+ * 표가 없거나 헤더 구성(이름·타입)이 바뀐 경우에만 삭제 후 재생성한다.
+ * 건 등록마다 호출되는데, 매번 delete+add로 표를 통째로 다시 만들면
+ * 그 범위에 이미 적용돼 있던 조건부서식 배경색 렌더링이 초기화돼 버려서
+ * "서식이 적용됐다가 반영이 안 되는" 현상의 원인이 됐다(구글 표 열에 타입을
+ * 다시 지정하는 과정이 이미 알려진 대로 setNumberFormat도 실패시킨다).
+ * 행이 늘어 범위만 커진 경우(가장 흔한 경우)는 updateTable로 range만
+ * 확장해 표를 지웠다 새로 만들지 않는다.
+ */
 function _일정관리구글표적용_(시트, 헤더) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const spreadsheetId = ss.getId();
@@ -265,6 +268,39 @@ function _일정관리구글표적용_(시트, 헤더) {
   const lastCol = 헤더.length;
   const lastRow = Math.max(2, 시트.getLastRow());
   const 기존표목록 = _시트표목록조회_(spreadsheetId, sheetId);
+  const 기존표 = 기존표목록.find(t => t.name === tableName || (t.range && t.range.sheetId === sheetId));
+
+  const 원하는열속성 = 헤더.map((h, idx) => ({
+    columnIndex: idx,
+    columnName: h || `Column ${idx + 1}`,
+    columnType: _일정관리표컬럼타입_(h),
+  }));
+  const 원하는범위 = {
+    sheetId: sheetId,
+    startRowIndex: 0,
+    endRowIndex: lastRow,
+    startColumnIndex: 0,
+    endColumnIndex: lastCol,
+  };
+
+  if (기존표) {
+    const 기존범위 = 기존표.range || {};
+    const 범위동일 = 기존범위.startRowIndex === 0 && 기존범위.startColumnIndex === 0
+      && 기존범위.endRowIndex === lastRow && 기존범위.endColumnIndex === lastCol;
+    const 열동일 = _표컬럼속성동일_(기존표.columnProperties, 원하는열속성);
+
+    if (범위동일 && 열동일) return; // 이미 최신 상태 — API 호출 없이 기존 서식을 그대로 둔다.
+
+    if (열동일) {
+      _sheetsBatchUpdate_(spreadsheetId, [{
+        updateTable: {
+          table: { tableId: 기존표.tableId, range: 원하는범위 },
+          fields: 'range',
+        },
+      }]);
+      return;
+    }
+  }
 
   const requests = 기존표목록
     .filter(t => t.name === tableName || (t.range && t.range.sheetId === sheetId))
@@ -274,28 +310,29 @@ function _일정관리구글표적용_(시트, 헤더) {
     addTable: {
       table: {
         name: tableName,
-        range: {
-          sheetId: sheetId,
-          startRowIndex: 0,
-          endRowIndex: lastRow,
-          startColumnIndex: 0,
-          endColumnIndex: lastCol,
-        },
+        range: 원하는범위,
         rowsProperties: {
           headerColorStyle: { rgbColor: _hexToRgb_(일정관리_헤더색) },
           firstBandColorStyle: { rgbColor: _hexToRgb_('#ffffff') },
           secondBandColorStyle: { rgbColor: _hexToRgb_('#f8fbfb') },
         },
-        columnProperties: 헤더.map((h, idx) => ({
-          columnIndex: idx,
-          columnName: h || `Column ${idx + 1}`,
-          columnType: _일정관리표컬럼타입_(h),
-        })),
+        columnProperties: 원하는열속성,
       },
     },
   });
 
   _sheetsBatchUpdate_(spreadsheetId, requests);
+}
+
+/** 기존 표의 columnProperties(이름·타입)가 원하는 구성과 완전히 같은지 비교 */
+function _표컬럼속성동일_(기존, 원함) {
+  const 목록a = (기존 || []).slice().sort((x, y) => x.columnIndex - y.columnIndex);
+  const 목록b = 원함 || [];
+  if (목록a.length !== 목록b.length) return false;
+  return 목록b.every((열, idx) => {
+    const 대응 = 목록a[idx] || {};
+    return 대응.columnName === 열.columnName && 대응.columnType === 열.columnType;
+  });
 }
 
 function _일정관리표컬럼타입_(헤더명) {
@@ -305,7 +342,7 @@ function _일정관리표컬럼타입_(헤더명) {
 }
 
 function _시트표목록조회_(spreadsheetId, sheetId) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId),tables(tableId,name,range))`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId),tables(tableId,name,range,columnProperties(columnIndex,columnName,columnType)))`;
   const res = UrlFetchApp.fetch(url, {
     method: 'get',
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
@@ -438,6 +475,11 @@ function _일정관리행추가(ss, 접수번호, 직접값, 등록컨텍스트)
   컨텍스트.접수번호행맵.set(정규화접수번호, 새행번호);
   try {
     _일정관리서식적용_(일정시트, true);
+    // 다른 호출부(헤더마이그레이션·안전컬럼갱신·초기설정실행)와 동일하게
+    // 표 갱신 직후 조건부서식(상태별 배경색·마감 임박 강조)을 다시 씌운다.
+    // 이 호출이 빠져 있으면 새 건이 등록될 때마다(가장 빈번한 경로) 색상
+    // 서식이 반영되지 않는 현상이 반복된다.
+    _일정관리조건부서식적용_(일정시트);
   } catch (e) {
     Logger.log('일정관리 표 갱신 실패: ' + e.message);
   }
@@ -677,11 +719,68 @@ function _일정관리공휴일연도만확보_(ss) {
   return 연도집합.size;
 }
 
-/** 관리자 수동 실행용: 공휴일과 기존 마감예정일 수식을 즉시 갱신 */
+/** 규칙과 서버가 계산한 색상을 읽기만 한다. 갱신·flush·셀 쓰기를 하지 않는다. */
+function 일정관리색상진단() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  const ui = SpreadsheetApp.getUi();
+  if (!시트 || 시트.getLastRow() < 2) {
+    ui.alert('진단할 일정관리 데이터가 없습니다.');
+    return;
+  }
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getDisplayValues()[0].map(v => v.trim());
+  const 상태열 = 헤더.indexOf('상태') + 1;
+  if (!상태열) { ui.alert('상태 헤더를 찾을 수 없습니다.'); return; }
+  const 상태값 = 시트.getRange(2, 상태열, 시트.getLastRow() - 1, 1).getDisplayValues();
+  const 완료위치 = 상태값.findIndex(r => ['완료(적합)', '완료'].includes(r[0]));
+  const 선택행 = ss.getActiveSheet().getSheetId() === 시트.getSheetId()
+    ? 시트.getActiveRange().getRow() : 1;
+  const 행 = 선택행 > 1 && 선택행 <= 시트.getLastRow() ? 선택행 : (완료위치 >= 0 ? 완료위치 + 2 : 2);
+  const 열목록 = ['상태', '마감예정일', '연장마감일'].map(h => 헤더.indexOf(h) + 1).filter(c => c > 0);
+  const 범위 = 열목록.map(c => `'${시트.getName().replace(/'/g, "''")}'!${columnLetter(c)}${행}`);
+  const fields = 'sheets(properties(sheetId,title),conditionalFormats,tables(tableId,name,range),data(startRow,startColumn,rowData(values(formattedValue,effectiveValue,userEnteredFormat,effectiveFormat))))';
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${ss.getId()}?fields=${encodeURIComponent(fields)}&` +
+    범위.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
+  const res = UrlFetchApp.fetch(url, {
+    method: 'get',
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) {
+    ui.alert(`진단 조회 실패 (${res.getResponseCode()}): ${res.getContentText()}`);
+    return;
+  }
+  const 결과 = {
+    진단버전: '2026-09-30', 행, 상태: 상태값[행 - 2][0],
+    상태열: columnLetter(상태열), 조회범위: 범위,
+    서버응답: JSON.parse(res.getContentText()),
+  };
+  const 내용 = JSON.stringify(결과, null, 2).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  ui.showModalDialog(HtmlService.createHtmlOutput(
+    '<p>서식은 변경하지 않았습니다. 아래 결과를 복사해 전달해주세요.</p>' +
+    '<textarea readonly style="width:100%;height:440px;box-sizing:border-box" onclick="this.select()">' + 내용 + '</textarea>'
+  ).setWidth(720).setHeight(520), '일정관리 색상 진단');
+}
+
+/** 색상만 갱신: 공휴일 조회·날짜 수식 재입력·Google 표 재생성을 생략한다. */
+function 일정관리색상서식갱신() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  if (!시트) {
+    SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.');
+    return;
+  }
+  const 시작 = Date.now();
+  if (!_일정관리조건부서식적용_(시트)) return;
+  SpreadsheetApp.flush();
+  const 소요초 = ((Date.now() - 시작) / 1000).toFixed(1);
+  Logger.log(`일정관리 색상 서식 갱신: ${소요초}초`);
+  ss.toast(`색상 서식 적용 완료 (${소요초}초). 화면 반영에는 시간이 더 걸릴 수 있습니다.`, '일정관리', 8);
+}
+
+/** 공휴일·마감일 수식만 갱신한다. 기존 조건부서식 규칙은 재설정하지 않는다. */
 function 마감예정일갱신() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 갱신건수 = _마감예정일수식갱신_(ss);
-  const 일정시트 = ss.getSheetByName(SHEET.일정관리);
-  if (일정시트) _일정관리조건부서식적용_(일정시트);
   SpreadsheetApp.getUi().alert(`마감일 갱신 완료: ${갱신건수}건\n기본: 접수일자 + 15 WD\n보완: 보완요청일 + 30 WD\n(주말·공휴일 제외)`);
 }
