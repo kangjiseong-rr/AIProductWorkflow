@@ -727,6 +727,68 @@ function _일정관리공휴일연도만확보_(ss) {
   return 연도집합.size;
 }
 
+/**
+ * Sheets REST API(403 이슈) 없이 순수 SpreadsheetApp만으로 실제 서버가
+ * 조건부서식 수식을 참(TRUE)으로 평가하는지 직접 확인한다.
+ * 임시 숨김 시트에 동일한 수식을 그대로 써서 계산시킨 뒤 즉시 지운다.
+ * 커서가 있는 행(없으면 2행)을 대상으로 한다.
+ */
+function 일정관리조건부서식수식테스트() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  const ui = SpreadsheetApp.getUi();
+  if (!시트 || 시트.getLastRow() < 2) { ui.alert('테스트할 일정관리 데이터가 없습니다.'); return; }
+
+  const 일정H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const iD마감 = 일정H.indexOf('마감예정일') + 1;
+  const iD상태 = 일정H.indexOf('상태') + 1;
+  const iD보완요청 = 일정H.indexOf('보완요청일') + 1;
+  const iD연장마감 = 일정H.indexOf('연장마감일') + 1;
+  if (!iD마감 || !iD상태 || !iD보완요청 || !iD연장마감) { ui.alert('필수 헤더(마감예정일/상태/보완요청일/연장마감일)를 찾을 수 없습니다.'); return; }
+
+  const 선택행 = ss.getActiveSheet().getSheetId() === 시트.getSheetId()
+    ? 시트.getActiveRange().getRow() : 2;
+  const 행 = 선택행 >= 2 ? 선택행 : 2;
+
+  const 셀 = 열 => `$${columnLetter(열)}${행}`;
+  const 마감 = 셀(iD마감), 상태 = 셀(iD상태), 보완요청 = 셀(iD보완요청), 연장마감 = 셀(iD연장마감);
+
+  const 수식목록 = [
+    ['①초과', `AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`],
+    ['②완료(적합)', `OR(${상태}="완료(적합)",${상태}="완료")`],
+    ['③종료(부적합)', `${상태}="종료(부적합)"`],
+    ['④종료(취소)', `${상태}="종료(취소)"`],
+    ['⑤보완', `${상태}="보완"`],
+    ['⑥심사중', `${상태}="심사중"`],
+  ];
+
+  const 진단시트명 = '__CF진단임시__';
+  let 진단시트 = ss.getSheetByName(진단시트명);
+  if (!진단시트) 진단시트 = ss.insertSheet(진단시트명);
+  진단시트.hideSheet();
+  진단시트.getRange(1, 1, 수식목록.length, 1).setFormulas(수식목록.map(([, f]) => [`=${f}`]));
+  SpreadsheetApp.flush();
+  const 결과 = 진단시트.getRange(1, 1, 수식목록.length, 1).getDisplayValues();
+  진단시트.getRange(1, 1, 수식목록.length, 1).clearContent();
+  ss.deleteSheet(진단시트);
+
+  const 규칙목록 = 시트.getConditionalFormatRules();
+  const 규칙범위요약 = 규칙목록.map((r, i) => {
+    const 범위들 = r.getRanges().map(rg => rg.getA1Notation()).join(' / ');
+    return `${i + 1}. [${범위들}]`;
+  }).join('\n');
+
+  const 상태값 = 시트.getRange(행, iD상태).getDisplayValue();
+  const 마감값 = 시트.getRange(행, iD마감).getDisplayValue();
+  const 요약 = 수식목록.map(([k], i) => `${k}: ${결과[i][0]}`).join('\n');
+
+  ui.alert(
+    `${행}행 조건부서식 수식 실측 (상태="${상태값}", 마감예정일="${마감값}")\n\n` +
+    `[수식 계산 결과]\n${요약}\n\n` +
+    `[현재 시트에 실제로 붙어있는 규칙 수: ${규칙목록.length}개]\n${규칙범위요약}`
+  );
+}
+
 /** 규칙과 서버가 계산한 색상을 읽기만 한다. 갱신·flush·셀 쓰기를 하지 않는다. */
 function 일정관리색상진단() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
