@@ -159,22 +159,27 @@ function _일정관리조건부서식적용_(일정시트) {
   // ⑥ 심사중 → 연노랑
   const 심사중 = 단일범위규칙들(`=${상태}="심사중"`, '#FCE8B2', '#7F6000');
 
-  // 2026-09-30: 상태색 렌더링이 "고치면 잠깐 보였다가 다시 하얗게" 반복되는
-  // 현상이 이 규칙(버건디 D-3 강조) 도입 이후부터 계속된다는 의심 아래
-  // 임시로 롤백한다. 이 규칙만 TODAY()/WORKDAY()/INDIRECT(휘발성, 매 재계산
-  // 마다 부하 큼)를 쓰고 나머지 6개는 단순 텍스트 비교라, 이 규칙이 조건부
-  // 서식 전체의 재계산을 불안정하게 만들었을 가능성을 테스트한다.
-  // 원상복구 시 아래 주석을 풀고 setConditionalFormatRules 인자에 임박규칙을 다시 넣는다.
-  const 임박규칙 = [];
-  // const 임박규칙 = [iD마감, iD연장마감].map(열 => {
-  // const 현재셀 = 행셀(열);
-  // const 임박조건 = `IFERROR(AND(ISNUMBER(${현재셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=WORKDAY(${현재셀},-3,INDIRECT("'${공휴일시트명}'!A2:A")),TODAY()<=${현재셀}),FALSE)`;
-  // // 마감 셀의 노란 배경을 상태별 행 색상보다 우선 적용한다.
-  // return SpreadsheetApp.newConditionalFormatRule()
-  //   .whenFormulaSatisfied(`=${임박조건}`)
-  //   .setBackground('#FFFF00').setFontColor('#800020')
-  //   .setRanges([일정시트.getRange(2, 열, 행수, 1)]).build();
-  // });
+  // 2026-09-30: 원래 이 규칙이 조건부서식 안에서 INDIRECT+WORKDAY를 직접
+  // 계산했는데(다른 시트=공휴일 참조 때문에 INDIRECT가 필요했다), 실측 결과
+  // 그게 조건부서식 전체 렌더링을 불안정하게 만들었다("고치면 잠깐 보였다가
+  // 다시 하얗게" 반복). 그래서 "3영업일 전" 날짜를 일반 수식(다른 시트를
+  // INDIRECT 없이 직접 참조 가능)으로 숨김 보조 컬럼(D3기준일_*)에 미리
+  // 계산해두고, 조건부서식은 그 값을 TODAY()와 단순 비교만 하도록 가볍게
+  // 바꿨다. 보조 컬럼이 아직 없는 시트(안전컬럼갱신 실행 전)에서는 해당
+  // 임박 규칙만 조용히 건너뛴다.
+  const iD_D3마감 = 일정H.indexOf('D3기준일_마감') + 1;
+  const iD_D3연장 = 일정H.indexOf('D3기준일_연장마감') + 1;
+  const 임박대상 = [[iD마감, iD_D3마감], [iD연장마감, iD_D3연장]].filter(([, d3열]) => d3열 > 0);
+  const 임박규칙 = 임박대상.map(([마감열, D3열]) => {
+    const 마감셀 = 행셀(마감열);
+    const D3셀 = 행셀(D3열);
+    const 임박조건 = `IFERROR(AND(ISNUMBER(${마감셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=${D3셀},TODAY()<=${마감셀}),FALSE)`;
+    // 마감 셀의 노란 배경을 상태별 행 색상보다 우선 적용한다.
+    return SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${임박조건}`)
+      .setBackground('#FFFF00').setFontColor('#800020')
+      .setRanges([일정시트.getRange(2, 마감열, 행수, 1)]).build();
+  });
 
   일정시트.setConditionalFormatRules(임박규칙.concat(초과, 완료, 종료, 취소, 보완, 심사중));
   return true;
@@ -247,6 +252,11 @@ function _일정관리서식적용_(시트, 요약뷰) {
   });
 
   시트.showColumns(1, lastCol);
+  // 조건부서식 계산용 숨김 보조 컬럼은 요약뷰 여부와 무관하게 항상 숨긴다.
+  ['D3기준일_마감', 'D3기준일_연장마감'].forEach(h => {
+    const idx = 헤더.indexOf(h);
+    if (idx >= 0) 시트.hideColumns(idx + 1);
+  });
   if (요약뷰) {
     const 표시컬럼 = new Set([
       '순번', '접수번호',
@@ -467,6 +477,18 @@ function _일정관리행추가(ss, 접수번호, 직접값, 등록컨텍스트)
       const iD보완 = 일정H.indexOf('보완요청일') + 1;
       const 보완셀 = `${columnLetter(iD보완)}${새행번호}`;
       return `=IF(${보완셀}="","",WORKDAY(${보완셀},30,'${공휴일시트명}'!$A$2:$A))`;
+    }
+
+    // 2-2) D3기준일_* = 해당 마감일의 3영업일 전 (조건부서식용 숨김 보조 컬럼)
+    if (h === 'D3기준일_마감') {
+      const iD마감 = 일정H.indexOf('마감예정일') + 1;
+      const 마감셀 = `${columnLetter(iD마감)}${새행번호}`;
+      return `=IF(${마감셀}="","",WORKDAY(${마감셀},-3,'${공휴일시트명}'!$A$2:$A))`;
+    }
+    if (h === 'D3기준일_연장마감') {
+      const iD연장 = 일정H.indexOf('연장마감일') + 1;
+      const 연장셀 = `${columnLetter(iD연장)}${새행번호}`;
+      return `=IF(${연장셀}="","",WORKDAY(${연장셀},-3,'${공휴일시트명}'!$A$2:$A))`;
     }
 
     // 3) 기타제출서류여부 = 접수대장의 파일명 있으면 Y
@@ -700,6 +722,32 @@ function _마감예정일수식갱신_(ss) {
       Logger.log(`일정관리 "연장마감일" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
     }
   }
+
+  // D3기준일_* (조건부서식용 숨김 보조 컬럼) 백필: 마감예정일/연장마감일 수식을
+  // 방금 다시 썼으니, 그 값의 3영업일 전 날짜도 함께 갱신한다. 헤더가 아직
+  // 없는(안전컬럼갱신 전) 시트에서는 조용히 건너뛴다.
+  const D3마감열 = 헤더.indexOf('D3기준일_마감') + 1;
+  const D3연장열 = 헤더.indexOf('D3기준일_연장마감') + 1;
+  if (D3마감열 > 0) {
+    const 마감열문자 = columnLetter(마감열);
+    const D3마감수식 = 신청값.map((_, i) => {
+      const 행 = i + 2;
+      const 마감셀 = `${마감열문자}${행}`;
+      return [`=IF(${마감셀}="","",WORKDAY(${마감셀},-3,'${공휴일시트명}'!$A$2:$A))`];
+    });
+    시트.getRange(2, D3마감열, 행수, 1).setFormulas(D3마감수식);
+  }
+  if (D3연장열 > 0 && 연장마감열 > 0) {
+    const 연장마감열문자 = columnLetter(연장마감열);
+    const D3연장수식 = 신청값.map((_, i) => {
+      const 행 = i + 2;
+      const 연장셀 = `${연장마감열문자}${행}`;
+      return [`=IF(${연장셀}="","",WORKDAY(${연장셀},-3,'${공휴일시트명}'!$A$2:$A))`];
+    });
+    시트.getRange(2, D3연장열, 행수, 1).setFormulas(D3연장수식);
+  }
+  if (D3마감열 > 0 || D3연장열 > 0) SpreadsheetApp.flush();
+
   return 행수;
 }
 
