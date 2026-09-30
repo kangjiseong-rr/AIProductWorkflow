@@ -762,20 +762,23 @@ function 일정관리조건부서식수식테스트() {
     ['⑥심사중', `${상태}="심사중"`],
   ];
 
-  const 진단시트명 = '__CF진단임시__';
-  let 진단시트 = ss.getSheetByName(진단시트명);
-  if (!진단시트) 진단시트 = ss.insertSheet(진단시트명);
-  진단시트.hideSheet();
-  진단시트.getRange(1, 1, 수식목록.length, 1).setFormulas(수식목록.map(([, f]) => [`=${f}`]));
+  // ⚠️ 이전 버전은 별도 임시 시트에 수식을 써서 계산했는데, $I2 같은 참조가
+  // "그 임시 시트의" I2(빈 칸)를 가리켜 버려 결과가 전부 잘못 나왔다.
+  // 반드시 같은 일정관리 시트 안의, 실제 데이터와 안 겹치는 빈 열에 써야
+  // $I2가 이 시트의 상태 열을 정확히 가리킨다.
+  const 필요열 = 일정H.length + 3;
+  if (시트.getMaxColumns() < 필요열) 시트.insertColumnsAfter(시트.getMaxColumns(), 필요열 - 시트.getMaxColumns());
+  시트.getRange(1, 필요열, 수식목록.length, 1).setFormulas(수식목록.map(([, f]) => [`=${f}`]));
   SpreadsheetApp.flush();
-  const 결과 = 진단시트.getRange(1, 1, 수식목록.length, 1).getDisplayValues();
-  진단시트.getRange(1, 1, 수식목록.length, 1).clearContent();
-  ss.deleteSheet(진단시트);
+  const 결과 = 시트.getRange(1, 필요열, 수식목록.length, 1).getDisplayValues();
+  시트.getRange(1, 필요열, 수식목록.length, 1).clearContent();
 
   const 규칙목록 = 시트.getConditionalFormatRules();
   const 규칙범위요약 = 규칙목록.map((r, i) => {
     const 범위들 = r.getRanges().map(rg => rg.getA1Notation()).join(' / ');
-    return `${i + 1}. [${범위들}]`;
+    let 실제수식 = '';
+    try { 실제수식 = '=' + r.getBooleanCondition().getCriteriaValues()[0]; } catch (e) { 실제수식 = '(수식 아님)'; }
+    return `${i + 1}. [${범위들}] ${실제수식}`;
   }).join('\n');
 
   const 상태원본 = 시트.getRange(행, iD상태).getValue();
