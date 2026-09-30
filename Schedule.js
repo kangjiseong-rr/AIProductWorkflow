@@ -122,43 +122,38 @@ function _일정관리조건부서식적용_(일정시트) {
     전체범위.push(일정시트.getRange(2, 1, 행수, 일정H.length));
   }
 
+  // 2026-09-30: 실측 결과 "여러 범위(A2:M / O2:AQ) + 커스텀 수식" 조합의
+  // 규칙 하나는 수식이 TRUE로 계산돼도 화면에 반영되지 않았고, 범위 1개짜리
+  // 단순 규칙은 정상 렌더링됐다. 그래서 범위 2개짜리 규칙 하나 대신, 같은
+  // 조건·서식으로 "범위 1개짜리 규칙"을 전체범위 개수만큼(1~2개) 만든다.
+  // 특이사항 컬럼을 제외하는 효과(범위 분리)는 그대로 유지된다.
+  const 단일범위규칙들 = (formula, bg, fontColor) => 전체범위.map(범위 =>
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(formula)
+      .setBackground(bg).setFontColor(fontColor)
+      .setRanges([범위]).build()
+  );
+
   // ① 기한 초과 & 미완료
-  const 초과 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(
-      `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`
-    )
-    .setBackground('#F4CCCC').setFontColor('#990000')
-    .setRanges(전체범위).build();
+  const 초과 = 단일범위규칙들(
+    `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`,
+    '#F4CCCC', '#990000'
+  );
 
   // ② 완료(적합) → 연녹색 (구버전 '완료' 값도 호환)
-  const 완료 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=OR(${상태}="완료(적합)",${상태}="완료")`)
-    .setBackground('#D9EAD3').setFontColor('#38761D')
-    .setRanges(전체범위).build();
+  const 완료 = 단일범위규칙들(`=OR(${상태}="완료(적합)",${상태}="완료")`, '#D9EAD3', '#38761D');
 
   // ③ 종료(부적합) → 진한 회색
-  const 종료 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${상태}="종료(부적합)"`)
-    .setBackground('#666666').setFontColor('#FFFFFF')
-    .setRanges(전체범위).build();
+  const 종료 = 단일범위규칙들(`=${상태}="종료(부적합)"`, '#666666', '#FFFFFF');
 
   // ④ 종료(취소) → 연한 회색 (종료(부적합)과 구분되는 밝은 톤)
-  const 취소 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${상태}="종료(취소)"`)
-    .setBackground('#D9D9D9').setFontColor('#666666')
-    .setRanges(전체범위).build();
+  const 취소 = 단일범위규칙들(`=${상태}="종료(취소)"`, '#D9D9D9', '#666666');
 
   // ⑤ 보완 → 머스터드(짙은 노랑)
-  const 보완 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${상태}="보완"`)
-    .setBackground('#F9CB9C').setFontColor('#783F04')
-    .setRanges(전체범위).build();
+  const 보완 = 단일범위규칙들(`=${상태}="보완"`, '#F9CB9C', '#783F04');
 
   // ⑥ 심사중 → 연노랑
-  const 심사중 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${상태}="심사중"`)
-    .setBackground('#FCE8B2').setFontColor('#7F6000')
-    .setRanges(전체범위).build();
+  const 심사중 = 단일범위규칙들(`=${상태}="심사중"`, '#FCE8B2', '#7F6000');
 
   // 3영업일 전부터 마감 당일까지(사이의 휴일 포함) 노란 배경과 버건디 글자로 표시한다.
   // 기한 초과는 기존 초과 규칙에 맡긴다. 다른 시트의 공휴일은
@@ -173,7 +168,7 @@ function _일정관리조건부서식적용_(일정시트) {
     .setRanges([일정시트.getRange(2, 열, 행수, 1)]).build();
   });
 
-  일정시트.setConditionalFormatRules(임박규칙.concat([초과, 완료, 종료, 취소, 보완, 심사중]));
+  일정시트.setConditionalFormatRules(임박규칙.concat(초과, 완료, 종료, 취소, 보완, 심사중));
   return true;
 }
 
