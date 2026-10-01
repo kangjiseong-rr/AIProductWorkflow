@@ -9,6 +9,7 @@
  * ============================================================
  */
 
+const 일정관리_상태목록 = ['대기', '심사중', '보완', '완료(적합)', '종료(부적합)', '종료(취소)'];
 const 일정관리_헤더색 = '#1f3a5f';
 const 일정관리_특이사항헤더색 = '#dbe7f3';
 const 일정관리_특이사항헤더글자색 = '#1f3a5f';
@@ -61,11 +62,9 @@ function _일정관리헤더색적용_(시트) {
  * 안전컬럼갱신()으로 새 컬럼이 오른쪽 끝에 추가된 뒤에도 호출되므로,
  * 매번 현재 마지막 열을 기준으로 다시 계산해 새 컬럼도 빠짐없이 덮는다.
  *
- * 수식은 열 문자를 하드코딩하지 않고, 매 평가 시점에 1행 헤더에서
- * MATCH로 컬럼을 찾아 값을 읽는다(INDEX+MATCH). 그래서 사용자가 시트에서
- * 컬럼을 드래그로 옮기거나 순서를 바꿔도 — 이 함수를 다시 실행하지 않아도 —
- * 수식이 항상 올바른 헤더를 따라간다. 헤더 이름 자체가 없어지는 경우만
- * 대응이 필요하므로, 아래에서 4개 헤더 존재 여부만 먼저 확인한다.
+ * 생성 시 현재 헤더에서 열을 찾아 $I2 같은 열 고정·행 상대 참조를 만든다.
+ * 각 셀 평가마다 전체 데이터 범위를 INDEX/MATCH로 조회하지 않는다.
+ * 열 구성이 변경된 경우 색상 서식 갱신으로 현재 헤더 기준 규칙을 재생성한다.
  */
 function _일정관리조건부서식적용_(일정시트) {
   const 일정H = 일정시트.getRange(1, 1, 1, Math.max(1, 일정시트.getLastColumn()))
@@ -84,83 +83,138 @@ function _일정관리조건부서식적용_(일정시트) {
         '현재 1행 헤더(왼쪽부터): ' + 일정H.join(' | ')
       );
     } catch (e) { /* UI 없는 환경 */ }
-    return;
+    return false;
   }
 
   // 규칙 우선순위: 위에서부터 먼저 적용됨.
   //   ① 기한 초과(미완료)  → 연빨강   (상태색보다 우선)
   //   ② 완료(적합)         → 연녹색
   //   ③ 종료(부적합)       → 진한 회색
-  //   ④ 보완               → 머스터드(짙은 노랑)
-  //   ⑤ 심사중             → 연노랑
-  //   ⑥ 대기               → 무색 (규칙 없음)
-  // 조건부서식 커스텀 수식은 "1:1000" 같은 전체 행 참조를 지원하지 않아
-  // #REF! 오류가 나므로, 실제 사용 중인 열까지로 범위를 명시해 참조한다.
-  const 끝열문자 = columnLetter(일정H.length);
-  const 헤더행범위 = `$A$1:$${끝열문자}$1`;
-  const 데이터범위 = `$A$1:$${끝열문자}1000`;
-  const 헤더값 = 헤더명 => `INDEX(${데이터범위},ROW(),MATCH("${헤더명}",${헤더행범위},0))`;
-  const 마감 = 헤더값('마감예정일');
-  const 상태 = 헤더값('상태');
-  const 보완요청 = 헤더값('보완요청일');
-  const 연장마감 = 헤더값('연장마감일');
+  //   ④ 종료(취소)         → 연한 회색
+  //   ⑤ 보완               → 머스터드(짙은 노랑)
+  //   ⑥ 심사중             → 연노랑
+  //   ⑦ 대기               → 무색 (규칙 없음)
+  // 2026-09-30: getMaxRows()(그리드 전체, 1000행 안팎)를 그대로 쓰면 실제
+  // 데이터는 100행이 안 되는데도 커스텀 수식(+휴일 시트 참조하는 IFERROR/
+  // WORKDAY/INDIRECT) 조건부서식을 수백~천 행에 걸어야 했고, 실측 결과
+  // 이 정도 규모에서 수식이 TRUE로 계산돼도 화면에 전혀 반영되지 않았다.
+  // 실제 데이터가 있는 행 + 여유분만 덮도록 줄인다. 신규 건 등록마다
+  // _일정관리조건부서식적용_이 다시 호출되므로(위 함수 주석 참고) 데이터가
+  // 늘어나도 그때그때 범위가 재계산돼 기능 손실은 없다.
+  const 마지막행 = Math.max(2, 일정시트.getLastRow() + 20);
+  const 행수 = 마지막행 - 1;
+
+  // 상태 드롭다운 목록도 함께 최신화한다. 초기설정 이후 새 상태값이
+  // 추가돼도(예: 종료(취소)) 이 함수가 재실행될 때 기존 행에 반영된다.
+  일정시트.getRange(2, iD상태, 행수, 1)
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(일정관리_상태목록, true).build());
+
+  const 행셀 = 열 => `$${columnLetter(열)}2`;
+  const 마감 = 행셀(iD마감);
+  const 상태 = 행셀(iD상태);
+  const 보완요청 = 행셀(iD보완요청);
+  const 연장마감 = 행셀(iD연장마감);
 
   // 특이사항은 사용자가 자유롭게 글자색·굵기를 지정하는 메모 컬럼이므로,
   // 상태별 행 색칠 범위에서 제외해 수동 서식이 항상 우선하도록 한다.
   const iD특이사항 = 일정H.indexOf('특이사항') + 1;
   const 전체범위 = [];
   if (iD특이사항 > 0) {
-    if (iD특이사항 > 1) 전체범위.push(일정시트.getRange(2, 1, 999, iD특이사항 - 1));
-    if (iD특이사항 < 일정H.length) 전체범위.push(일정시트.getRange(2, iD특이사항 + 1, 999, 일정H.length - iD특이사항));
+    if (iD특이사항 > 1) 전체범위.push(일정시트.getRange(2, 1, 행수, iD특이사항 - 1));
+    if (iD특이사항 < 일정H.length) 전체범위.push(일정시트.getRange(2, iD특이사항 + 1, 행수, 일정H.length - iD특이사항));
   } else {
-    전체범위.push(일정시트.getRange(`A2:${끝열문자}1000`));
+    전체범위.push(일정시트.getRange(2, 1, 행수, 일정H.length));
   }
 
+  // 2026-09-30: 실측 결과 "여러 범위(A2:M / O2:AQ) + 커스텀 수식" 조합의
+  // 규칙 하나는 수식이 TRUE로 계산돼도 화면에 반영되지 않았고, 범위 1개짜리
+  // 단순 규칙은 정상 렌더링됐다. 그래서 범위 2개짜리 규칙 하나 대신, 같은
+  // 조건·서식으로 "범위 1개짜리 규칙"을 전체범위 개수만큼(1~2개) 만든다.
+  // 특이사항 컬럼을 제외하는 효과(범위 분리)는 그대로 유지된다.
+  const 단일범위규칙들 = (formula, bg, fontColor) => 전체범위.map(범위 =>
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(formula)
+      .setBackground(bg).setFontColor(fontColor)
+      .setRanges([범위]).build()
+  );
+
   // ① 기한 초과 & 미완료
-  const 초과 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(
-      `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`
-    )
-    .setBackground('#F4CCCC').setFontColor('#990000')
-    .setRanges(전체범위).build();
+  const 초과 = 단일범위규칙들(
+    `=AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`,
+    '#F4CCCC', '#990000'
+  );
 
   // ② 완료(적합) → 연녹색 (구버전 '완료' 값도 호환)
-  const 완료 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=OR(${상태}="완료(적합)",${상태}="완료")`)
-    .setBackground('#D9EAD3').setFontColor('#38761D')
-    .setRanges(전체범위).build();
+  const 완료 = 단일범위규칙들(`=OR(${상태}="완료(적합)",${상태}="완료")`, '#D9EAD3', '#38761D');
 
   // ③ 종료(부적합) → 진한 회색
-  const 종료 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${상태}="종료(부적합)"`)
-    .setBackground('#666666').setFontColor('#FFFFFF')
-    .setRanges(전체범위).build();
+  const 종료 = 단일범위규칙들(`=${상태}="종료(부적합)"`, '#666666', '#FFFFFF');
 
-  // ④ 보완 → 머스터드(짙은 노랑)
-  const 보완 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${상태}="보완"`)
-    .setBackground('#F9CB9C').setFontColor('#783F04')
-    .setRanges(전체범위).build();
+  // ④ 종료(취소) → 연한 회색 (종료(부적합)과 구분되는 밝은 톤)
+  const 취소 = 단일범위규칙들(`=${상태}="종료(취소)"`, '#D9D9D9', '#666666');
 
-  // ⑤ 심사중 → 연노랑
-  const 심사중 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=${상태}="심사중"`)
-    .setBackground('#FCE8B2').setFontColor('#7F6000')
-    .setRanges(전체범위).build();
+  // ⑤ 보완 → 머스터드(짙은 노랑)
+  const 보완 = 단일범위규칙들(`=${상태}="보완"`, '#F9CB9C', '#783F04');
 
-  // 대기(무색)는 규칙 없음
-  일정시트.setConditionalFormatRules([초과, 완료, 종료, 보완, 심사중]);
+  // ⑥ 심사중 → 연노랑
+  const 심사중 = 단일범위규칙들(`=${상태}="심사중"`, '#FCE8B2', '#7F6000');
+
+  // 2026-09-30: 원래 이 규칙이 조건부서식 안에서 INDIRECT+WORKDAY를 직접
+  // 계산했는데(다른 시트=공휴일 참조 때문에 INDIRECT가 필요했다), 실측 결과
+  // 그게 조건부서식 전체 렌더링을 불안정하게 만들었다("고치면 잠깐 보였다가
+  // 다시 하얗게" 반복). 그래서 "3영업일 전" 날짜를 일반 수식(다른 시트를
+  // INDIRECT 없이 직접 참조 가능)으로 숨김 보조 컬럼(D3기준일_*)에 미리
+  // 계산해두고, 조건부서식은 그 값을 TODAY()와 단순 비교만 하도록 가볍게
+  // 바꿨다. 보조 컬럼이 아직 없는 시트(안전컬럼갱신 실행 전)에서는 해당
+  // 임박 규칙만 조용히 건너뛴다.
+  // ①초과 규칙과 동일한 우선순위 규칙을 따른다: 보완요청일이 있으면(연장
+  // 마감일로 넘어간 건) 연장마감일만, 없으면 마감예정일만 D-3 대상으로 본다.
+  // (이전 버전은 두 컬럼을 서로 무관하게 각각 체크해, 연장마감일이 생긴
+  // 뒤에도 이미 의미 없어진 원래 마감예정일 기준으로 같이 강조되는 문제가 있었다.)
+  const iD_D3마감 = 일정H.indexOf('D3기준일_마감') + 1;
+  const iD_D3연장 = 일정H.indexOf('D3기준일_연장마감') + 1;
+  const 임박대상 = [
+    { 마감열: iD마감, D3열: iD_D3마감, 활성조건: `${보완요청}=""` },
+    { 마감열: iD연장마감, D3열: iD_D3연장, 활성조건: `${보완요청}<>""` },
+  ].filter(x => x.D3열 > 0);
+  const 임박규칙 = 임박대상.map(({ 마감열, D3열, 활성조건 }) => {
+    const 마감셀 = 행셀(마감열);
+    const D3셀 = 행셀(D3열);
+    const 임박조건 = `IFERROR(AND(${활성조건},ISNUMBER(${마감셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=${D3셀},TODAY()<=${마감셀}),FALSE)`;
+    // 마감 셀의 노란 배경을 상태별 행 색상보다 우선 적용한다.
+    return SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${임박조건}`)
+      .setBackground('#FFFF00').setFontColor('#800020')
+      .setRanges([일정시트.getRange(2, 마감열, 행수, 1)]).build();
+  });
+
+  일정시트.setConditionalFormatRules(임박규칙.concat(초과, 완료, 종료, 취소, 보완, 심사중));
+  return true;
 }
 
 function _일정관리서식적용_(시트, 요약뷰) {
   const lastCol = Math.max(1, 시트.getLastColumn());
   const 헤더 = 시트.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
-  // 일정관리 날짜는 실제 날짜값을 유지하고 화면에는 두 자리 연도로 간결하게 표시
-  ['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일', '적합통보일'].forEach(날짜헤더 => {
-    const 열 = 헤더.indexOf(날짜헤더) + 1;
-    if (열 > 0) 시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd');
-  });
+  // 일정관리 날짜는 실제 날짜값을 유지하고 화면에는 두 자리 연도로 간결하게 표시.
+  // 구글 표의 열에 타입이 지정된 상태(예: DATE)에서는 setNumberFormat이 예외를
+  // 던지므로, 서식 실패가 이후 처리(조건부서식 등)까지 막지 않도록 감싼다.
+  // 열마다 flush()하면 이 함수가 행 추가마다 호출되는 만큼 왕복이 누적되므로,
+  // 날짜 컬럼 전체를 큐에 올린 뒤 flush()는 한 번만 부른다.
+  const 날짜열목록 = ['접수일자', '심사접수일', '마감예정일', '보완요청일', '연장마감일', '적합통보일']
+    .map(날짜헤더 => ({ 헤더: 날짜헤더, 열: 헤더.indexOf(날짜헤더) + 1 }))
+    .filter(x => x.열 > 0);
+  if (날짜열목록.length) {
+    try {
+      날짜열목록.forEach(({ 열 }) =>
+        시트.getRange(2, 열, Math.max(1, 시트.getMaxRows() - 1), 1).setNumberFormat('yy-mm-dd')
+      );
+      SpreadsheetApp.flush();
+    } catch (e) {
+      const 헤더목록 = 날짜열목록.map(x => x.헤더).join(', ');
+      Logger.log(`일정관리 "${헤더목록}" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+    }
+  }
 
   시트.setHiddenGridlines(false);
   시트.setFrozenRows(1);
@@ -173,11 +227,19 @@ function _일정관리서식적용_(시트, 요약뷰) {
   시트.getRange(2, 1, Math.max(1, 시트.getMaxRows() - 1), lastCol)
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
 
-  try {
-    _일정관리구글표적용_(시트, 헤더);
-  } catch (e) {
-    Logger.log('일정관리 Google Sheets 표 적용 실패: ' + e.message);
-  }
+  // 2026-09-30: 이 시트를 구글 시트 "표(Table)"로 감싸면 표 자체 스타일이
+  // 헤더 배경색(_일정관리헤더색적용_)과 조건부서식(상태별 행 색상·마감 임박
+  // 강조) 위에 그려져서 둘 다 화면에 아예 안 보이는 현상이 실제 확인됐다
+  // (새로고침 직후 스크린샷에서 헤더도 남색이 아니고 상태색도 전부 안 보임).
+  // 표 갱신 API 호출 자체를 멈춰 더 이상 이 범위를 표로 재감싸지 않는다.
+  // 기존에 이미 만들어진 "일정관리_표"는 시트에서 표 셀 클릭 → 표 이름
+  // 옆 드롭다운 → "범위로 변환"으로 한 번 수동 해제해야 색이 돌아온다.
+  // (관련 함수/컬럼 타입 매핑은 나중에 표를 다시 쓰게 되면 참고할 수 있게 남겨둠)
+  // try {
+  //   _일정관리구글표적용_(시트, 헤더);
+  // } catch (e) {
+  //   Logger.log('일정관리 Google Sheets 표 적용 실패: ' + e.message);
+  // }
 
   _일정관리헤더색적용_(시트);
 
@@ -197,6 +259,11 @@ function _일정관리서식적용_(시트, 요약뷰) {
   });
 
   시트.showColumns(1, lastCol);
+  // 조건부서식 계산용 숨김 보조 컬럼은 요약뷰 여부와 무관하게 항상 숨긴다.
+  ['D3기준일_마감', 'D3기준일_연장마감'].forEach(h => {
+    const idx = 헤더.indexOf(h);
+    if (idx >= 0) 시트.hideColumns(idx + 1);
+  });
   if (요약뷰) {
     const 표시컬럼 = new Set([
       '순번', '접수번호',
@@ -212,6 +279,15 @@ function _일정관리서식적용_(시트, 요약뷰) {
   }
 }
 
+/**
+ * 표가 없거나 헤더 구성(이름·타입)이 바뀐 경우에만 삭제 후 재생성한다.
+ * 건 등록마다 호출되는데, 매번 delete+add로 표를 통째로 다시 만들면
+ * 그 범위에 이미 적용돼 있던 조건부서식 배경색 렌더링이 초기화돼 버려서
+ * "서식이 적용됐다가 반영이 안 되는" 현상의 원인이 됐다(구글 표 열에 타입을
+ * 다시 지정하는 과정이 이미 알려진 대로 setNumberFormat도 실패시킨다).
+ * 행이 늘어 범위만 커진 경우(가장 흔한 경우)는 updateTable로 range만
+ * 확장해 표를 지웠다 새로 만들지 않는다.
+ */
 function _일정관리구글표적용_(시트, 헤더) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const spreadsheetId = ss.getId();
@@ -220,6 +296,39 @@ function _일정관리구글표적용_(시트, 헤더) {
   const lastCol = 헤더.length;
   const lastRow = Math.max(2, 시트.getLastRow());
   const 기존표목록 = _시트표목록조회_(spreadsheetId, sheetId);
+  const 기존표 = 기존표목록.find(t => t.name === tableName || (t.range && t.range.sheetId === sheetId));
+
+  const 원하는열속성 = 헤더.map((h, idx) => ({
+    columnIndex: idx,
+    columnName: h || `Column ${idx + 1}`,
+    columnType: _일정관리표컬럼타입_(h),
+  }));
+  const 원하는범위 = {
+    sheetId: sheetId,
+    startRowIndex: 0,
+    endRowIndex: lastRow,
+    startColumnIndex: 0,
+    endColumnIndex: lastCol,
+  };
+
+  if (기존표) {
+    const 기존범위 = 기존표.range || {};
+    const 범위동일 = 기존범위.startRowIndex === 0 && 기존범위.startColumnIndex === 0
+      && 기존범위.endRowIndex === lastRow && 기존범위.endColumnIndex === lastCol;
+    const 열동일 = _표컬럼속성동일_(기존표.columnProperties, 원하는열속성);
+
+    if (범위동일 && 열동일) return; // 이미 최신 상태 — API 호출 없이 기존 서식을 그대로 둔다.
+
+    if (열동일) {
+      _sheetsBatchUpdate_(spreadsheetId, [{
+        updateTable: {
+          table: { tableId: 기존표.tableId, range: 원하는범위 },
+          fields: 'range',
+        },
+      }]);
+      return;
+    }
+  }
 
   const requests = 기존표목록
     .filter(t => t.name === tableName || (t.range && t.range.sheetId === sheetId))
@@ -229,28 +338,29 @@ function _일정관리구글표적용_(시트, 헤더) {
     addTable: {
       table: {
         name: tableName,
-        range: {
-          sheetId: sheetId,
-          startRowIndex: 0,
-          endRowIndex: lastRow,
-          startColumnIndex: 0,
-          endColumnIndex: lastCol,
-        },
+        range: 원하는범위,
         rowsProperties: {
           headerColorStyle: { rgbColor: _hexToRgb_(일정관리_헤더색) },
           firstBandColorStyle: { rgbColor: _hexToRgb_('#ffffff') },
           secondBandColorStyle: { rgbColor: _hexToRgb_('#f8fbfb') },
         },
-        columnProperties: 헤더.map((h, idx) => ({
-          columnIndex: idx,
-          columnName: h || `Column ${idx + 1}`,
-          columnType: _일정관리표컬럼타입_(h),
-        })),
+        columnProperties: 원하는열속성,
       },
     },
   });
 
   _sheetsBatchUpdate_(spreadsheetId, requests);
+}
+
+/** 기존 표의 columnProperties(이름·타입)가 원하는 구성과 완전히 같은지 비교 */
+function _표컬럼속성동일_(기존, 원함) {
+  const 목록a = (기존 || []).slice().sort((x, y) => x.columnIndex - y.columnIndex);
+  const 목록b = 원함 || [];
+  if (목록a.length !== 목록b.length) return false;
+  return 목록b.every((열, idx) => {
+    const 대응 = 목록a[idx] || {};
+    return 대응.columnName === 열.columnName && 대응.columnType === 열.columnType;
+  });
 }
 
 function _일정관리표컬럼타입_(헤더명) {
@@ -260,7 +370,7 @@ function _일정관리표컬럼타입_(헤더명) {
 }
 
 function _시트표목록조회_(spreadsheetId, sheetId) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId),tables(tableId,name,range))`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId),tables(tableId,name,range,columnProperties(columnIndex,columnName,columnType)))`;
   const res = UrlFetchApp.fetch(url, {
     method: 'get',
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
@@ -376,6 +486,18 @@ function _일정관리행추가(ss, 접수번호, 직접값, 등록컨텍스트)
       return `=IF(${보완셀}="","",WORKDAY(${보완셀},30,'${공휴일시트명}'!$A$2:$A))`;
     }
 
+    // 2-2) D3기준일_* = 해당 마감일의 3영업일 전 (조건부서식용 숨김 보조 컬럼)
+    if (h === 'D3기준일_마감') {
+      const iD마감 = 일정H.indexOf('마감예정일') + 1;
+      const 마감셀 = `${columnLetter(iD마감)}${새행번호}`;
+      return `=IF(${마감셀}="","",WORKDAY(${마감셀},-3,'${공휴일시트명}'!$A$2:$A))`;
+    }
+    if (h === 'D3기준일_연장마감') {
+      const iD연장 = 일정H.indexOf('연장마감일') + 1;
+      const 연장셀 = `${columnLetter(iD연장)}${새행번호}`;
+      return `=IF(${연장셀}="","",WORKDAY(${연장셀},-3,'${공휴일시트명}'!$A$2:$A))`;
+    }
+
     // 3) 기타제출서류여부 = 접수대장의 파일명 있으면 Y
     if (h === '기타제출서류여부') {
       return _접수대장조회수식_(대장H, '기타제출서류파일명', 일정접수셀, true);
@@ -393,6 +515,11 @@ function _일정관리행추가(ss, 접수번호, 직접값, 등록컨텍스트)
   컨텍스트.접수번호행맵.set(정규화접수번호, 새행번호);
   try {
     _일정관리서식적용_(일정시트, true);
+    // 다른 호출부(헤더마이그레이션·안전컬럼갱신·초기설정실행)와 동일하게
+    // 표 갱신 직후 조건부서식(상태별 배경색·마감 임박 강조)을 다시 씌운다.
+    // 이 호출이 빠져 있으면 새 건이 등록될 때마다(가장 빈번한 경로) 색상
+    // 서식이 반영되지 않는 현상이 반복된다.
+    _일정관리조건부서식적용_(일정시트);
   } catch (e) {
     Logger.log('일정관리 표 갱신 실패: ' + e.message);
   }
@@ -574,7 +701,15 @@ function _마감예정일수식갱신_(ss) {
     const 신청셀 = `${신청열문자}${행}`;
     return [`=IF(${신청셀}="","",WORKDAY(${신청셀},15,'${공휴일시트명}'!$A$2:$A))`];
   });
-  시트.getRange(2, 마감열, 행수, 1).setFormulas(수식).setNumberFormat('yy-mm-dd');
+  // 구글 표의 열에 타입(DATE)이 지정된 상태에서는 setNumberFormat이 예외를
+  // 던지므로, 수식 입력(핵심 동작)과 분리해 서식 실패가 수식 갱신을 막지 않게 한다.
+  시트.getRange(2, 마감열, 행수, 1).setFormulas(수식);
+  try {
+    시트.getRange(2, 마감열, 행수, 1).setNumberFormat('yy-mm-dd');
+    SpreadsheetApp.flush();
+  } catch (e) {
+    Logger.log(`일정관리 "마감예정일" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+  }
   if (보완요청열 > 0 && 연장마감열 > 0) {
     const 보완요청열문자 = columnLetter(보완요청열);
     const 연장수식 = 신청값.map((_, i) => {
@@ -586,9 +721,40 @@ function _마감예정일수식갱신_(ss) {
     // 자동 수식 입력 시 "날짜를 직접 선택" 유효성 검사 예외가 발생하지 않는다.
     시트.getRange(2, 연장마감열, 행수, 1)
       .clearDataValidations()
-      .setFormulas(연장수식)
-      .setNumberFormat('yy-mm-dd');
+      .setFormulas(연장수식);
+    try {
+      시트.getRange(2, 연장마감열, 행수, 1).setNumberFormat('yy-mm-dd');
+      SpreadsheetApp.flush();
+    } catch (e) {
+      Logger.log(`일정관리 "연장마감일" 열 날짜 서식 설정 실패(표 열 타입 충돌 가능): ${e.message}`);
+    }
   }
+
+  // D3기준일_* (조건부서식용 숨김 보조 컬럼) 백필: 마감예정일/연장마감일 수식을
+  // 방금 다시 썼으니, 그 값의 3영업일 전 날짜도 함께 갱신한다. 헤더가 아직
+  // 없는(안전컬럼갱신 전) 시트에서는 조용히 건너뛴다.
+  const D3마감열 = 헤더.indexOf('D3기준일_마감') + 1;
+  const D3연장열 = 헤더.indexOf('D3기준일_연장마감') + 1;
+  if (D3마감열 > 0) {
+    const 마감열문자 = columnLetter(마감열);
+    const D3마감수식 = 신청값.map((_, i) => {
+      const 행 = i + 2;
+      const 마감셀 = `${마감열문자}${행}`;
+      return [`=IF(${마감셀}="","",WORKDAY(${마감셀},-3,'${공휴일시트명}'!$A$2:$A))`];
+    });
+    시트.getRange(2, D3마감열, 행수, 1).setFormulas(D3마감수식);
+  }
+  if (D3연장열 > 0 && 연장마감열 > 0) {
+    const 연장마감열문자 = columnLetter(연장마감열);
+    const D3연장수식 = 신청값.map((_, i) => {
+      const 행 = i + 2;
+      const 연장셀 = `${연장마감열문자}${행}`;
+      return [`=IF(${연장셀}="","",WORKDAY(${연장셀},-3,'${공휴일시트명}'!$A$2:$A))`];
+    });
+    시트.getRange(2, D3연장열, 행수, 1).setFormulas(D3연장수식);
+  }
+  if (D3마감열 > 0 || D3연장열 > 0) SpreadsheetApp.flush();
+
   return 행수;
 }
 
@@ -619,8 +785,150 @@ function _일정관리공휴일연도만확보_(ss) {
   return 연도집합.size;
 }
 
-/** 관리자 수동 실행용: 공휴일과 기존 마감예정일 수식을 즉시 갱신 */
+/**
+ * Sheets REST API(403 이슈) 없이 순수 SpreadsheetApp만으로 실제 서버가
+ * 조건부서식 수식을 참(TRUE)으로 평가하는지 직접 확인한다.
+ * 임시 숨김 시트에 동일한 수식을 그대로 써서 계산시킨 뒤 즉시 지운다.
+ * 커서가 있는 행(없으면 2행)을 대상으로 한다.
+ */
+function 일정관리조건부서식수식테스트() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  const ui = SpreadsheetApp.getUi();
+  if (!시트 || 시트.getLastRow() < 2) { ui.alert('테스트할 일정관리 데이터가 없습니다.'); return; }
+
+  const 일정H = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const iD마감 = 일정H.indexOf('마감예정일') + 1;
+  const iD상태 = 일정H.indexOf('상태') + 1;
+  const iD보완요청 = 일정H.indexOf('보완요청일') + 1;
+  const iD연장마감 = 일정H.indexOf('연장마감일') + 1;
+  if (!iD마감 || !iD상태 || !iD보완요청 || !iD연장마감) { ui.alert('필수 헤더(마감예정일/상태/보완요청일/연장마감일)를 찾을 수 없습니다.'); return; }
+
+  const 선택행 = ss.getActiveSheet().getSheetId() === 시트.getSheetId()
+    ? 시트.getActiveRange().getRow() : 2;
+  const 행 = 선택행 >= 2 ? 선택행 : 2;
+
+  const 셀 = 열 => `$${columnLetter(열)}${행}`;
+  const 마감 = 셀(iD마감), 상태 = 셀(iD상태), 보완요청 = 셀(iD보완요청), 연장마감 = 셀(iD연장마감);
+
+  const 수식목록 = [
+    ['①초과', `AND(NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),IF(${보완요청}<>"",AND(${연장마감}<>"",${연장마감}<TODAY()),AND(${마감}<>"",${마감}<TODAY())))`],
+    ['②완료(적합)', `OR(${상태}="완료(적합)",${상태}="완료")`],
+    ['③종료(부적합)', `${상태}="종료(부적합)"`],
+    ['④종료(취소)', `${상태}="종료(취소)"`],
+    ['⑤보완', `${상태}="보완"`],
+    ['⑥심사중', `${상태}="심사중"`],
+  ];
+
+  // ⚠️ 이전 버전은 별도 임시 시트에 수식을 써서 계산했는데, $I2 같은 참조가
+  // "그 임시 시트의" I2(빈 칸)를 가리켜 버려 결과가 전부 잘못 나왔다. 그래서
+  // 같은 일정관리 시트의 빈 열 1행에 썼더니, 이번엔 이 시트가 아직 구글
+  // "표(Table)"로 감싸여 있어 "표 헤더 행에는 수식이 지원되지 않습니다"로
+  // 막혔다. 표의 행·열 범위 양쪽 다 확실히 벗어난, 맨 아래쪽 빈 행에 쓴다.
+  const 스크래치행 = Math.max(시트.getLastRow(), 시트.getMaxRows()) + 20;
+  const 스크래치열 = 일정H.length + 3;
+  if (시트.getMaxRows() < 스크래치행 + 수식목록.length) {
+    시트.insertRowsAfter(시트.getMaxRows(), 스크래치행 + 수식목록.length - 시트.getMaxRows());
+  }
+  if (시트.getMaxColumns() < 스크래치열) 시트.insertColumnsAfter(시트.getMaxColumns(), 스크래치열 - 시트.getMaxColumns());
+  시트.getRange(스크래치행, 스크래치열, 수식목록.length, 1).setFormulas(수식목록.map(([, f]) => [`=${f}`]));
+  SpreadsheetApp.flush();
+  const 결과 = 시트.getRange(스크래치행, 스크래치열, 수식목록.length, 1).getDisplayValues();
+  시트.getRange(스크래치행, 스크래치열, 수식목록.length, 1).clearContent();
+
+  const 규칙목록 = 시트.getConditionalFormatRules();
+  const 규칙범위요약 = 규칙목록.map((r, i) => {
+    const 범위들 = r.getRanges().map(rg => rg.getA1Notation()).join(' / ');
+    let 실제수식 = '';
+    try { 실제수식 = '=' + r.getBooleanCondition().getCriteriaValues()[0]; } catch (e) { 실제수식 = '(수식 아님)'; }
+    return `${i + 1}. [${범위들}] ${실제수식}`;
+  }).join('\n');
+
+  const 상태원본 = 시트.getRange(행, iD상태).getValue();
+  const 마감값 = 시트.getRange(행, iD마감).getDisplayValue();
+  const 요약 = 수식목록.map(([k], i) => `${k}: ${결과[i][0]}`).join('\n');
+
+  // 눈으로 똑같아 보여도 코드값이 다른 문자(전각 괄호·공백류)가 섞였을 수 있으므로
+  // 상태 컬럼 실제 값과 코드 목록의 가장 비슷한 후보를 문자 코드 단위로 비교한다.
+  const 코드 = s => Array.from(String(s)).map(c => c.codePointAt(0)).join(',');
+  const 실제문자열 = String(상태원본);
+  const 후보 = 일정관리_상태목록.find(v => v === 실제문자열)
+    || 일정관리_상태목록.find(v => v.replace(/\s/g, '') === 실제문자열.replace(/\s/g, ''))
+    || 일정관리_상태목록[0];
+  const 코드비교 = `실제값 길이:${실제문자열.length} 코드:[${코드(실제문자열)}]\n` +
+    `"${후보}" 길이:${후보.length} 코드:[${코드(후보)}]\n` +
+    `완전일치(===): ${실제문자열 === 후보}`;
+
+  ui.alert(
+    `${행}행 조건부서식 수식 실측 (상태 원본 값="${상태원본}", 마감예정일="${마감값}")\n\n` +
+    `[수식 계산 결과]\n${요약}\n\n` +
+    `[현재 시트에 실제로 붙어있는 규칙 수: ${규칙목록.length}개]\n${규칙범위요약}\n\n` +
+    `[상태값 문자 코드 비교]\n${코드비교}`
+  );
+}
+
+/** 규칙과 서버가 계산한 색상을 읽기만 한다. 갱신·flush·셀 쓰기를 하지 않는다. */
+function 일정관리색상진단() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  const ui = SpreadsheetApp.getUi();
+  if (!시트 || 시트.getLastRow() < 2) {
+    ui.alert('진단할 일정관리 데이터가 없습니다.');
+    return;
+  }
+  const 헤더 = 시트.getRange(1, 1, 1, 시트.getLastColumn()).getDisplayValues()[0].map(v => v.trim());
+  const 상태열 = 헤더.indexOf('상태') + 1;
+  if (!상태열) { ui.alert('상태 헤더를 찾을 수 없습니다.'); return; }
+  const 상태값 = 시트.getRange(2, 상태열, 시트.getLastRow() - 1, 1).getDisplayValues();
+  const 완료위치 = 상태값.findIndex(r => ['완료(적합)', '완료'].includes(r[0]));
+  const 선택행 = ss.getActiveSheet().getSheetId() === 시트.getSheetId()
+    ? 시트.getActiveRange().getRow() : 1;
+  const 행 = 선택행 > 1 && 선택행 <= 시트.getLastRow() ? 선택행 : (완료위치 >= 0 ? 완료위치 + 2 : 2);
+  const 열목록 = ['상태', '마감예정일', '연장마감일'].map(h => 헤더.indexOf(h) + 1).filter(c => c > 0);
+  const 범위 = 열목록.map(c => `'${시트.getName().replace(/'/g, "''")}'!${columnLetter(c)}${행}`);
+  const fields = 'sheets(properties(sheetId,title),conditionalFormats,tables(tableId,name,range),data(startRow,startColumn,rowData(values(formattedValue,effectiveValue,userEnteredFormat,effectiveFormat))))';
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${ss.getId()}?fields=${encodeURIComponent(fields)}&` +
+    범위.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
+  const res = UrlFetchApp.fetch(url, {
+    method: 'get',
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) {
+    ui.alert(`진단 조회 실패 (${res.getResponseCode()}): ${res.getContentText()}`);
+    return;
+  }
+  const 결과 = {
+    진단버전: '2026-09-30', 행, 상태: 상태값[행 - 2][0],
+    상태열: columnLetter(상태열), 조회범위: 범위,
+    서버응답: JSON.parse(res.getContentText()),
+  };
+  const 내용 = JSON.stringify(결과, null, 2).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  ui.showModalDialog(HtmlService.createHtmlOutput(
+    '<p>서식은 변경하지 않았습니다. 아래 결과를 복사해 전달해주세요.</p>' +
+    '<textarea readonly style="width:100%;height:440px;box-sizing:border-box" onclick="this.select()">' + 내용 + '</textarea>'
+  ).setWidth(720).setHeight(520), '일정관리 색상 진단');
+}
+
+/** 색상만 갱신: 공휴일 조회·날짜 수식 재입력·Google 표 재생성을 생략한다. */
+function 일정관리색상서식갱신() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  if (!시트) {
+    SpreadsheetApp.getUi().alert('일정관리 시트를 찾을 수 없습니다.');
+    return;
+  }
+  const 시작 = Date.now();
+  if (!_일정관리조건부서식적용_(시트)) return;
+  SpreadsheetApp.flush();
+  const 소요초 = ((Date.now() - 시작) / 1000).toFixed(1);
+  Logger.log(`일정관리 색상 서식 갱신: ${소요초}초`);
+  ss.toast(`색상 서식 적용 완료 (${소요초}초). 화면 반영에는 시간이 더 걸릴 수 있습니다.`, '일정관리', 8);
+}
+
+/** 공휴일·마감일 수식만 갱신한다. 기존 조건부서식 규칙은 재설정하지 않는다. */
 function 마감예정일갱신() {
-  const 갱신건수 = _마감예정일수식갱신_(SpreadsheetApp.getActiveSpreadsheet());
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 갱신건수 = _마감예정일수식갱신_(ss);
   SpreadsheetApp.getUi().alert(`마감일 갱신 완료: ${갱신건수}건\n기본: 접수일자 + 15 WD\n보완: 보완요청일 + 30 WD\n(주말·공휴일 제외)`);
 }
