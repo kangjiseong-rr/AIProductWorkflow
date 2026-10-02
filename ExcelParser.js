@@ -165,10 +165,73 @@ function 엑셀직접업로드창열기() {
     SpreadsheetApp.getUi().alert('관리자만 엑셀 파일을 등록할 수 있습니다.');
     return;
   }
-  const html = HtmlService.createHtmlOutputFromFile('ExcelUpload')
-    .setWidth(520)
-    .setHeight(360);
+  const template = HtmlService.createTemplateFromFile('ExcelUpload');
+  template.모드 = '등록';
+  template.갱신대상접수번호 = '';
+  const html = template.evaluate().setWidth(520).setHeight(360);
   SpreadsheetApp.getUi().showModalDialog(html, '엑셀 파일 직접 업로드');
+}
+
+/**
+ * '신청서 갱신' 진입점 — 접수대장 또는 일정관리에서 갱신할 건의 행을 먼저 클릭(선택)한 뒤 실행합니다.
+ * 선택한 행의 접수번호가 접수대장에 실제로 존재하는지 확인한 뒤, 같은 업로드 창을
+ * '갱신' 모드로 열어 재파싱된 데이터로 그 건만 갱신합니다.
+ *  · 접수대장 — 엑셀유래 컬럼만 in-place로 덮어씀 (순번·심사 진행 데이터는 유지)
+ *  · 일정관리 — 접수대장 참조 수식이라 자동 반영, 손대지 않음
+ *  · 인공지능제품모델·AI기능상세 — 이 건의 기존 행을 지우고 새 내용으로 재작성
+ */
+function 신청서갱신창열기() {
+  const ui = SpreadsheetApp.getUi();
+  if (!_관리자여부()) {
+    ui.alert('관리자만 신청서를 갱신할 수 있습니다.');
+    return;
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 활성시트 = ss.getActiveSheet();
+  if (활성시트.getName() !== SHEET.접수대장 && 활성시트.getName() !== SHEET.일정관리) {
+    ui.alert('접수대장 또는 일정관리 시트에서 갱신할 건의 행을 클릭(선택)한 뒤 다시 실행하세요.');
+    return;
+  }
+  const 활성행 = ss.getActiveRange().getRow();
+  if (활성행 < 2) {
+    ui.alert('헤더가 아니라 데이터 행을 선택한 뒤 다시 실행하세요.');
+    return;
+  }
+  const 헤더 = 활성시트.getRange(1, 1, 1, 활성시트.getLastColumn()).getValues()[0]
+    .map(v => String(v).trim());
+  const 접수번호열 = 헤더.indexOf('접수번호') + 1;
+  if (접수번호열 < 1) {
+    ui.alert('이 시트에서 접수번호 컬럼을 찾지 못했습니다.');
+    return;
+  }
+  const 접수번호 = String(활성시트.getRange(활성행, 접수번호열).getValue() || '').trim();
+  if (!접수번호) {
+    ui.alert('선택한 행에 접수번호가 없습니다.');
+    return;
+  }
+  const 건 = _건조회(ss, 접수번호);
+  if (!건) {
+    ui.alert(`접수대장에서 접수번호를 찾지 못했습니다: ${접수번호}`);
+    return;
+  }
+
+  const 확인 = ui.alert(
+    '신청서 갱신',
+    `접수번호: ${접수번호}\n기업명: ${건.기업명 || '-'}\n제품명: ${건.제품명 || '-'}\n\n` +
+      `수정된 신청서 엑셀(.xlsx)을 업로드하면:\n` +
+      `· 접수대장 — 엑셀유래 항목만 갱신 (순번·상태·담당심사원·심사 진행 데이터는 유지)\n` +
+      `· 일정관리 — 접수대장 참조 수식이라 자동 반영, 상태·담당심사원 등은 그대로 유지\n` +
+      `· 인공지능제품모델 · AI기능상세 — 이 건의 기존 행을 지우고 새 내용으로 재작성\n\n` +
+      `업로드할 엑셀에는 이 접수번호 1건만 포함되어 있어야 합니다(다른 건이 섞여 있으면 전체 중단). 계속할까요?`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (확인 !== ui.Button.OK) return;
+
+  const template = HtmlService.createTemplateFromFile('ExcelUpload');
+  template.모드 = '갱신';
+  template.갱신대상접수번호 = 접수번호;
+  const html = template.evaluate().setWidth(520).setHeight(380);
+  ui.showModalDialog(html, `신청서 갱신 — ${접수번호}`);
 }
 
 /**
@@ -196,8 +259,13 @@ function 직접업로드엑셀파싱(payload) {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     파일명
   );
+  const 모드 = String(payload && payload.모드 || '').trim() === '갱신' ? '갱신' : '등록';
+  const 갱신대상접수번호 = String(payload && payload.접수번호 || '').trim();
+  if (모드 === '갱신' && !갱신대상접수번호) {
+    throw new Error('갱신 대상 접수번호가 전달되지 않았습니다. 창을 닫고 다시 시도하세요.');
+  }
   try {
-    return _엑셀파싱처리(blob, 파일명, false, 작업ID);
+    return _엑셀파싱처리(blob, 파일명, false, 작업ID, 모드, 갱신대상접수번호);
   } catch (e) {
     _업로드상태저장_(작업ID, -1, '처리 실패: ' + e.message);
     throw e;
@@ -240,11 +308,33 @@ function 업로드진행상태조회(작업ID) {
  * 아래 코드는 형태 A (건별 세로형) 기준.
  * 형태 B를 받는다면 _파싱_가로형() 함수를 대신 호출하세요.
  */
-function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
+function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID, 모드, 갱신대상접수번호) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  모드 = 모드 === '갱신' ? '갱신' : '등록';
+  갱신대상접수번호 = String(갱신대상접수번호 || '').trim();
+
+  // 갱신 모드는 삭제+재삽입이 섞여 있어 동시 실행 시 데이터가 꼬일 수 있으므로 문서 잠금으로 감싼다.
+  // 일반 신규 등록(append-only)은 잠글 필요가 없어 대상에서 제외한다.
+  let 갱신잠금 = null;
+  if (모드 === '갱신') {
+    갱신잠금 = LockService.getDocumentLock();
+    if (!갱신잠금.tryLock(10000)) {
+      throw new Error('다른 작업이 실행 중이어서 갱신하지 못했습니다. 잠시 후 다시 시도하세요.');
+    }
+  }
+
+  try {
+    return _엑셀파싱처리_잠금내부(ss, blob, 파일명, 알림표시, 작업ID, 모드, 갱신대상접수번호);
+  } finally {
+    if (갱신잠금) 갱신잠금.releaseLock();
+  }
+}
+
+function _엑셀파싱처리_잠금내부(ss, blob, 파일명, 알림표시, 작업ID, 모드, 갱신대상접수번호) {
   const 제목 = '__임시파싱__' + new Date().getTime();
   let 임시파일ID;
   let 등록건수 = 0;
+  let 갱신건수 = 0;
   let 이미존재건수 = 0;
   const 건너뛴행 = [];
 
@@ -282,6 +372,24 @@ function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
     });
     if (!기본탭) 기본탭 = 시트들[0];  // 못 찾으면 첫 탭
 
+    // 갱신 모드 안전장치: 기능·모델 탭에 선택한 접수번호 외의 값이 하나라도 섞여 있으면
+    // (다건 파일을 잘못 올린 경우 등) 아직 아무것도 쓰기 전인 이 시점에 전체를 중단한다.
+    // 기본정보 탭 자체의 검증은 건목록을 만든 직후(등록 loop 이전)에 별도로 한 번 더 한다.
+    if (모드 === '갱신') {
+      const 발견된접수번호 = new Set();
+      [핵심기능탭, 구현명세탭, 구형기능탭, 모델탭].forEach(sh => {
+        if (!sh) return;
+        _탭접수번호집합_(sh.getDataRange().getDisplayValues()).forEach(v => 발견된접수번호.add(v));
+      });
+      const 이상값 = [...발견된접수번호].filter(v => v !== 갱신대상접수번호);
+      if (이상값.length) {
+        throw new Error(
+          `갱신 모드는 선택한 접수번호(${갱신대상접수번호}) 1건만 포함된 파일이어야 합니다. ` +
+          `기능·모델 탭에서 다른 접수번호가 발견되어 중단했습니다: ${이상값.join(', ')}`
+        );
+      }
+    }
+
     // 1) 기본정보 탭 파싱 → 접수대장 등록 (제품명·접수번호 → 접수번호 매핑 보관)
     _업로드상태저장_(작업ID, 52, '기본정보를 읽고 접수대장에 등록하고 있습니다.');
     // 전화번호·사업자번호의 선행 0을 보존하기 위해 표시 문자열로 읽는다.
@@ -291,11 +399,23 @@ function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
 
     const 세로형여부 = _세로형감지(기본데이터);
     const 건목록 = 세로형여부 ? [_파싱_세로형(기본데이터)] : _파싱_가로형(기본데이터);
+
+    if (모드 === '갱신') {
+      const 대상건 = 건목록.filter(건 => String(건.접수번호 || '').trim());
+      const 접수번호집합 = new Set(대상건.map(건 => String(건.접수번호).trim()));
+      if (대상건.length !== 1 || 접수번호집합.size !== 1 || !접수번호집합.has(갱신대상접수번호)) {
+        throw new Error(
+          `갱신 모드는 선택한 접수번호(${갱신대상접수번호}) 1건만 포함된 파일이어야 합니다. ` +
+          `기본정보 탭에서 발견된 접수번호: ${[...접수번호집합].join(', ') || '없음'}`
+        );
+      }
+    }
+
     // 다건 등록 중 일정관리 전체 시트를 레코드마다 다시 읽지 않도록 한 번만 인덱싱한다.
     const 등록컨텍스트 = { 일정관리: _일정관리등록컨텍스트생성(ss) };
     건목록.forEach((건, idx) => {
       try {
-        const 결과 = _Sheets에등록(건, 파일명, 등록컨텍스트);
+        const 결과 = _Sheets에등록(건, 파일명, 등록컨텍스트, 모드);
         const 접수번호 = 결과.접수번호;
         if (건.제품명) 제품명별접수번호[String(건.제품명).trim()] = 접수번호;
         // 접수번호 자기참조도 등록 (기능탭에 접수번호 컬럼이 있으면 직접 매칭)
@@ -310,6 +430,11 @@ function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
             });
           } catch (e2) { Logger.log('접수번호 폴더 생성 실패: ' + e2.message); }
           등록건수++;
+        } else if (결과.갱신) {
+          // 갱신 모드 — 기능/모델 탭 등록 함수가 접수건 정보를 다시 조회하지 않도록
+          // 방금 파싱한 최신 건 데이터를 그대로 넘겨준다.
+          신규접수건맵[접수번호] = 건;
+          갱신건수++;
         } else {
           이미존재건수++;  // append-only 정책 — 기존 데이터는 덮어쓰지 않고 건너뜀
         }
@@ -335,16 +460,16 @@ function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
       const 핵심데이터 = 핵심기능탭 ? 핵심기능탭.getDataRange().getDisplayValues() : [];
       const 구현데이터 = 구현명세탭 ? 구현명세탭.getDataRange().getDisplayValues() : [];
       const 기능데이터 = _기능탭데이터병합(핵심데이터, 구현데이터);
-      _기능탭파싱등록(기능데이터, 제품명별접수번호, 신규접수건맵);
+      _기능탭파싱등록(기능데이터, 제품명별접수번호, 신규접수건맵, 모드);
     } else if (구형기능탭) {
-      _기능탭파싱등록(구형기능탭.getDataRange().getDisplayValues(), 제품명별접수번호, 신규접수건맵);
+      _기능탭파싱등록(구형기능탭.getDataRange().getDisplayValues(), 제품명별접수번호, 신규접수건맵, 모드);
     }
 
     // 3) 제품모델 탭 파싱 → 인공지능제품모델 등록 (세부품명번호가 여러 건인 경우)
     _업로드상태저장_(작업ID, 84, '제품·서비스 모델 목록을 등록하고 있습니다.');
     if (모델탭) {
       const 모델데이터 = 모델탭.getDataRange().getDisplayValues();
-      _제품모델탭파싱등록(모델데이터, 제품명별접수번호, 신규접수건맵);
+      _제품모델탭파싱등록(모델데이터, 제품명별접수번호, 신규접수건맵, 모드);
     }
 
   } finally {
@@ -359,6 +484,9 @@ function _엑셀파싱처리(blob, 파일명, 알림표시, 작업ID) {
 
   // 파싱 결과 알림
   let msg = `엑셀 파싱 완료\n\n신규 등록: ${등록건수}건`;
+  if (갱신건수) {
+    msg += `\n갱신: ${갱신건수}건 — 엑셀유래 항목만 갱신, 순번·심사 진행 데이터는 유지`;
+  }
   if (이미존재건수) {
     msg += `\n이미 등록됨(건너뜀): ${이미존재건수}건 — append-only 정책으로 기존 데이터 유지`;
   }
@@ -420,7 +548,21 @@ function _기능탭데이터병합(핵심데이터, 구현데이터) {
  * 기능상세 탭(가로형: 1행 헤더 + 기능 N행) 파싱 → AI기능상세 시트 등록
  * 각 기능 행의 '제품명'으로 접수번호를 찾아 연결합니다.
  */
-function _기능탭파싱등록(데이터, 제품명별접수번호, 신규접수건맵) {
+/** 가로형 탭 데이터에서 '접수번호'(또는 '신청번호') 컬럼의 고유값 집합을 반환한다. */
+function _탭접수번호집합_(데이터) {
+  if (!데이터 || 데이터.length < 2) return new Set();
+  const 헤더 = 데이터[0].map(h => String(h || '').trim());
+  const i = 헤더.findIndex(h => h === '접수번호' || h === '신청번호');
+  if (i < 0) return new Set();
+  const 집합 = new Set();
+  for (let r = 1; r < 데이터.length; r++) {
+    const v = String(데이터[r][i] ?? '').trim();
+    if (v) 집합.add(v);
+  }
+  return 집합;
+}
+
+function _기능탭파싱등록(데이터, 제품명별접수번호, 신규접수건맵, 모드) {
   if (데이터.length < 2) return;
   const 헤더 = 데이터[0].map(h => String(h).trim());
 
@@ -456,9 +598,9 @@ function _기능탭파싱등록(데이터, 제품명별접수번호, 신규접�
     (묶음[접수번호] = 묶음[접수번호] || []).push(기능);
   }
 
-  // 접수번호별로 기능상세 등록 + 접수대장 기능수 갱신 (이미 등록된 접수번호는 건너뜀)
+  // 접수번호별로 기능상세 등록 + 접수대장 기능수 갱신 (이미 등록된 접수번호는 건너뜀 — 갱신 모드는 예외)
   Object.keys(묶음).forEach(접수번호 => {
-    const 등록됨 = AI기능상세등록(접수번호, 묶음[접수번호], 신규접수건맵 && 신규접수건맵[접수번호]);
+    const 등록됨 = AI기능상세등록(접수번호, 묶음[접수번호], 신규접수건맵 && 신규접수건맵[접수번호], 모드);
     if (등록됨) _접수대장기능수갱신(접수번호, 묶음[접수번호]);
   });
 }
@@ -467,7 +609,7 @@ function _기능탭파싱등록(데이터, 제품명별접수번호, 신규접�
  * 제품모델 탭(가로형: 1행 헤더 + 모델 N행) 파싱 → 인공지능제품모델 시트 등록
  * 세부품명번호·물품식별번호가 접수 건당 여러 개인 경우를 위한 반복 목록.
  */
-function _제품모델탭파싱등록(데이터, 제품명별접수번호, 신규접수건맵) {
+function _제품모델탭파싱등록(데이터, 제품명별접수번호, 신규접수건맵, 모드) {
   if (데이터.length < 2) return;
   const 헤더 = 데이터[0].map(h => String(h).trim());
 
@@ -501,7 +643,7 @@ function _제품모델탭파싱등록(데이터, 제품명별접수번호, 신�
   }
 
   Object.keys(묶음).forEach(접수번호 =>
-    제품모델등록(접수번호, 묶음[접수번호], 신규접수건맵 && 신규접수건맵[접수번호])
+    제품모델등록(접수번호, 묶음[접수번호], 신규접수건맵 && 신규접수건맵[접수번호], 모드)
   );
 }
 

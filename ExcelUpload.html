@@ -23,7 +23,15 @@
     </style>
   </head>
   <body>
-    <div class="help">확정 양식의 .xlsx 파일만 가능하며 최대 20MB입니다. 원본 파일은 Drive에 영구 저장하지 않습니다.</div>
+    <? if (모드 === '갱신') { ?>
+      <div class="help">
+        접수번호 <b><?= 갱신대상접수번호 ?></b> 갱신용입니다. 이 접수번호 1건만 포함된 수정 신청서
+        .xlsx 파일을 올려주세요 (다른 접수번호가 섞여 있으면 전체 중단됩니다). 최대 20MB, 원본 파일은
+        Drive에 영구 저장하지 않습니다.
+      </div>
+    <? } else { ?>
+      <div class="help">확정 양식의 .xlsx 파일만 가능하며 최대 20MB입니다. 원본 파일은 Drive에 영구 저장하지 않습니다.</div>
+    <? } ?>
     <form id="uploadForm">
       <label id="dropZone" class="drop" for="excelFile">
         파일을 이곳에 끌어다 놓거나 클릭하여 선택하세요.
@@ -35,10 +43,12 @@
       <div id="status" class="status"></div>
       <div class="actions">
         <button id="cancelButton" type="button" onclick="google.script.host.close()">취소</button>
-        <button id="submitButton" class="primary" type="submit">업로드·등록</button>
+        <button id="submitButton" class="primary" type="submit"><?= 모드 === '갱신' ? '업로드·갱신' : '업로드·등록' ?></button>
       </div>
     </form>
     <script>
+      const MODE = '<?= 모드 ?>';
+      const TARGET_NO = '<?= 갱신대상접수번호 ?>';
       const form = document.getElementById('uploadForm');
       const input = document.getElementById('excelFile');
       const dropZone = document.getElementById('dropZone');
@@ -125,6 +135,8 @@
               name: file.name,
               mimeType: file.type,
               base64: dataUrl.slice(comma + 1),
+              모드: MODE,
+              접수번호: TARGET_NO,
             });
         };
         reader.readAsDataURL(file);

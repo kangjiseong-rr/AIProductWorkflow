@@ -202,16 +202,20 @@ function _접수번호삭제대상조회_(ss, 접수번호, 대상시트명) {
   return 결과;
 }
 
-function 제품모델등록(접수번호, 모델목록, 접수건옵션) {
+function 제품모델등록(접수번호, 모델목록, 접수건옵션, 모드) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.제품모델);
 
-  // 이미 등록된 접수번호는 건너뜀 (append-only 정책 — 기존 제품모델 행을 지우고 다시 쓰지 않음)
+  // 이미 등록된 접수번호는 건너뜀 (append-only 정책 — 기존 제품모델 행을 지우고 다시 쓰지 않음).
+  // 단, 모드==='갱신'이면 기존 행을 전부 지우고 새 목록으로 다시 채웁니다 — 이 시트는
+  // 운영자가 직접 입력하는 칸이 없어 잃을 데이터가 없고, 모델 개수 증감도 자연스럽게 반영됩니다.
   const D = 시트.getDataRange().getValues();
   if (D.length > 1) {
     const iNo = D[0].indexOf('접수번호');
     const 이미존재 = D.slice(1).some(행 => String(행[iNo]).trim() === String(접수번호).trim());
-    if (이미존재) {
+    if (이미존재 && 모드 === '갱신') {
+      _시트접수번호행삭제_(시트, 접수번호);
+    } else if (이미존재) {
       Logger.log(`제품모델 이미 등록됨 - 건너뜀: ${접수번호}`);
       return false;
     }
@@ -341,7 +345,52 @@ function _접수대장기능수갱신(접수번호, 기능목록) {
 // ─────────────────────────────────────────────
 // 3. Sheets 등록 — 접수대장 + 일정관리 기록
 // ─────────────────────────────────────────────
-function _Sheets에등록(건, 파일명, 등록컨텍스트) {
+
+// '갱신' 모드에서 접수대장 중 실제로 덮어쓸 컬럼(=신청서/엑셀이 원본인 컬럼)만 나열합니다.
+// 순번·상태·담당심사원·심사착수일·심사마감일·종합판정·심사완료일·심사의견·
+// 인공지능기능수·구현방식(요약)은 TTA 내부 심사 관리용이라 여기 넣지 않습니다(절대 덮어쓰지 않음).
+// '비고'는 신규 등록 시에도 엑셀의 '비고/기타' 값을 그대로 쓰는 엑셀유래 컬럼이라 포함합니다
+// (심사원이 그 뒤 직접 메모를 덧붙였더라도 갱신 시 엑셀 값으로 덮어씀 — 정책으로 확정).
+// 접수대장에 새 컬럼을 추가할 때는 그게 엑셀유래인지 여부에 맞춰 이 목록도 함께 갱신하세요.
+const 접수대장_엑셀유래컬럼 = [
+  '접수일자',
+  '기업명', '사업자번호', '대표자', '소재지',
+  '담당자명', '담당자직급', '담당자전화', '담당자휴대전화', '이메일',
+  '제품명', '제품수', '제공형태', '제공형태기타', '제품분류', '제품분류기타', '서비스도메인',
+  '개요', '인공지능적용목적', '인공지능적용범위',
+  '구조도파일명',
+  '명세서작성방식', '명세서파일명', '기타제출서류파일명',
+  '보유인증', '기타인증명', '인증서파일명', '인증비고',
+  '열람이용동의여부', '개인정보수집이용동의여부', '개인정보3자제공동의여부', '최종신청동의여부',
+  '특기사항', '비고',
+  '인공지능기능명(요약)',
+];
+
+/**
+ * 접수대장 헤더명 → 파싱된 건 객체에서 값을 읽어온다.
+ * 대부분은 헤더명과 건의 sheetColumn이 같지만, 예외 두 개는 신규 등록 값맵과 동일한
+ * 규칙을 그대로 적용한다: '인공지능기능명(요약)'은 건.AI기능명_원본이 원본이고,
+ * '제품수'는 값이 없을 때 1로 기본값을 채운다.
+ */
+function _건에서접수대장값읽기_(건, 헤더명) {
+  if (헤더명 === '인공지능기능명(요약)') return 건.AI기능명_원본 ?? '';
+  if (헤더명 === '제품수') return 건.제품수 || 1;
+  return Object.prototype.hasOwnProperty.call(건, 헤더명) ? (건[헤더명] ?? '') : undefined;
+}
+
+/** 지정한 시트에서 접수번호가 일치하는 행을 전부 삭제한다 (제품모델·AI기능상세 갱신 시 재사용). */
+function _시트접수번호행삭제_(시트, 접수번호) {
+  if (!시트 || 시트.getLastRow() < 2) return;
+  const D = 시트.getDataRange().getValues();
+  const iNo = D[0].indexOf('접수번호');
+  if (iNo < 0) return;
+  const 정규화 = String(접수번호).trim();
+  for (let r = D.length - 1; r >= 1; r--) {
+    if (String(D[r][iNo]).trim() === 정규화) 시트.deleteRow(r + 1);
+  }
+}
+
+function _Sheets에등록(건, 파일명, 등록컨텍스트, 모드) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   // 접수번호는 KOSA가 부여한 신청번호(예: AI202600001)를 그대로 키로 사용.
@@ -351,10 +400,6 @@ function _Sheets에등록(건, 파일명, 등록컨텍스트) {
     throw new Error('접수번호(신청번호)가 없습니다. KOSA가 부여한 접수번호가 있는 행만 등록할 수 있습니다.');
   }
 
-  const 오늘 = new Date();
-  const 마감일 = new Date(오늘);
-  마감일.setDate(마감일.getDate() + CONFIG.기본심사기간);
-
   const 대장시트 = ss.getSheetByName(SHEET.접수대장);
   const D = 대장시트.getDataRange().getValues();
   const H = D[0];
@@ -362,7 +407,31 @@ function _Sheets에등록(건, 파일명, 등록컨텍스트) {
 
   // 이미 등록된 접수번호는 절대 덮어쓰지 않고 무조건 건너뜀 (append-only 정책).
   // 재파싱·중복 파일 업로드로 같은 접수번호가 다시 들어와도 기존 데이터는 그대로 유지됩니다.
-  const 이미존재 = D.slice(1).some(행 => String(행[iNo]).trim() === 접수번호);
+  // 단, 모드==='갱신'이면 "신청서 갱신" 기능으로 호출된 것이므로 예외적으로 이 건의
+  // 엑셀유래 컬럼만 in-place로 덮어씁니다(순번·심사 진행 컬럼은 그대로 유지).
+  const 기존행인덱스 = D.slice(1).findIndex(행 => String(행[iNo]).trim() === 접수번호);
+  const 이미존재 = 기존행인덱스 >= 0;
+
+  if (이미존재 && 모드 === '갱신') {
+    const 대상행 = 기존행인덱스 + 2; // +1(헤더) +1(1-based)
+    접수대장_엑셀유래컬럼.forEach(헤더명 => {
+      const 열 = H.indexOf(헤더명);
+      if (열 < 0) return;
+      const 값 = _건에서접수대장값읽기_(건, 헤더명);
+      if (값 === undefined) return;
+      대장시트.getRange(대상행, 열 + 1).setValue(값);
+    });
+    try {
+      ss.getSheetByName(SHEET.로그).appendRow([
+        Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+        파일명, 접수번호, '갱신',
+        `${건.기업명 || ''} / ${건.제품명 || ''} — 엑셀유래 컬럼만 갱신, 순번·심사 진행 데이터는 유지`,
+      ]);
+    } catch (e2) {}
+    Logger.log(`갱신: ${접수번호}`);
+    return { 접수번호, 신규: false, 갱신: true };
+  }
+
   if (이미존재) {
     try {
       ss.getSheetByName(SHEET.로그).appendRow([
@@ -374,6 +443,16 @@ function _Sheets에등록(건, 파일명, 등록컨텍스트) {
     Logger.log(`이미 등록됨 - 건너뜀: ${접수번호}`);
     return { 접수번호, 신규: false };
   }
+
+  if (모드 === '갱신') {
+    // 갱신 대상 접수번호가 접수대장에 없음 — 메뉴 진입 시점 이후 삭제되는 등
+    // 예외적인 상황이 아니라면 발생하지 않아야 하므로 신규 등록으로 흘려보내지 않고 즉시 중단합니다.
+    throw new Error(`갱신 대상 접수번호를 접수대장에서 찾을 수 없습니다: ${접수번호}`);
+  }
+
+  const 오늘 = new Date();
+  const 마감일 = new Date(오늘);
+  마감일.setDate(마감일.getDate() + CONFIG.기본심사기간);
 
   const 담당자 = _담당자배분(ss);
   const 착수일 = Utilities.formatDate(오늘, 'Asia/Seoul', 'yyyy-MM-dd');
@@ -455,7 +534,7 @@ function _Sheets에등록(건, 파일명, 등록컨텍스트) {
 // ─────────────────────────────────────────────
 // 4. AI기능상세 등록 (별도 실행 또는 파싱 시 자동 호출)
 // ─────────────────────────────────────────────
-function AI기능상세등록(접수번호, 기능목록, 접수건옵션) {
+function AI기능상세등록(접수번호, 기능목록, 접수건옵션, 모드) {
   /**
    * 기능목록 예시:
    * [
@@ -466,12 +545,15 @@ function AI기능상세등록(접수번호, 기능목록, 접수건옵션) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const 시트 = ss.getSheetByName(SHEET.AI기능상세);
 
-  // 이미 등록된 접수번호는 건너뜀 (append-only 정책 — 기존 기능상세 행을 지우고 다시 쓰지 않음)
+  // 이미 등록된 접수번호는 건너뜀 (append-only 정책 — 기존 기능상세 행을 지우고 다시 쓰지 않음).
+  // 단, 모드==='갱신'이면 기존 행을 전부 지우고 새 목록으로 다시 채웁니다 (제품모델과 동일한 이유).
   const D = 시트.getDataRange().getValues();
   if (D.length > 1) {
     const iNo = D[0].indexOf('접수번호');
     const 이미존재 = D.slice(1).some(행 => String(행[iNo]).trim() === String(접수번호).trim());
-    if (이미존재) {
+    if (이미존재 && 모드 === '갱신') {
+      _시트접수번호행삭제_(시트, 접수번호);
+    } else if (이미존재) {
       Logger.log(`AI기능상세 이미 등록됨 - 건너뜀: ${접수번호}`);
       return false;
     }
