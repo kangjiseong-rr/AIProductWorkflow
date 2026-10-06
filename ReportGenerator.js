@@ -99,7 +99,7 @@ function _구현방식별세부행(f) {
   const 코드 = String(f['구현방식'] || '').trim().charAt(0).toUpperCase();
   const 전용필드 = {
     A: [
-      ['학습 데이터 사양', f['학습데이터사양'], '데이터명·라이선싱/보유형태 포함'],
+      ['학습 데이터 사양', f['학습데이터사양'], ''],
       ['개발환경·라이브러리·알고리즘', f['개발환경라이브러리알고리즘'], ''],
     ],
     B: [
@@ -107,7 +107,7 @@ function _구현방식별세부행(f) {
       ['튜닝 방법', f['튜닝방법'], ''],
       ['튜닝 데이터셋', f['튜닝데이터셋'], ''],
     ],
-    C: [['외부 API·모델', f['외부API정보'], '제공사 + 모델명/버전']],
+    C: [['외부 API·모델', f['외부API정보'], '']],
     D: [
       ['타겟 하드웨어·OS', f['타겟HW_OS'], ''],
       ['추론 런타임', f['추론런타임'], ''],
@@ -128,10 +128,10 @@ function _구현방식별세부행(f) {
   }
 
   행.push(['AI 연산 자원 요약', _v(f['연산자원요약']), '']);
-  행.push(['AI 실행 환경 요약', _v(f['실행환경요약']), '선택 입력']);
+  행.push(['AI 실행 환경 요약', _v(f['실행환경요약']), '']);
   행.push(['입력 데이터 설명', _v(f['입력데이터설명']), '']);
   행.push(['출력 데이터 설명', _v(f['출력데이터설명']), '']);
-  행.push(['기타 참고자료', _v(f['기타참고자료파일명']), '선택 입력']);
+  행.push(['기타 참고자료', _v(f['기타참고자료파일명']), '']);
   return 행;
 }
 
@@ -307,7 +307,7 @@ function _증적명세서Docs생성(ss, 건) {
   _셀문단정렬(심사대상제품표.getRow(0).getCell(1), DocumentApp.HorizontalAlignment.LEFT);
 
   // ═══════════════ 4. 핵심 인공지능 기능 명세 ═══════════════
-  _명세섹션(body, '4. 핵심 인공지능 기능 명세');
+  _새페이지섹션(body, '4. 핵심 인공지능 기능 명세');
   if (기능목록.length) {
     기능목록.forEach((f, idx) => {
       const 원본기능번호 = _v(f['기능번호'] || idx + 1);
@@ -367,7 +367,6 @@ function _증적명세서Docs생성(ss, 건) {
   const 구조도원본 = String(건['구조도파일명'] || '').trim();
   if (구조도원본) {
     const ID목록 = 구조도원본.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
-    let 삽입수 = 0;
     ID목록.forEach((원본, idx) => {
       try {
         const 파일ID = _드라이브ID추출(원본);
@@ -375,20 +374,13 @@ function _증적명세서Docs생성(ss, 건) {
         const img = body.appendImage(표시본);
         const 비율 = img.getHeight() / img.getWidth();
         img.setWidth(480).setHeight(Math.round(480 * 비율));
-        const 파일 = DriveApp.getFileById(파일ID);
-        body.appendParagraph(`[구조도 ${idx + 1}] ${파일.getName()} · 원본: ${파일.getUrl()}`)
-          .editAsText().setForegroundColor('#5f6368').setFontSize(8);
-        삽입수++;
       } catch (e) {
         body.appendParagraph(`[구조도 ${idx + 1} 불러오기 실패: ${e.message}]`)
           .editAsText().setForegroundColor('#c5221f');
       }
     });
-    body.appendParagraph('');
-    body.appendParagraph(`※ 위 이미지는 표시본(축소)입니다. 원본 ${삽입수}건은 Drive(→NAS) 원본 폴더에 보관됩니다.`)
-      .editAsText().setForegroundColor('#9aa0a6').setFontSize(8);
   } else {
-    body.appendParagraph('(구조도 파일 미등록 — 접수대장 "구조도파일ID" 칸에 입력. 여러 장은 쉼표로 구분)')
+    body.appendParagraph('(미제출)')
       .editAsText().setForegroundColor('#9aa0a6');
   }
 
@@ -397,6 +389,10 @@ function _증적명세서Docs생성(ss, 건) {
   _명세표(body, [
     ['기존 인증·시험 결과', _v(건['비고'])],
   ]);
+
+  // ── 붙임 4. 증적 자료 (생성 후 심사원이 자료를 첨부하는 빈 페이지) ──
+  _새페이지섹션(body, '붙임 4. 증적 자료');
+  body.appendParagraph('');
 
   _보고서폰트통일_(doc, 보고서_기본폰트);
   doc.saveAndClose();
@@ -516,7 +512,7 @@ function _기능세부표스타일(table) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
       const cell = row.getCell(c);
-      const alignment = (c === 0 || c === 1)
+      const alignment = r === 0 || c === 0 || c === 1
         ? DocumentApp.HorizontalAlignment.CENTER
         : DocumentApp.HorizontalAlignment.LEFT;
       _셀스타일적용_(cell, widths[c], alignment);
@@ -547,7 +543,7 @@ function _심사결과표스타일(table) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
       const cell = row.getCell(c);
-      const alignment = r === 0 || (c !== 1 && c !== 3)
+      const alignment = r === 0 || c !== 1
         ? DocumentApp.HorizontalAlignment.CENTER
         : DocumentApp.HorizontalAlignment.LEFT;
       _셀스타일적용_(cell, widths[c], alignment);

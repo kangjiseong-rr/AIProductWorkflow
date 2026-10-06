@@ -145,7 +145,7 @@ const 필드정의 = [
   },
   {
     sheetColumn: '담당자직급', path: ['applicant.managerPosition', 'applicant.managerRank'], required: false,
-    excelAliases: ['담당자직급', '담당자 직급', '직급'],
+    excelAliases: ['담당자직급', '담당자 직급', '직급', '담당자직위', '담당자 직위', '직위'],
   },
   {
     sheetColumn: '담당자전화', path: 'applicant.managerTel', required: false, formatter: '전화번호정규화',

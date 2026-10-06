@@ -180,7 +180,8 @@ function _일정관리조건부서식적용_(일정시트) {
   const 임박규칙 = 임박대상.map(({ 마감열, D3열, 활성조건 }) => {
     const 마감셀 = 행셀(마감열);
     const D3셀 = 행셀(D3열);
-    const 임박조건 = `IFERROR(AND(${활성조건},ISNUMBER(${마감셀}),NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=${D3셀},TODAY()<=${마감셀}),FALSE)`;
+    // 신규 행의 보조 날짜가 비어 있거나 0인 동안 임박으로 잘못 판정하지 않는다.
+    const 임박조건 = `IFERROR(AND(${활성조건},ISNUMBER(${마감셀}),ISNUMBER(${D3셀}),${D3셀}>0,NOT(OR(${상태}="완료",${상태}="완료(적합)",${상태}="종료(부적합)",${상태}="종료(취소)")),TODAY()>=${D3셀},TODAY()<=${마감셀}),FALSE)`;
     // 마감 셀의 노란 배경을 상태별 행 색상보다 우선 적용한다.
     return SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied(`=${임박조건}`)
