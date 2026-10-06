@@ -503,6 +503,7 @@ function onOpen() {
       .addItem('📤 엑셀 파일 직접 업로드', '엑셀직접업로드창열기')
       .addItem('🔗 Drive 링크로 엑셀 등록', '엑셀파싱등록')
       .addItem('🧾 JSON 파일 등록 (파싱)', 'JSON파싱등록')
+      .addItem('📝 신청서 갱신 (선택 행, 같은 접수번호 재파싱)', '신청서갱신창열기')
       .addItem('🗑️ 접수번호 1건 삭제', '접수번호한건삭제')
       .addSeparator()
       .addItem('👥 심사원 Chat ID 일괄 갱신', '심사원Chat사용자ID일괄갱신')
