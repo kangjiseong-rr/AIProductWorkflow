@@ -6,6 +6,11 @@
         "userSymbol": "AdminDirectory",
         "version": "directory_v1",
         "serviceId": "admin"
+      },
+      {
+        "userSymbol": "Gmail",
+        "version": "v1",
+        "serviceId": "gmail"
       }
     ]
   },

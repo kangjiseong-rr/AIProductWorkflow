@@ -7,5 +7,7 @@
 !Schedule.js
 !ReviewerAssignment.js
 !ReportGenerator.js
+!MailDraft.js
 !ExcelUpload.html
+!MailDraftCC.html
 !appsscript.json
