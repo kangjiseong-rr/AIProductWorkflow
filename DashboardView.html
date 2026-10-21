@@ -49,6 +49,8 @@ body{background:#fcfcfb}
 .stack-legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px}
 .stack-legend b{font-variant-numeric:tabular-nums}
 .full{grid-column:1/-1}
+.comply-list{margin-top:10px;font-size:12px;line-height:1.7;font-variant-numeric:tabular-nums}
+.comply-list b{display:block;margin-bottom:2px}
 .heat-wrap{overflow-x:auto;padding-bottom:4px}
 .heat{border-collapse:separate;border-spacing:2px;font-size:12px;font-variant-numeric:tabular-nums;width:auto}
 .heat th,.heat td{border:0;padding:0;text-align:center;white-space:nowrap}
@@ -100,7 +102,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <div class="card full"><h3>심사원별 주차별 배정 현황</h3><div class="desc">심사접수일(없으면 접수일자)이 속한 주(월요일 시작) 기준 배정 건수 · 칸에 마우스를 올리면 배정된 건 목록</div>
       <div class="heat-legend" id="heat-legend"></div>
       <div class="heat-wrap" id="heat"></div></div>
-    <div class="card full"><h3>마감 준수 현황</h3><div class="desc">기간 내 완료 건의 적합통보일을 마감예정일·연장마감일과 비교</div>
+    <div class="card full"><h3>마감 준수 현황</h3><div class="desc">이미 완료된 건(기간 내 적합통보)의 적합통보일을 마감과 비교 · 위쪽 "마감 초과" 카드는 진행 중인 건만 셉니다</div>
       <div id="comply"></div></div>
     <div class="card full"><h3>심사원별 현황</h3><div class="desc">진행·초과·임박은 오늘 기준, 완료·처리기간·준수율은 선택 기간 기준 · 열 제목을 누르면 정렬</div>
       <div class="tbl-wrap" id="table"></div></div>
@@ -299,11 +301,19 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   function comply(done){
     const el=$('#comply');
     if(!done.length){el.innerHTML='<div class="empty">선택 기간에 완료된 건이 없습니다.</div>';return;}
-    const parts=[['first','최초 마감 내','var(--good)','●'],['ext','연장 마감 내','var(--warn)','▲'],['late','마감 초과','var(--crit)','■'],['none','마감 미입력','var(--none)','○']];
-    const c={};done.forEach(r=>{const k=compliance(r);c[k]=(c[k]||0)+1;});
-    const used=parts.filter(p=>c[p[0]]);
-    el.innerHTML=`<div class="stack">${used.map(p=>`<div style="flex:${c[p[0]]};background:${p[2]}" data-tip="${esc(`${p[1]}\n${c[p[0]]}건 (${pct(c[p[0]],done.length)}%)`)}"></div>`).join('')}</div>`
-      +`<div class="stack-legend">${parts.map(p=>`<span><span style="color:${p[2]}">${p[3]}</span> ${p[1]} <b>${c[p[0]]||0}건</b> <span class="muted">(${n1(pct(c[p[0]]||0,done.length))}%)</span></span>`).join('')}<span class="muted">완료 ${done.length}건 기준</span></div>`;
+    const parts=[['first','최초 마감 내 통보','var(--good)','●'],['ext','연장 마감 내 통보','var(--warn)','▲'],['late','마감 후 통보','var(--crit)','■'],['none','마감 미입력','var(--none)','○']];
+    const g={};done.forEach(r=>{const k=compliance(r);(g[k]=g[k]||[]).push(r);});
+    const n=k=>(g[k]||[]).length;
+    const sd=v=>v?`${+v.slice(5,7)}/${+v.slice(8,10)}`:'없음';
+    const line=r=>`${r.seq?r.seq+'. ':''}${r.company} · 통보 ${sd(r.notice)} · 마감 ${sd(r.original)}${r.supplement?` · 보완 ${sd(r.supplement)} · 연장 ${sd(r.extension)}`:''}`;
+    const tipOf=p=>`${p[1]} ${n(p[0])}건 (${n1(pct(n(p[0]),done.length))}%)`+(n(p[0])&&p[0]!=='first'?'\n'+(g[p[0]]).slice(0,15).map(line).join('\n')+(n(p[0])>15?`\n… 외 ${n(p[0])-15}건`:''):'');
+    const used=parts.filter(p=>n(p[0]));
+    // 마감 후 통보·마감 미입력 건은 몇 건 안 되므로 바로 목록으로 보여준다(데이터 확인용).
+    const detail=['late','none'].filter(k=>n(k)).map(k=>{const p=parts.find(x=>x[0]===k);
+      return `<div class="comply-list"><b style="color:${p[2]}">${p[3]} ${p[1]}</b>${g[k].slice(0,10).map(r=>`<div>${esc(line(r))}${r.supplement&&!r.extension?' <span style="color:var(--crit)">· 보완요청일은 있는데 연장마감일이 비어 있음</span>':''}</div>`).join('')}${g[k].length>10?`<div class="muted">… 외 ${g[k].length-10}건 (막대에 마우스를 올리면 더 보기)</div>`:''}</div>`;}).join('');
+    el.innerHTML=`<div class="stack">${used.map(p=>`<div style="flex:${n(p[0])};background:${p[2]}" data-tip="${esc(tipOf(p))}"></div>`).join('')}</div>`
+      +`<div class="stack-legend">${parts.map(p=>`<span data-tip="${esc(tipOf(p))}"><span style="color:${p[2]}">${p[3]}</span> ${p[1]} <b>${n(p[0])}건</b> <span class="muted">(${n1(pct(n(p[0]),done.length))}%)</span></span>`).join('')}<span class="muted">완료 ${done.length}건 기준 · 마감은 연장마감일이 있으면 연장마감일</span></div>`
+      +detail;
   }
 
   /* ── 지표 타일 ── */
@@ -316,7 +326,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const suppRate=pct(recvValid.filter(r=>r.supplement).length,recvValid.length);
     const T=[
       ['진행 중',a.length,'건',`대기 ${st('대기')} · 심사중 ${st('심사중')} · 보완 ${st('보완')}`,''],
-      ['마감 초과',late,'건','진행 중 · 현재 마감 경과','var(--crit)'],
+      ['마감 초과',late,'건','진행 중인 건 · 오늘 기준 마감 경과','var(--crit)'],
       ['마감 임박',soon,'건','잔여 3WD 이하','var(--warn)'],
       ['기간 내 접수',S.recv.length,'건',`보완요청 발생 ${n1(suppRate)}%`,''],
       ['기간 내 완료',S.done.length,'건','적합통보일 기준',''],
