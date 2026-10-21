@@ -16,6 +16,7 @@ const 타임라인_컬럼 = {
   status: '상태',
   supplement: '보완요청일',
   extension: '연장마감일',
+  completion: '심사완료일',
   notice: '적합통보일',
   reviewer: '담당심사원',
   note: '특이사항',
@@ -23,7 +24,7 @@ const 타임라인_컬럼 = {
   product: '제품명',
   count: '제품수',
 };
-const 타임라인_날짜키 = ['received', 'review', 'original', 'supplement', 'extension', 'notice'];
+const 타임라인_날짜키 = ['received', 'review', 'original', 'supplement', 'extension', 'completion', 'notice'];
 const 타임라인_하루 = 86400000;
 
 // 웹 앱 배포 ID (Apps Script 프로젝트 scriptId별). 같은 배포를 버전만 갱신해 쓰므로 URL은 바뀌지 않는다.
@@ -220,14 +221,23 @@ function _영업일수_(시작, 종료, 휴일) {
 }
 
 /**
- * elapsedWD  : 접수일자 → (완료·종료는 적합통보일, 진행 중은 오늘)
- * remainingWD: 오늘 → 현재 마감(연장마감일 우선). 진행 중인 건만, 지났으면 음수.
+ * 심사원 처리와 행정 통보를 나눠 계산한다.
+ * elapsedWD      : 접수일자 → 심사완료일(없으면 적합통보일). 아직 진행 중이면 오늘까지.
+ * remainingWD    : 오늘 → 현재 마감(연장마감일 우선). 적합통보 전·종료 아닌 건만, 지났으면 음수.
+ * noticeLagWD    : 심사완료일 → 적합통보일(통보 전이면 오늘까지). 심사완료일이 없으면 null.
+ * pendingNotice  : 통보 대기 — 종료가 아니고 적합통보일이 없는데 심사완료일이 있거나 상태가 완료인 건.
  */
 function _타임라인WD계산_(레코드, 오늘, 휴일) {
-  const 종결 = /^(완료|종료)/.test(레코드.status);
+  const 종료 = /^종료/.test(레코드.status);
+  const 상태완료 = /^완료/.test(레코드.status);
   const 마감 = 레코드.extension || 레코드.original;
-  레코드.elapsedWD = 종결
-    ? _영업일수_(레코드.received, 레코드.notice, 휴일)
-    : _영업일수_(레코드.received, 오늘, 휴일);
-  레코드.remainingWD = 종결 ? null : _영업일수_(오늘, 마감, 휴일);
+  const 심사끝 = 레코드.completion || 레코드.notice;
+  레코드.pendingNotice = !종료 && !레코드.notice && (!!레코드.completion || 상태완료);
+  레코드.elapsedWD = 심사끝
+    ? _영업일수_(레코드.received, 심사끝, 휴일)
+    : 종료 || 상태완료 ? null : _영업일수_(레코드.received, 오늘, 휴일);
+  레코드.remainingWD = 종료 || 레코드.notice ? null : _영업일수_(오늘, 마감, 휴일);
+  레코드.noticeLagWD = 레코드.completion
+    ? _영업일수_(레코드.completion, 레코드.notice || 오늘, 휴일)
+    : null;
 }

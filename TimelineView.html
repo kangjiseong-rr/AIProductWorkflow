@@ -42,6 +42,9 @@ body{background:#fff}
 .k-review{width:8px;height:8px;border-radius:50%;background:var(--ink);margin:0 3px}
 .k-supp{width:8px;height:8px;background:var(--amber);transform:rotate(45deg);margin:0 3px}
 .k-done{width:9px;height:9px;background:var(--green);margin:0 3px}
+.k-comp{width:9px;height:9px;border:2px solid var(--green);margin:0 3px}
+.k-wait{width:20px;height:7px;border-radius:2px;background:repeating-linear-gradient(135deg,var(--green) 0 3px,transparent 3px 6px)}
+.k-pend{width:20px;height:7px;border-radius:2px;background:var(--amber)}
 .message{font-size:12px;padding:6px 0;color:var(--past)}
 .scroll{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--line);position:relative;overscroll-behavior:contain}
 .scroll.dragging{cursor:grabbing;user-select:none}
@@ -90,6 +93,11 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
 .m-review{top:20px;width:8px;height:8px;border-radius:50%;background:var(--ink);border:1px solid #fff}
 .m-supp{top:19px;width:9px;height:9px;background:var(--amber);transform:translateX(-50%) rotate(45deg);border:1px solid #fff}
 .m-done{top:18px;width:12px;height:12px;background:var(--green);border:1px solid #fff}
+.m-comp{top:18px;width:12px;height:12px;background:#fff;border:2px solid var(--green)}
+.bar.wait{background:repeating-linear-gradient(135deg,var(--green) 0 3px,transparent 3px 6px);opacity:.7}
+.bar.pend{background:var(--amber);opacity:.85}
+.remaining.pend strong{color:var(--amber);font-size:13px}
+.remaining.pend.late strong{color:var(--past)}
 .bar-label{position:absolute;top:35px;font-size:11px;color:var(--sub);white-space:nowrap;font-variant-numeric:tabular-nums;z-index:4}
 .info{padding:10px 14px;background:var(--soft);font-size:12px;overflow-wrap:anywhere;position:sticky;left:0;width:var(--view)}
 .info-title{font-weight:600;margin-bottom:3px;white-space:pre-line}
@@ -127,6 +135,9 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
     <span><i class="k-review"></i>심사접수</span>
     <span><i class="k-supp"></i>보완요청</span>
     <span><i class="k-done"></i>적합 통보</span>
+    <span><i class="k-comp"></i>심사완료(통보일과 다를 때)</span>
+    <span><i class="k-wait"></i>심사완료 → 통보</span>
+    <span><i class="k-pend"></i>통보 대기</span>
     <span><i class="k-first"></i>마감예정일</span>
     <span><i class="k-ext"></i>연장마감일</span>
     <span><i class="k-now"></i>기준일(오늘)</span>
@@ -164,9 +175,9 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
   function apply(payload){
     BASE=parse(payload.today);SOURCE=payload.sourceUrl||'';GID=payload.gid;LASTCOL=payload.lastColumn||'N';
     data=(payload.records||[]).map(r=>{
-      const done=/^완료/.test(r.status),cancel=/^종료/.test(r.status);
+      const pend=!!r.pendingNotice,done=/^완료/.test(r.status)&&!pend,cancel=/^종료/.test(r.status);
       const first=parse(r.original),ext=parse(r.extension),due=ext??first;
-      return {...r,recv:parse(r.received),start:parse(r.review),first,ext,due,end:parse(r.notice),supp:parse(r.supplement),done,cancel,
+      return {...r,recv:parse(r.received),start:parse(r.review),first,ext,due,end:parse(r.notice),comp:parse(r.completion),supp:parse(r.supplement),done,cancel,pend,
         remaining:done||cancel||due===null?null:r.remainingWD,late:!done&&!cancel&&due!==null&&due<BASE};
     });
     const names=[...new Set(data.map(r=>r.reviewer).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
@@ -194,6 +205,7 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
         const ac=a.done||a.cancel,bc=b.done||b.cancel;
         if(ac!==bc)return ac?1:-1;
         if(!ac){
+          if(a.pend!==b.pend)return a.pend?-1:1;
           const av=a.remaining??Infinity,bv=b.remaining??Infinity;
           if(av!==bv)return av<bv?-1:1;
         }else{
@@ -258,9 +270,15 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
     $('#rows').innerHTML=list.length?list.map(r=>{
       const S=r.recv??r.start;
       let bars='',label='',endMark='';
+      // 심사완료일이 적합통보일과 같거나 없으면 통보 표식만, 다르면 심사완료 표식과 통보까지 빗금 구간을 따로 그린다.
+      const compDiff=r.comp!==null&&r.comp!==r.end;
       if(r.done){
-        bars=seg(S,r.end,'actual');
-        label=`${fmt(S)} 신청 → ${fmt(r.end)} 통보${S!==null&&r.end!==null?` · ${r.elapsedWD}WD`:''}`;
+        bars=compDiff&&r.end!==null&&r.end>r.comp?seg(S,r.comp,'actual')+seg(r.comp,r.end,'wait'):seg(S,r.end,'actual');
+        label=`${fmt(S)} 신청 → ${fmt(r.end)} 통보${r.elapsedWD!==null?` · 심사 ${r.elapsedWD}WD`:''}${compDiff&&r.noticeLagWD?` (심사완료 ${fmt(r.comp)}, 통보까지 ${r.noticeLagWD}WD)`:''}`;
+      }else if(r.pend){
+        const now=BASE;
+        bars=r.comp!==null?seg(S,r.comp,'actual')+seg(r.comp,Math.max(now,r.comp),'pend'):seg(S,now,'pend');
+        label=r.comp!==null?`${fmt(S)} 신청 → 심사완료 ${fmt(r.comp)} · 통보 대기 ${r.noticeLagWD??0}WD · 마감 ${fmt(r.due)}`:`상태는 완료인데 심사완료일·적합통보일이 비어 있음 · 마감 ${fmt(r.due)}`;
       }else if(r.cancel){
         bars=r.end!==null?seg(S,r.end,'actual'):seg(S,r.due,'plan');
         label=`${fmt(S)} 신청 → ${r.end!==null?fmt(r.end)+' 종료':'종료'}`;
@@ -270,14 +288,16 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
         label=`${fmt(S)} 신청 · 경과 ${r.elapsedWD??'-'}WD · 마감 ${fmt(r.due)}${r.ext!==null?' (연장)':''}`;
       }
       if(r.done||r.cancel)endMark=mark(r.end,'m m-done','적합통보일 '+full(r.end));
+      if(compDiff)endMark+=mark(r.comp,'m m-comp','심사완료일 '+full(r.comp));
       const guides=mark(r.first,'g-first','마감예정일 '+full(r.first))+mark(r.ext,'g-ext','연장마감일 '+full(r.ext));
       const markers=mark(r.start,'m m-review','심사접수일 '+full(r.start))+mark(r.supp,'m m-supp','보완요청일 '+full(r.supp))+endMark;
       const lastT=r.done||r.cancel?(r.end??r.due):Math.max(r.due??BASE,BASE);
+      const pendCls=r.pend?' pend':'';
       const ls=S!==null?pos(S):4,le=lastT!==null?pos(lastT):ls;
-      const remainText=r.done||r.cancel?'—':r.remaining===null?'미입력':r.remaining===0&&!r.late?'오늘':`${Math.abs(r.remaining)}WD`;
-      const remainSub=r.done?'완료':r.cancel?'종료':r.remaining===null?'마감 확인':r.late?'초과':r.remaining===0?'마감':'남음';
-      const remainCls=!r.done&&!r.cancel&&r.remaining!==null?(r.late?' late':r.remaining<=3?' soon':''):'';
-      const dates=[['접수일자',r.recv],['심사접수일',r.start],['마감예정일',r.first],['보완요청일',r.supp],['연장마감일',r.ext],['적합통보일',r.end]]
+      const remainText=r.pend?'통보대기':r.done||r.cancel?'—':r.remaining===null?'미입력':r.remaining===0&&!r.late?'오늘':`${Math.abs(r.remaining)}WD`;
+      const remainSub=r.pend?(r.comp!==null?`완료 후 ${r.noticeLagWD??0}WD`:'날짜 없음'):r.done?'완료':r.cancel?'종료':r.remaining===null?'마감 확인':r.late?'초과':r.remaining===0?'마감':'남음';
+      const remainCls=pendCls+(!r.done&&!r.cancel&&r.remaining!==null?(r.late?' late':r.remaining<=3&&!r.pend?' soon':''):'');
+      const dates=[['접수일자',r.recv],['심사접수일',r.start],['마감예정일',r.first],['보완요청일',r.supp],['연장마감일',r.ext],['심사완료일',r.comp],['적합통보일',r.end]]
         .map(([k,v])=>`<span>${k} <strong>${full(v)}</strong></span>`).join('');
       const rowUrl=`${SOURCE.split('#')[0]}#gid=${GID}&range=A${r.row}:${LASTCOL}${r.row}`;
       const issues=(r.dateIssues||[]).map(esc).join(' · ');

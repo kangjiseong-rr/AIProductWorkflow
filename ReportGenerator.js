@@ -207,6 +207,9 @@ function _보고서폴더조회_(접수번호, 정보) {
 
 function _증적명세서Docs생성(ss, 건) {
   const 접수번호 = 건['접수번호'];
+  // 심사완료일은 일정관리에서 직접 입력한다. 값이 있으면 접수대장 값보다 우선한다.
+  const 일정심사완료일 = _일정관리심사완료일_(ss, 접수번호);
+  if (일정심사완료일) 건 = Object.assign({}, 건, { 심사완료일: 일정심사완료일 });
   const 오늘 = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy년 MM월 dd일');
   // 데이터 수집
   const 기능목록 = _AI기능상세조회(ss, 접수번호);
@@ -613,6 +616,23 @@ function _모델번호연결확인(제품모델목록, 건) {
     return !세부 || !물품;
   }).length;
   return 누락 ? `확인 필요 (${누락}건 번호 누락)` : `연결 확인 (${rows.length}건)`;
+}
+
+/** 일정관리의 심사완료일(yyyy-MM-dd). 컬럼이 없거나 비어 있으면 ''. */
+function _일정관리심사완료일_(ss, 접수번호) {
+  const 시트 = ss.getSheetByName(SHEET.일정관리);
+  if (!시트 || 시트.getLastRow() < 2) return '';
+  const D = 시트.getDataRange().getValues();
+  const H = D[0].map(v => String(v).trim());
+  const iNo = H.indexOf('접수번호');
+  const i완료 = H.indexOf('심사완료일');
+  if (iNo < 0 || i완료 < 0) return '';
+  const 행 = D.find((r, i) => i > 0 && String(r[iNo]).trim() === String(접수번호).trim());
+  const v = 행 ? 행[i완료] : '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd');
+  }
+  return String(v == null ? '' : v).trim();
 }
 
 // 빈 값은 "(미기재)"로 — 증적 문서이므로 누락을 명시

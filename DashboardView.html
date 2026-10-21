@@ -22,7 +22,7 @@ body{background:#fcfcfb}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:10px 0 4px}
 .filters label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--sub);min-width:150px}
 .message{font-size:12px;color:var(--crit);padding:4px 0}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0 14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;margin:10px 0 14px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .tile .k{font-size:12px;color:var(--sub);display:flex;align-items:center;gap:5px}
 .tile .v{font-size:26px;font-weight:600;line-height:1.25;font-variant-numeric:tabular-nums}
@@ -83,28 +83,28 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   <div class="filters">
     <label>기간<select id="period"><option value="all">전체</option><option value="3">최근 3개월</option><option value="6" selected>최근 6개월</option><option value="year">올해</option></select></label>
     <label>담당 심사원<select id="owner"><option value="">전체 심사원</option></select></label>
-    <span class="muted">접수 지표는 접수일자, 완료 지표는 적합통보일 기준으로 기간을 적용합니다. 진행 현황은 항상 오늘 기준입니다. 기간·일수는 모두 영업일(WD)입니다.</span>
+    <span class="muted">접수 지표는 접수일자, 완료 지표는 심사완료일(비어 있으면 적합통보일) 기준으로 기간을 적용합니다. 진행 현황은 항상 오늘 기준입니다. 기간·일수는 모두 영업일(WD)입니다.</span>
   </div>
   <div class="tiles" id="tiles"></div>
   <div class="charts">
-    <div class="card"><h3>처리기간 분포</h3><div class="desc">완료 건의 접수일자 → 적합통보일 WD. 막대 높이 = 해당 구간 완료 건수</div>
+    <div class="card"><h3>처리기간 분포</h3><div class="desc">심사원 처리기간: 접수일자 → 심사완료일(비어 있으면 적합통보일) WD. 막대 높이 = 해당 구간 완료 건수</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>완료 건수</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-med"></i>중앙값</span></div>
       <div class="plot" id="hist"></div></div>
     <div class="card"><h3>누적 완료율</h3><div class="desc">N WD 안에 완료된 비율 (처리기간 분포를 누적한 곡선)</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>누적 완료율</span><span><i class="sw-line"></i>기본 마감 15WD</span></div>
       <div class="plot" id="cdf"></div></div>
-    <div class="card"><h3>월별 처리기간 추이</h3><div class="desc">적합통보 월별 각 건의 처리기간(점)과 월 중앙값(막대)</div>
+    <div class="card"><h3>월별 처리기간 추이</h3><div class="desc">심사완료 월별 각 건의 처리기간(점)과 월 중앙값(막대)</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1);border-radius:50%"></i>완료 1건</span><span><i class="sw-med"></i>월 중앙값</span><span><i class="sw-line"></i>기본 마감 15WD</span></div>
       <div class="plot" id="strip"></div></div>
-    <div class="card"><h3>월별 접수·완료 건수</h3><div class="desc">접수는 접수일자 월, 완료는 적합통보일 월 기준</div>
+    <div class="card"><h3>월별 접수·완료 건수</h3><div class="desc">접수는 접수일자 월, 완료는 심사완료일(없으면 적합통보일) 월 기준</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>접수</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div>
       <div class="plot" id="monthly"></div></div>
     <div class="card full"><h3>심사원별 주차별 배정 현황</h3><div class="desc">심사접수일(없으면 접수일자)이 속한 주(월요일 시작) 기준 배정 건수 · 칸에 마우스를 올리면 배정된 건 목록</div>
       <div class="heat-legend" id="heat-legend"></div>
       <div class="heat-wrap" id="heat"></div></div>
-    <div class="card full"><h3>마감 준수 현황</h3><div class="desc">이미 완료된 건(기간 내 적합통보)의 적합통보일을 마감과 비교 · 위쪽 "마감 초과" 카드는 진행 중인 건만 셉니다</div>
+    <div class="card full"><h3>마감 준수 · 통보 현황</h3><div class="desc">막대는 심사원 기준(심사완료일을 마감과 비교) · 통보가 늦거나 빠진 건은 아래 행정 확인 목록에 따로 표시 · 위쪽 "마감 초과" 카드는 진행 중인 건만 셉니다</div>
       <div id="comply"></div></div>
-    <div class="card full"><h3>심사원별 현황</h3><div class="desc">진행·초과·임박은 오늘 기준, 완료·처리기간·준수율은 선택 기간 기준 · 열 제목을 누르면 정렬</div>
+    <div class="card full"><h3>심사원별 현황</h3><div class="desc">진행·초과·임박·통보 대기는 오늘 기준, 심사완료·처리기간·준수율은 선택 기간 기준(심사완료일, 없으면 적합통보일) · 통보 지연은 심사원 실적에 넣지 않음 · 열 제목을 누르면 정렬</div>
       <div class="tbl-wrap" id="table"></div></div>
   </div>
 </section>
@@ -133,19 +133,26 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   }
   const inPeriod=s=>!!s&&s>=periodStart()&&s<=payload.today;
 
+  /* 심사원 기준 마감 준수: 심사완료일(없으면 적합통보일)을 마감과 비교 */
   function compliance(r){
     if(!r.original)return 'none';
-    if(r.notice<=r.original)return 'first';
-    if(r.extension&&r.notice<=r.extension)return 'ext';
+    if(r.fin<=r.original)return 'first';
+    if(r.extension&&r.fin<=r.extension)return 'ext';
     return 'late';
   }
+  /* 행정 지연: 심사는 마감 안에 끝났는데 통보가 마감 뒤 */
+  const adminLate=r=>!!r.notice&&!!r.due&&r.fin<=r.due&&r.notice>r.due;
 
   function prep(p){
     payload=p;
     data=p.records.map(r=>{
       const done=/^완료/.test(r.status),cancel=/^종료/.test(r.status),due=r.extension||r.original;
-      return {...r,done,cancel,active:!done&&!cancel,late:!done&&!cancel&&!!due&&due<p.today,
-        soon:!done&&!cancel&&!!due&&due>=p.today&&r.remainingWD!==null&&r.remainingWD<=3};
+      // 진행 중 = 심사원이 아직 심사 중(취소·완료 상태도 아니고 심사완료일도 없음). 통보 대기는 따로 센다.
+      const active=!done&&!cancel&&!r.completion&&!r.notice;
+      return {...r,done,cancel,due,fin:r.completion||r.notice||'',active,
+        late:active&&!!due&&due<p.today,
+        soon:active&&!!due&&due>=p.today&&r.remainingWD!==null&&r.remainingWD<=3,
+        pend:!!r.pendingNotice,pendLate:!!r.pendingNotice&&!!due&&due<p.today};
     });
     const names=[...new Set(data.map(r=>r.reviewer).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
     if(state.owner&&!names.includes(state.owner))state.owner='';
@@ -160,9 +167,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
 
   function sets(){
     const mine=data.filter(r=>!state.owner||r.reviewer===state.owner);
-    const done=mine.filter(r=>r.done&&inPeriod(r.notice)&&r.elapsedWD!==null);
+    // 심사 완료 = 취소가 아니고 심사완료일(없으면 적합통보일)이 기간 안
+    const done=mine.filter(r=>!r.cancel&&r.fin&&inPeriod(r.fin)&&r.elapsedWD!==null);
     const recv=mine.filter(r=>inPeriod(r.received));
-    return {mine,done,recv,active:mine.filter(r=>r.active)};
+    return {mine,done,recv,active:mine.filter(r=>r.active),pend:mine.filter(r=>r.pend)};
   }
 
   /* ── 공통: SVG 축·툴팁 ── */
@@ -249,13 +257,13 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   function strip(done){
     const el=$('#strip');
     if(!done.length){el.innerHTML='<div class="empty">선택 기간에 완료된 건이 없습니다.</div>';return;}
-    const ms=months(done.map(r=>ym(r.notice)));
+    const ms=months(done.map(r=>ym(r.fin)));
     const w=W(el),h=230,m={t:16,r:12,b:30,l:34};
     const yMax=niceMax(Math.max(...done.map(r=>r.elapsedWD),BASIC+5),4);
     const {y,g}=frame(w,h,m,yMax,ticks(yMax),v=>v);
     const iw=w-m.l-m.r,band=iw/ms.length,cx=i=>m.l+band*(i+.5);
     let s=g;
-    const by={};done.forEach(r=>{(by[ym(r.notice)]=by[ym(r.notice)]||[]).push(r);});
+    const by={};done.forEach(r=>{(by[ym(r.fin)]=by[ym(r.fin)]||[]).push(r);});
     ms.forEach((k,i)=>{
       const rs=(by[k]||[]).slice().sort((a,b)=>a.elapsedWD-b.elapsedWD);
       const spread=Math.min(band*.6,40);
@@ -263,7 +271,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
         const h=[...String(r.id)].reduce((a,c)=>(a*31+c.charCodeAt(0))%9973,7)/9973;
         const jx=rs.length>1?cx(i)-spread/2+spread*h:cx(i);
         s+=`<circle cx="${jx}" cy="${y(r.elapsedWD)}" r="4" fill="var(--s1)" fill-opacity=".55" stroke="var(--card)" stroke-width="1"/>`;
-        s+=`<circle class="hit" cx="${jx}" cy="${y(r.elapsedWD)}" r="8" data-tip="${esc(`${r.company}\n${r.product.split('\n')[0]}\n${r.elapsedWD}WD · 통보 ${r.notice}`)}"/>`;
+        s+=`<circle class="hit" cx="${jx}" cy="${y(r.elapsedWD)}" r="8" data-tip="${esc(`${r.company}\n${r.product.split('\n')[0]}\n${r.elapsedWD}WD · ${r.completion?'심사완료 '+r.completion:'통보 '+r.notice}`)}"/>`;
       });
       if(rs.length){const md=median(rs.map(r=>r.elapsedWD));
         s+=`<line x1="${cx(i)-Math.min(band*.38,26)}" x2="${cx(i)+Math.min(band*.38,26)}" y1="${y(md)}" y2="${y(md)}" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>`;
@@ -278,10 +286,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   /* ── 월별 접수·완료 건수 (묶은 막대) ── */
   function monthly(recv,done){
     const el=$('#monthly');
-    const ms=months(recv.map(r=>ym(r.received)).concat(done.map(r=>ym(r.notice))));
+    const ms=months(recv.map(r=>ym(r.received)).concat(done.map(r=>ym(r.fin))));
     if(!ms.length){el.innerHTML='<div class="empty">선택 기간에 자료가 없습니다.</div>';return;}
     const cnt=(rs,f)=>{const o={};rs.forEach(r=>{const k=ym(f(r));o[k]=(o[k]||0)+1;});return o;};
-    const a=cnt(recv,r=>r.received),b=cnt(done,r=>r.notice);
+    const a=cnt(recv,r=>r.received),b=cnt(done,r=>r.fin);
     const w=W(el),h=230,m={t:16,r:12,b:30,l:34},yMax=niceMax(Math.max(1,...ms.map(k=>Math.max(a[k]||0,b[k]||0))));
     const {y,g}=frame(w,h,m,yMax,ticks(yMax),v=>v);
     const iw=w-m.l-m.r,band=iw/ms.length,bw=Math.min(18,band*.32);
@@ -298,22 +306,33 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   }
 
   /* ── 마감 준수 ── */
-  function comply(done){
-    const el=$('#comply');
-    if(!done.length){el.innerHTML='<div class="empty">선택 기간에 완료된 건이 없습니다.</div>';return;}
-    const parts=[['first','최초 마감 내 통보','var(--good)','●'],['ext','연장 마감 내 통보','var(--warn)','▲'],['late','마감 후 통보','var(--crit)','■'],['none','마감 미입력','var(--none)','○']];
+  function comply(S){
+    const el=$('#comply'),done=S.done;
+    const sd=v=>v?`${+v.slice(5,7)}/${+v.slice(8,10)}`:'없음';
+    const dueText=r=>`마감 ${sd(r.original)}${r.supplement?` · 보완 ${sd(r.supplement)} · 연장 ${sd(r.extension)}`:''}`;
+    const line=r=>`${r.seq?r.seq+'. ':''}${r.company} · ${r.reviewer||'미배정'} · ${r.completion?'심사완료 '+sd(r.completion):'심사완료일 없음'} · 통보 ${sd(r.notice)} · ${dueText(r)}`;
+    const extMissing=r=>r.supplement&&!r.extension?' <span style="color:var(--crit)">· 보완요청일은 있는데 연장마감일이 비어 있음</span>':'';
+    const listBlock=(title,color,icon,rows,fmt)=>rows.length?`<div class="comply-list"><b style="color:${color}">${icon} ${title} ${rows.length}건</b>${rows.slice(0,10).map(r=>`<div>${fmt(r)}${extMissing(r)}</div>`).join('')}${rows.length>10?`<div class="muted">… 외 ${rows.length-10}건</div>`:''}</div>`:'';
+
+    // ① 행정 확인 필요: 통보 대기(기간 무관, 현재 시점) · 행정 지연(기간 내 완료 건)
+    const pend=S.pend.slice().sort((a,b)=>(b.noticeLagWD??-1)-(a.noticeLagWD??-1));
+    const adm=done.filter(adminLate);
+    const admin=listBlock('통보 대기 — 심사완료 후 적합통보 안 됨','var(--crit)','!',pend,
+        r=>`${esc(`${r.seq?r.seq+'. ':''}${r.company} · ${r.reviewer||'미배정'} · ${r.status} · ${r.completion?`심사완료 ${sd(r.completion)} · ${r.noticeLagWD}WD 경과`:'심사완료일·적합통보일 모두 비어 있음(상태만 완료)'} · ${dueText(r)}`)}${r.pendLate?' <span style="color:var(--crit);font-weight:600">· 마감 지남</span>':''}`)
+      +listBlock('행정 지연 — 심사는 마감 내 완료, 통보가 마감 뒤','var(--warn)','▲',adm,r=>esc(line(r)));
+
+    if(!done.length){el.innerHTML='<div class="empty">선택 기간에 심사가 완료된 건이 없습니다.</div>'+admin;return;}
+    const parts=[['first','최초 마감 내 심사완료','var(--good)','●'],['ext','연장 마감 내 심사완료','var(--warn)','▲'],['late','마감 후 심사완료','var(--crit)','■'],['none','마감 미입력','var(--none)','○']];
     const g={};done.forEach(r=>{const k=compliance(r);(g[k]=g[k]||[]).push(r);});
     const n=k=>(g[k]||[]).length;
-    const sd=v=>v?`${+v.slice(5,7)}/${+v.slice(8,10)}`:'없음';
-    const line=r=>`${r.seq?r.seq+'. ':''}${r.company} · 통보 ${sd(r.notice)} · 마감 ${sd(r.original)}${r.supplement?` · 보완 ${sd(r.supplement)} · 연장 ${sd(r.extension)}`:''}`;
-    const tipOf=p=>`${p[1]} ${n(p[0])}건 (${n1(pct(n(p[0]),done.length))}%)`+(n(p[0])&&p[0]!=='first'?'\n'+(g[p[0]]).slice(0,15).map(line).join('\n')+(n(p[0])>15?`\n… 외 ${n(p[0])-15}건`:''):'');
+    const tipOf=p=>`${p[1]} ${n(p[0])}건 (${n1(pct(n(p[0]),done.length))}%)`+(n(p[0])&&p[0]!=='first'?'\n'+g[p[0]].slice(0,15).map(line).join('\n')+(n(p[0])>15?`\n… 외 ${n(p[0])-15}건`:''):'');
     const used=parts.filter(p=>n(p[0]));
-    // 마감 후 통보·마감 미입력 건은 몇 건 안 되므로 바로 목록으로 보여준다(데이터 확인용).
-    const detail=['late','none'].filter(k=>n(k)).map(k=>{const p=parts.find(x=>x[0]===k);
-      return `<div class="comply-list"><b style="color:${p[2]}">${p[3]} ${p[1]}</b>${g[k].slice(0,10).map(r=>`<div>${esc(line(r))}${r.supplement&&!r.extension?' <span style="color:var(--crit)">· 보완요청일은 있는데 연장마감일이 비어 있음</span>':''}</div>`).join('')}${g[k].length>10?`<div class="muted">… 외 ${g[k].length-10}건 (막대에 마우스를 올리면 더 보기)</div>`:''}</div>`;}).join('');
+    const noComp=done.filter(r=>!r.completion).length;
     el.innerHTML=`<div class="stack">${used.map(p=>`<div style="flex:${n(p[0])};background:${p[2]}" data-tip="${esc(tipOf(p))}"></div>`).join('')}</div>`
-      +`<div class="stack-legend">${parts.map(p=>`<span data-tip="${esc(tipOf(p))}"><span style="color:${p[2]}">${p[3]}</span> ${p[1]} <b>${n(p[0])}건</b> <span class="muted">(${n1(pct(n(p[0]),done.length))}%)</span></span>`).join('')}<span class="muted">완료 ${done.length}건 기준 · 마감은 연장마감일이 있으면 연장마감일</span></div>`
-      +detail;
+      +`<div class="stack-legend">${parts.map(p=>`<span data-tip="${esc(tipOf(p))}"><span style="color:${p[2]}">${p[3]}</span> ${p[1]} <b>${n(p[0])}건</b> <span class="muted">(${n1(pct(n(p[0]),done.length))}%)</span></span>`).join('')}<span class="muted">심사완료 ${done.length}건 기준${noComp?` · 그중 ${noComp}건은 심사완료일이 없어 적합통보일로 판단`:''}</span></div>`
+      +listBlock('마감 후 심사완료 — 심사원 지연','var(--crit)','■',g.late||[],r=>esc(line(r)))
+      +listBlock('마감 미입력','var(--none)','○',g.none||[],r=>esc(line(r)))
+      +admin;
   }
 
   /* ── 지표 타일 ── */
@@ -324,14 +343,17 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const firstOk=S.done.filter(r=>compliance(r)==='first').length;
     const recvValid=S.recv.filter(r=>!/^종료\(취소\)/.test(r.status));
     const suppRate=pct(recvValid.filter(r=>r.supplement).length,recvValid.length);
+    const lag=S.done.filter(r=>r.completion&&r.notice).map(r=>r.noticeLagWD).filter(v=>v!==null);
+    const pend=S.pend.length,pendLate=S.pend.filter(r=>r.pendLate).length;
     const T=[
       ['진행 중',a.length,'건',`대기 ${st('대기')} · 심사중 ${st('심사중')} · 보완 ${st('보완')}`,''],
-      ['마감 초과',late,'건','진행 중인 건 · 오늘 기준 마감 경과','var(--crit)'],
+      ['마감 초과',late,'건','심사 진행 중인 건 · 오늘 기준 마감 경과','var(--crit)'],
       ['마감 임박',soon,'건','잔여 3WD 이하','var(--warn)'],
+      ['통보 대기',pend,'건',pend?`심사완료 후 미통보 · 그중 마감 지남 ${pendLate}건`:'심사완료 후 미통보 없음',pend?'var(--crit)':''],
       ['기간 내 접수',S.recv.length,'건',`보완요청 발생 ${n1(suppRate)}%`,''],
-      ['기간 내 완료',S.done.length,'건','적합통보일 기준',''],
-      ['처리기간 중앙값',median(vals)===null?'—':n1(median(vals)),'WD',`평균 ${n1(avg(vals))}WD`,''],
-      ['최초 마감 내 완료',pct(firstOk,S.done.length)===null?'—':n1(pct(firstOk,S.done.length)),'%',`${firstOk}/${S.done.length}건`,'var(--good)'],
+      ['기간 내 심사완료',S.done.length,'건',lag.length?`통보까지 중앙값 ${n1(median(lag))}WD`:'심사완료일 기준(없으면 통보일)',''],
+      ['처리기간 중앙값',median(vals)===null?'—':n1(median(vals)),'WD',`평균 ${n1(avg(vals))}WD · 접수→심사완료`,''],
+      ['최초 마감 내 심사완료',pct(firstOk,S.done.length)===null?'—':n1(pct(firstOk,S.done.length)),'%',`${firstOk}/${S.done.length}건`,'var(--good)'],
     ];
     $('#tiles').innerHTML=T.map(([k,v,u,d,c])=>`<div class="tile"><div class="k">${c?`<i class="ico" style="background:${c}"></i>`:''}${k}</div><div class="v">${v}<small>${v==='—'?'':u}</small></div><div class="d">${d}</div></div>`).join('');
   }
@@ -343,15 +365,16 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       const mine=S.mine.filter(r=>(r.reviewer||'미배정')===n),act=mine.filter(r=>r.active),dn=S.done.filter(r=>(r.reviewer||'미배정')===n);
       const v=dn.map(r=>r.elapsedWD),ok=dn.filter(r=>compliance(r)==='first').length;
       return {name:n,active:act.length,supp:act.filter(r=>r.status==='보완').length,late:act.filter(r=>r.late).length,soon:act.filter(r=>r.soon).length,
-        done:dn.length,med:median(v),avg:avg(v),ok:pct(ok,dn.length)};
+        pend:mine.filter(r=>r.pend).length,done:dn.length,med:median(v),avg:avg(v),ok:pct(ok,dn.length)};
     });
     const {key,dir}=state.sort;
     rows.sort((a,b)=>key==='name'?dir*a.name.localeCompare(b.name,'ko'):dir*((a[key]??-1)-(b[key]??-1))||a.name.localeCompare(b.name,'ko'));
-    const cols=[['name','심사원'],['active','진행 중'],['supp','보완'],['late','마감 초과'],['soon','임박(≤3WD)'],['done','기간 내 완료'],['med','처리 중앙값(WD)'],['avg','처리 평균(WD)'],['ok','최초 마감 내(%)']];
+    const cols=[['name','심사원'],['active','진행 중'],['supp','보완'],['late','마감 초과'],['soon','임박(≤3WD)'],['pend','통보 대기'],['done','기간 내 심사완료'],['med','처리 중앙값(WD)'],['avg','처리 평균(WD)'],['ok','최초 마감 내(%)']];
     const sum=k=>rows.reduce((s,r)=>s+r[k],0),all=S.done.map(r=>r.elapsedWD);
+    const red=v=>v?' style="color:var(--crit);font-weight:600"':'';
     $('#table').innerHTML=`<table><thead><tr>${cols.map(([k,l])=>`<th data-k="${k}">${l}${key===k?(dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>`
-      +rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.active}</td><td>${r.supp}</td><td${r.late?' style="color:var(--crit);font-weight:600"':''}>${r.late}</td><td>${r.soon}</td><td>${r.done}</td><td>${n1(r.med)}</td><td>${n1(r.avg)}</td><td>${n1(r.ok)}</td></tr>`).join('')
-      +`<tr style="font-weight:600"><td>합계</td><td>${sum('active')}</td><td>${sum('supp')}</td><td>${sum('late')}</td><td>${sum('soon')}</td><td>${sum('done')}</td><td>${n1(median(all))}</td><td>${n1(avg(all))}</td><td>${n1(pct(S.done.filter(r=>compliance(r)==='first').length,S.done.length))}</td></tr></tbody></table>`;
+      +rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.active}</td><td>${r.supp}</td><td${red(r.late)}>${r.late}</td><td>${r.soon}</td><td${red(r.pend)}>${r.pend}</td><td>${r.done}</td><td>${n1(r.med)}</td><td>${n1(r.avg)}</td><td>${n1(r.ok)}</td></tr>`).join('')
+      +`<tr style="font-weight:600"><td>합계</td><td>${sum('active')}</td><td>${sum('supp')}</td><td>${sum('late')}</td><td>${sum('soon')}</td><td>${sum('pend')}</td><td>${sum('done')}</td><td>${n1(median(all))}</td><td>${n1(avg(all))}</td><td>${n1(pct(S.done.filter(r=>compliance(r)==='first').length,S.done.length))}</td></tr></tbody></table>`;
     $('#table').querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{
       const k=th.dataset.k;state.sort=state.sort.key===k?{key:k,dir:-state.sort.dir}:{key:k,dir:k==='name'?1:-1};render();
     }));
@@ -391,7 +414,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   function render(){
     if(!payload)return;
     const S=sets();
-    tiles(S);hist(S.done);cdf(S.done);strip(S.done);monthly(S.recv,S.done);comply(S.done);heat(S);table(S);
+    tiles(S);hist(S.done);cdf(S.done);strip(S.done);monthly(S.recv,S.done);comply(S);heat(S);table(S);
   }
 
   function load(){
