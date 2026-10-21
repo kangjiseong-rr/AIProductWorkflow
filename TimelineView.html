@@ -48,7 +48,7 @@ body{background:#fff}
 .message{font-size:12px;padding:6px 0;color:var(--past)}
 .scroll{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--line);position:relative;overscroll-behavior:contain}
 .scroll.dragging{cursor:grabbing;user-select:none}
-.grid-head,.case summary{display:grid;grid-template-columns:var(--nw) var(--lw) var(--rw) var(--lane);width:max-content}
+.grid-head,.case summary{display:grid;grid-template-columns:var(--nw) var(--lw) var(--ew) var(--rw) var(--lane);width:max-content}
 .grid-head{position:sticky;top:0;z-index:10;background:var(--soft);border-bottom:1px solid var(--line)}
 .no-head,.no{position:sticky;left:0;z-index:12;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;border-right:1px solid var(--line)}
 .no-head{background:var(--soft);font-size:12px}
@@ -60,7 +60,8 @@ body{background:#fff}
 .rz-tip{position:fixed;z-index:51;pointer-events:none;background:var(--ink);color:#fff;font-size:11px;padding:2px 6px;border-radius:4px;transform:translate(6px,0)}
 body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!important}
 .col-name{padding:4px 10px 4px 8px;display:flex;flex-direction:column;justify-content:center;position:sticky;left:var(--nw);z-index:12;background:var(--soft)}
-.rem-head{display:flex;align-items:center;justify-content:center;font-size:12px;position:sticky;left:calc(var(--nw) + var(--lw));z-index:12;background:var(--soft);border-right:1px solid var(--line)}
+.el-head{display:flex;align-items:center;justify-content:center;font-size:12px;position:sticky;left:calc(var(--nw) + var(--lw));z-index:12;background:var(--soft)}
+.rem-head{display:flex;align-items:center;justify-content:center;font-size:12px;position:sticky;left:calc(var(--nw) + var(--lw) + var(--ew));z-index:12;background:var(--soft);border-right:1px solid var(--line)}
 .axis{height:44px;position:relative;cursor:grab}
 .tick{position:absolute;bottom:6px;font-size:11px;color:var(--sub);white-space:nowrap;transform:translateX(-50%);font-variant-numeric:tabular-nums}
 .tick.month{font-weight:600;color:var(--ink)}
@@ -73,12 +74,15 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
 .product{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .meta{font-size:11px;color:var(--sub);display:flex;gap:5px;align-items:center;white-space:nowrap;overflow:hidden}
 .dot{width:6px;height:6px;border-radius:50%;background:var(--case-color);flex-shrink:0}
-.remaining{display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;position:sticky;left:calc(var(--nw) + var(--lw));z-index:6;background:var(--bg);border-right:1px solid var(--line)}
+.elapsed{display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;position:sticky;left:calc(var(--nw) + var(--lw));z-index:6;background:var(--bg)}
+.elapsed strong{font-size:14px;font-weight:600;line-height:1.2}
+.elapsed small{font-size:11px;color:var(--sub)}
+.remaining{display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;position:sticky;left:calc(var(--nw) + var(--lw) + var(--ew));z-index:6;background:var(--bg);border-right:1px solid var(--line)}
 .remaining strong{font-size:15px;font-weight:600;line-height:1.2}
 .remaining small{font-size:11px;color:var(--sub)}
 .remaining.late strong{color:var(--past)}
 .remaining.soon strong{color:var(--amber)}
-.case summary:hover,.case[open] summary,.case summary:hover .label,.case[open] summary .label,.case summary:hover .no,.case[open] summary .no,.case summary:hover .remaining,.case[open] summary .remaining{background:var(--soft)}
+.case summary:hover,.case[open] summary,.case summary:hover .label,.case[open] summary .label,.case summary:hover .no,.case[open] summary .no,.case summary:hover .remaining,.case[open] summary .remaining,.case summary:hover .elapsed,.case[open] summary .elapsed{background:var(--soft)}
 .lane{position:relative;overflow:hidden;min-height:58px}
 .vline{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);opacity:.6}
 .vline.month{border-left-color:#c3ccd8;opacity:1}
@@ -143,10 +147,10 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
     <span><i class="k-now"></i>기준일(오늘)</span>
   </div>
   <div class="scroll" id="scroll">
-    <div class="grid-head"><div class="no-head">순번</div><div class="col-name"><span>기업 / 제품</span><span class="sub" id="caption"></span><div class="resizer" id="resizer" title="끌어서 폭 조절 · 더블클릭하면 기본 폭"></div></div><div class="rem-head">잔여일</div><div class="axis" id="axis"></div></div>
+    <div class="grid-head"><div class="no-head">순번</div><div class="col-name"><span>기업 / 제품</span><span class="sub" id="caption"></span><div class="resizer" id="resizer" title="끌어서 폭 조절 · 더블클릭하면 기본 폭"></div></div><div class="el-head">경과일</div><div class="rem-head">잔여일</div><div class="axis" id="axis"></div></div>
     <div class="rz-guide" id="rz-guide" hidden></div><div class="rz-tip" id="rz-tip" hidden></div><div id="rows"><div class="empty">시트에서 일정을 불러오는 중입니다.</div></div>
   </div>
-  <div class="foot"><span id="count"></span><span>경과·잔여는 영업일(WD: 주말·공휴일 제외) · 잔여 = 오늘 → 현재 마감(연장마감일 우선) · 마감 임박 순 정렬 · 좌우는 스크롤·Shift+휠·끌기로 이동 · 행을 누르면 상세정보</span></div>
+  <div class="foot"><span id="count"></span><span>경과 = 접수일자부터(완료 건은 심사완료일까지) · 경과·잔여는 영업일(WD: 주말·공휴일 제외) · 잔여 = 오늘 → 현재 마감(연장마감일 우선) · 마감 임박 순 정렬 · 좌우는 스크롤·Shift+휠·끌기로 이동 · 행을 누르면 상세정보</span></div>
 </section>
 <script>
 (()=>{
@@ -165,7 +169,7 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let BASE=null,SOURCE='',GID='',LASTCOL='N',data=[],loading=false;
   const state={scope:'active',owner:'',search:'',span:56};
-  const RW=64,NW=52,LW_DEFAULT=200,LW_MIN=120,LW_MAX=560,LW_KEY='timeline.labelWidth';
+  const RW=64,EW=60,NW=52,LW_DEFAULT=200,LW_MIN=120,LW_MAX=560,LW_KEY='timeline.labelWidth';
   // 기업/제품 열 폭: 사용자가 끌어서 바꾼 값을 이 브라우저에 기억한다.
   let labelW=(()=>{try{const v=Number(localStorage.getItem(LW_KEY));return v>=LW_MIN&&v<=LW_MAX?v:LW_DEFAULT;}catch(e){return LW_DEFAULT;}})();
   let view=null,anchor=null;
@@ -244,11 +248,11 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
     const keep=anchor??dateAt(.5);
     const list=matching();
     const [lo,hi]=domain(list),days=(hi-lo)/DAY;
-    const total=sc().clientWidth,LW=Math.round(Math.min(labelW,Math.max(LW_MIN,total-NW-RW-200))),vis=Math.max(200,total-NW-LW-RW);
+    const total=sc().clientWidth,LW=Math.round(Math.min(labelW,Math.max(LW_MIN,total-NW-EW-RW-200))),vis=Math.max(200,total-NW-LW-EW-RW);
     const px=state.span==='all'?vis/days:vis/Number(state.span),laneW=Math.max(vis,Math.round(days*px));
     view={lo,hi,px,vis,laneW};
-    root.style.setProperty('--nw',NW+'px');root.style.setProperty('--lw',LW+'px');root.style.setProperty('--rw',RW+'px');
-    root.style.setProperty('--lane',laneW+'px');root.style.setProperty('--view',(NW+LW+RW+vis)+'px');
+    root.style.setProperty('--nw',NW+'px');root.style.setProperty('--ew',EW+'px');root.style.setProperty('--lw',LW+'px');root.style.setProperty('--rw',RW+'px');
+    root.style.setProperty('--lane',laneW+'px');root.style.setProperty('--view',(NW+LW+EW+RW+vis)+'px');
     const pos=t=>(t-lo)/DAY*px,inside=t=>t!==null&&t>=lo&&t<=hi;
     const seg=(a,b,cls)=>{
       if(a===null||b===null||b<=a)return '';
@@ -305,6 +309,7 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
       return `<details class="case" data-id="${esc(r.id)}"${opened.has(String(r.id))?' open':''} style="--case-color:${color(r)}">`
         +`<summary title="${esc(r.company+' / '+product)}"><div class="no">${esc(r.seq)}</div><div class="label"><div class="company">${esc(r.company)}</div><div class="product">${esc(product)}</div>`
         +`<div class="meta"><span>${esc(r.reviewer||'미배정')}</span><i class="dot"></i><span>${esc(r.status)}</span><span>· ${esc(r.id)}</span></div></div>`
+        +`<div class="elapsed" title="접수일자부터 ${r.done||r.pend?'심사완료(없으면 통보)까지':r.cancel?'종료까지':'오늘까지'} 영업일"><strong>${r.elapsedWD===null||r.elapsedWD===undefined?'—':r.elapsedWD+'WD'}</strong><small>${r.done||r.pend?'심사':r.cancel?'종료':'진행'}</small></div>`
         +`<div class="remaining${remainCls}"><strong>${remainText}</strong><small>${remainSub}</small></div>`
         +`<div class="lane">${grid}${guides}${bars}${markers}<span class="bar-label" data-s="${ls}" data-e="${le}" style="left:${ls}px">${esc(label)}</span></div></summary>`
         +`<div class="info"><div class="info-title">${esc(r.product)}</div><div>순번 ${esc(r.seq)} · ${esc(r.id)} · ${esc(r.company)} · 제품수 ${esc(r.count)} · 담당 ${esc(r.reviewer||'미배정')} · <a href="${esc(rowUrl)}" target="_blank" rel="noopener">원본 행</a></div>`
