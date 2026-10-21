@@ -355,7 +355,8 @@ function _접수대장기능수갱신(접수번호, 기능목록) {
       if (i수 >= 0) 쓰기목록.push([대장시트.getRange(r + 1, i수 + 1), 기능목록.length]);
       if (i명 >= 0) 쓰기목록.push([
         대장시트.getRange(r + 1, i명 + 1),
-        기능목록.map(f => f.기능명).filter(Boolean).join(' / '),
+        // 기능명이 "세부명 줄바꿈 (기능명세명)" 형태일 수 있어, 한 줄 요약에서는 공백으로 이어 붙인다.
+        기능목록.map(f => String(f.기능명 || '').replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean).join(' / '),
       ]);
       if (i방식 >= 0) 쓰기목록.push([
         대장시트.getRange(r + 1, i방식 + 1),
