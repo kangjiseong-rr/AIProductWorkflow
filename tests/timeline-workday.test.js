@@ -9,6 +9,7 @@ const context = {
   공휴일시트명: '공휴일',
   columnLetter: n => String.fromCharCode(64 + n),
   _관리자여부: () => true,
+  _조회권한여부: () => true,
   Utilities: {
     formatDate: (d, tz, f) => {
       const k = new Date(d.getTime() + 9 * 3600000).toISOString();
@@ -42,13 +43,13 @@ eq(_타임라인날짜정규화_('2026-02-30'), '', '없는 날짜');
 
 const d = s => new Date(s + 'T00:00:00+09:00');
 const 일정 = [
-  ['접수번호', '접수일자', '마감예정일', '상태', '연장마감일', '심사완료일', '적합통보일', '기업명', '제품명'],
-  ['AI-1', d('2026-09-01'), d('2026-09-22'), '완료(적합)', '', '', d('2026-09-15'), 'A', 'P'],
-  ['AI-2', d('2026-10-01'), d('2026-10-23'), '심사중', '#N/A', '', '', 'B', 'Q'],
-  ['', '', '', '', '', '', '', '', ''],
-  ['AI-3', d('2026-09-01'), d('2026-09-22'), '완료(적합)', '', d('2026-09-10'), d('2026-09-15'), 'C', 'R'],
-  ['AI-4', d('2026-10-01'), d('2026-10-23'), '심사중', '', d('2026-10-13'), '', 'D', 'S'],
-  ['AI-5', d('2026-10-01'), d('2026-10-23'), '완료(적합)', '', '', '', 'E', 'T'],
+  ['접수번호', '접수일자', '심사접수일', '마감예정일', '상태', '연장마감일', '심사완료일', '적합통보일', '기업명', '제품명'],
+  ['AI-1', d('2026-09-01'), '', d('2026-09-22'), '완료(적합)', '', '', d('2026-09-15'), 'A', 'P'],
+  ['AI-2', d('2026-10-01'), '', d('2026-10-23'), '심사중', '#N/A', '', '', 'B', 'Q'],
+  ['', '', '', '', '', '', '', '', '', ''],
+  ['AI-3', d('2026-09-01'), d('2026-09-03'), d('2026-09-22'), '완료(적합)', '', d('2026-09-10'), d('2026-09-15'), 'C', 'R'],
+  ['AI-4', d('2026-10-01'), '', d('2026-10-23'), '심사중', '', d('2026-10-13'), '', 'D', 'S'],
+  ['AI-5', d('2026-10-01'), '', d('2026-10-23'), '완료(적합)', '', '', '', 'E', 'T'],
 ];
 const 공휴일 = [['날짜'], [d('2026-10-05')], [d('2026-10-09')]];
 const sheet = rows => ({
@@ -92,6 +93,9 @@ eq(결과.records[0].pendingNotice, false, '통보 완료 건은 통보 대기 �
 // 심사완료일이 있으면 심사원 처리기간은 접수일자 → 심사완료일 (9/1→9/10 = 7WD), 통보 소요 9/10→9/15 = 3WD
 eq(결과.records[2].elapsedWD, 7, '심사원 처리기간은 심사완료일까지');
 eq(결과.records[2].noticeLagWD, 3, '심사완료 → 통보 WD');
+// 심사접수일 기준: 9/3 → 심사완료 9/10 = 5WD
+eq(결과.records[2].reviewWD, 5, '심사접수일 → 심사완료일 WD');
+eq(결과.records[0].reviewWD, null, '심사접수일 없으면 null');
 // 심사완료 후 통보 전: 통보 대기, 처리기간 10/1→10/13 = 6WD, 통보 대기 10/13→10/16 = 3WD, 마감까지 5WD
 eq(결과.records[3].pendingNotice, true, '심사완료·통보 전은 통보 대기');
 eq(결과.records[3].elapsedWD, 6, '통보 대기 건 처리기간');
@@ -111,5 +115,14 @@ for (const [fn, file] of [['심사일정타임라인열기', 'TimelineView.html'
   new Function(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 }
 if (!ignore.includes('!Timeline.js')) throw new Error('.claspignore 누락: Timeline.js');
+
+// 조회 웹 앱은 배포한 계정 권한으로 실행해 조회자에게 프로젝트 전체 권한 동의를 요구하지 않는다(도메인 한정 + 관리자 확인 유지).
+const manifest = JSON.parse(fs.readFileSync(path.join(root, 'appsscript.json'), 'utf8'));
+if (!manifest.webapp || manifest.webapp.executeAs !== 'USER_DEPLOYING' || manifest.webapp.access !== 'DOMAIN') {
+  throw new Error('웹 앱은 executeAs USER_DEPLOYING, access DOMAIN 이어야 합니다: ' + JSON.stringify(manifest.webapp));
+}
+const timelineSrc = fs.readFileSync(path.join(root, 'Timeline.js'), 'utf8');
+if (!/function doGet\(e\) \{[\s\S]*?if \(!_조회권한여부\(\)\)/.test(timelineSrc)) throw new Error('doGet의 조회 권한 확인이 없습니다.');
+if (!/function 심사일정자료조회\(\) \{\s*if \(!_조회권한여부\(\)\)/.test(timelineSrc)) throw new Error('심사일정자료조회의 조회 권한 확인이 없습니다.');
 
 console.log('Timeline workday test passed.');

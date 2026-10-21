@@ -458,7 +458,9 @@ function _일정관리행추가(ss, 접수번호, 직접값, 등록컨텍스트)
 
   // 접수대장을 원본으로 참조할 컬럼 (일정관리 컬럼명 → 접수대장 컬럼명)
   // 대부분 이름이 같지만, 명세서/기타제출서류는 가공이 필요해 별도 처리
-  const 새행번호 = 일정시트.getLastRow() + 1;
+  // getLastRow()+1이 아니라 접수번호가 있는 마지막 행 다음에 쓴다. 빈칸을 돌려주는 수식이 시트 끝까지
+  // 채워져 있으면 appendRow가 맨 아래(1008행)에 붙던 사고(2026-10-21) 방지. (_데이터마지막행_: SheetWriter.js)
+  const 새행번호 = _데이터마지막행_(일정시트, 일정H) + 1;
   const iD접수 = 일정H.indexOf('접수번호') + 1;
   const 접수열문자 = columnLetter(iD접수);
   const 일정접수셀 = `$${접수열문자}${새행번호}`;
@@ -512,7 +514,8 @@ function _일정관리행추가(ss, 접수번호, 직접값, 등록컨텍스트)
     return '';
   });
 
-  일정시트.appendRow(행값);
+  if (새행번호 > 일정시트.getMaxRows()) 일정시트.insertRowsAfter(일정시트.getMaxRows(), 새행번호 - 일정시트.getMaxRows());
+  일정시트.getRange(새행번호, 1, 1, 행값.length).setValues([행값]);
   컨텍스트.접수번호행맵.set(정규화접수번호, 새행번호);
   try {
     _일정관리서식적용_(일정시트, true);

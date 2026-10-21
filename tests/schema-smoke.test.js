@@ -185,6 +185,29 @@ if (
 ) {
   throw new Error(`기능 탭 병합 실패: ${JSON.stringify(merged)}`);
 }
+if (row[header.indexOf('기능명')] !== '분류') {
+  throw new Error(`같은 기능명은 한 번만 써야 합니다: ${row[header.indexOf('기능명')]}`);
+}
+
+// 세부 명세 기능명은 기업이 새로 작성하므로 기능명세와 다를 수 있다(KOSA 확인, 펀진 AI20261020-0003 사례).
+// 세부 명세 기능명 + 줄바꿈 + (기능명세 기능명). 세부 명세 행이 없는 기능은 기능명세 기능명만.
+const 핵심2 = [
+  ['신청번호', '기능번호', '기능명', '인공지능의 역할'],
+  ['AI-2', 1, '텍스트 to 이미지', '생성'],
+  ['AI-2', 2, '이미지 to 이미지', '변환'],
+];
+const 구현2 = [
+  ['신청번호', '기능번호', '기능명', '구현방식'],
+  ['AI-2', 1, 'SDXL 기반 객체 특화 이미지 생성 및 변환(T2I/I2I)', 'B.오픈소스 모델'],
+];
+const merged2 = _기능탭데이터병합(핵심2, 구현2);
+const 이름열 = merged2[0].indexOf('기능명');
+if (merged2[1][이름열] !== 'SDXL 기반 객체 특화 이미지 생성 및 변환(T2I/I2I)\n(텍스트 to 이미지)') {
+  throw new Error(`다른 기능명 병합 실패: ${JSON.stringify(merged2[1][이름열])}`);
+}
+if (merged2[2][이름열] !== '이미지 to 이미지') {
+  throw new Error(`세부 명세 없는 기능명 유지 실패: ${JSON.stringify(merged2[2][이름열])}`);
+}
 
 if (_기타포함표시('기타', 'API형') !== '기타(API형)') {
   throw new Error('제공형태 기타 표시 실패');

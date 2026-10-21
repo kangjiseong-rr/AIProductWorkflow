@@ -33,9 +33,9 @@ body{background:#fff}
 .nav{display:flex;gap:6px}
 .legend{display:flex;gap:4px 14px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-bottom:6px}
 .legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-.k-bar{width:20px;height:7px;border-radius:2px;background:var(--blue)}
-.k-plan{width:20px;height:7px;border-radius:2px;background:var(--blue);opacity:.22}
-.k-over{width:20px;height:7px;border-radius:2px;background:var(--past)}
+.k-bar{width:20px;height:7px;border-radius:2px;background:var(--blue);opacity:.55}
+.k-plan{width:20px;height:7px;border-radius:2px;background:var(--blue);opacity:.14}
+.k-over{width:20px;height:7px;border-radius:2px;background:var(--past);opacity:.5}
 .k-first{width:0;height:13px;border-left:2px dashed var(--ink);margin:0 6px}
 .k-ext{width:0;height:13px;border-left:2px dashed var(--amber);margin:0 6px}
 .k-now{width:0;height:13px;border-left:2px solid var(--blue);margin:0 6px}
@@ -44,7 +44,7 @@ body{background:#fff}
 .k-done{width:9px;height:9px;background:var(--green);margin:0 3px}
 .k-comp{width:9px;height:9px;border:2px solid var(--green);margin:0 3px}
 .k-wait{width:20px;height:7px;border-radius:2px;background:repeating-linear-gradient(135deg,var(--green) 0 3px,transparent 3px 6px)}
-.k-pend{width:20px;height:7px;border-radius:2px;background:var(--amber)}
+.k-pend{width:20px;height:7px;border-radius:2px;background:var(--amber);opacity:.5}
 .message{font-size:12px;padding:6px 0;color:var(--past)}
 .scroll{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--line);position:relative;overscroll-behavior:contain}
 .scroll.dragging{cursor:grabbing;user-select:none}
@@ -86,20 +86,20 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
 .lane{position:relative;overflow:hidden;min-height:58px}
 .vline{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);opacity:.6}
 .vline.month{border-left-color:#c3ccd8;opacity:1}
-.now-line{position:absolute;top:0;bottom:0;border-left:2px solid var(--blue);opacity:.55;z-index:3}
+.now-line{position:absolute;top:0;bottom:0;border-left:2px solid var(--blue);opacity:.4;z-index:3}
 .g-first{position:absolute;top:2px;bottom:2px;border-left:2px dashed var(--ink);opacity:.55;z-index:2}
 .g-ext{position:absolute;top:2px;bottom:2px;border-left:2px dashed var(--amber);opacity:.8;z-index:2}
 .bar{position:absolute;top:18px;height:12px;border-radius:3px;background:var(--case-color)}
-.bar.plan{opacity:.22}
-.bar.actual{opacity:.85}
-.bar.over{background:var(--past);opacity:.85}
+.bar.plan{opacity:.14}
+.bar.actual{opacity:.55}
+.bar.over{background:var(--past);opacity:.5}
 .m{position:absolute;transform:translateX(-50%);z-index:5}
 .m-review{top:20px;width:8px;height:8px;border-radius:50%;background:var(--ink);border:1px solid #fff}
 .m-supp{top:19px;width:9px;height:9px;background:var(--amber);transform:translateX(-50%) rotate(45deg);border:1px solid #fff}
 .m-done{top:18px;width:12px;height:12px;background:var(--green);border:1px solid #fff}
 .m-comp{top:18px;width:12px;height:12px;background:#fff;border:2px solid var(--green)}
-.bar.wait{background:repeating-linear-gradient(135deg,var(--green) 0 3px,transparent 3px 6px);opacity:.7}
-.bar.pend{background:var(--amber);opacity:.85}
+.bar.wait{background:repeating-linear-gradient(135deg,var(--green) 0 3px,transparent 3px 6px);opacity:.45}
+.bar.pend{background:var(--amber);opacity:.5}
 .remaining.pend strong{color:var(--amber);font-size:13px}
 .remaining.pend.late strong{color:var(--past)}
 .bar-label{position:absolute;top:35px;font-size:11px;color:var(--sub);white-space:nowrap;font-variant-numeric:tabular-nums;z-index:4}
