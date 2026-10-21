@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<style>
+html,body{height:100%;margin:0}
+body{background:#fff}
+#tl{--bg:#fff;--soft:#f5f7fa;--ink:#1b2738;--sub:#536174;--line:#dee4ec;--blue:#306cc5;--green:#237a59;--amber:#a86608;--wait:#77839a;--past:#b94b52;
+  height:100%;display:flex;flex-direction:column;padding:10px 14px;box-sizing:border-box;color:var(--ink);background:var(--bg);
+  font-family:Arial,'Noto Sans KR',sans-serif;font-size:13px;line-height:1.45;color-scheme:light}
+#tl *{box-sizing:border-box}
+#tl button,#tl input,#tl select{font:inherit;color:inherit;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:5px 9px;min-height:32px}
+#tl button{cursor:pointer}
+#tl button:disabled{opacity:.4;cursor:default}
+#tl button:hover:not(:disabled){background:var(--soft)}
+#tl a{color:var(--blue);text-decoration:none}
+#tl a:hover{text-decoration:underline}
+.head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-bottom:6px}
+.head h2{font-size:18px;margin:0;font-weight:600}
+.sub{color:var(--sub);font-size:12px}
+.head-actions{display:flex;gap:10px;align-items:center}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:6px}
+#tl .tab{border-color:transparent;background:transparent}
+#tl .tab[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:8px 0}
+.field{display:flex;flex-direction:column;gap:3px;min-width:130px;flex:1}
+.field.search{flex:1.7;min-width:180px}
+.field span{font-size:11px;color:var(--sub)}
+#tl .field input,#tl .field select{width:100%}
+.range{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.range-name{font-weight:600;font-variant-numeric:tabular-nums}
+.nav{display:flex;gap:6px}
+.legend{display:flex;gap:4px 14px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.k-bar{width:20px;height:7px;border-radius:2px;background:var(--blue)}
+.k-plan{width:20px;height:7px;border-radius:2px;background:var(--blue);opacity:.22}
+.k-over{width:20px;height:7px;border-radius:2px;background:var(--past)}
+.k-first{width:0;height:13px;border-left:2px dashed var(--ink);margin:0 6px}
+.k-ext{width:0;height:13px;border-left:2px dashed var(--amber);margin:0 6px}
+.k-now{width:0;height:13px;border-left:2px solid var(--blue);margin:0 6px}
+.k-review{width:8px;height:8px;border-radius:50%;background:var(--ink);margin:0 3px}
+.k-supp{width:8px;height:8px;background:var(--amber);transform:rotate(45deg);margin:0 3px}
+.k-done{width:9px;height:9px;background:var(--green);margin:0 3px}
+.k-comp{width:9px;height:9px;border:2px solid var(--green);margin:0 3px}
+.k-wait{width:20px;height:7px;border-radius:2px;background:repeating-linear-gradient(135deg,var(--green) 0 3px,transparent 3px 6px)}
+.k-pend{width:20px;height:7px;border-radius:2px;background:var(--amber)}
+.message{font-size:12px;padding:6px 0;color:var(--past)}
+.scroll{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--line);position:relative;overscroll-behavior:contain}
+.scroll.dragging{cursor:grabbing;user-select:none}
+.grid-head,.case summary{display:grid;grid-template-columns:var(--nw) var(--lw) var(--ew) var(--rw) var(--lane);width:max-content}
+.grid-head{position:sticky;top:0;z-index:10;background:var(--soft);border-bottom:1px solid var(--line)}
+.no-head,.no{position:sticky;left:0;z-index:12;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;border-right:1px solid var(--line)}
+.no-head{background:var(--soft);font-size:12px}
+.no{z-index:6;background:var(--bg);font-weight:600;color:var(--sub)}
+.resizer{position:absolute;top:0;right:-5px;width:10px;height:100%;cursor:col-resize;z-index:14;touch-action:none}
+.resizer::after{content:"";position:absolute;left:4px;top:8px;bottom:8px;width:2px;border-radius:1px;background:var(--line)}
+.resizer:hover::after,.resizer.on::after{background:var(--blue)}
+.rz-guide{position:fixed;width:2px;background:var(--blue);z-index:50;pointer-events:none}
+.rz-tip{position:fixed;z-index:51;pointer-events:none;background:var(--ink);color:#fff;font-size:11px;padding:2px 6px;border-radius:4px;transform:translate(6px,0)}
+body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!important}
+.col-name{padding:4px 10px 4px 8px;display:flex;flex-direction:column;justify-content:center;position:sticky;left:var(--nw);z-index:12;background:var(--soft)}
+.el-head{display:flex;align-items:center;justify-content:center;font-size:12px;position:sticky;left:calc(var(--nw) + var(--lw));z-index:12;background:var(--soft)}
+.rem-head{display:flex;align-items:center;justify-content:center;font-size:12px;position:sticky;left:calc(var(--nw) + var(--lw) + var(--ew));z-index:12;background:var(--soft);border-right:1px solid var(--line)}
+.axis{height:44px;position:relative;cursor:grab}
+.tick{position:absolute;bottom:6px;font-size:11px;color:var(--sub);white-space:nowrap;transform:translateX(-50%);font-variant-numeric:tabular-nums}
+.tick.month{font-weight:600;color:var(--ink)}
+.now-label{position:absolute;top:4px;font-size:11px;font-weight:600;color:var(--blue);white-space:nowrap;transform:translateX(-50%)}
+.case{border-bottom:1px solid var(--line);width:max-content}
+.case summary{list-style:none;cursor:pointer;min-height:58px}
+.case summary::-webkit-details-marker{display:none}
+.label{padding:5px 8px 5px 8px;min-width:0;position:sticky;left:var(--nw);z-index:6;background:var(--bg);display:flex;flex-direction:column;justify-content:center}
+.company{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.product{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{font-size:11px;color:var(--sub);display:flex;gap:5px;align-items:center;white-space:nowrap;overflow:hidden}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--case-color);flex-shrink:0}
+.elapsed{display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;position:sticky;left:calc(var(--nw) + var(--lw));z-index:6;background:var(--bg)}
+.elapsed strong{font-size:14px;font-weight:600;line-height:1.2}
+.elapsed small{font-size:11px;color:var(--sub)}
+.remaining{display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;position:sticky;left:calc(var(--nw) + var(--lw) + var(--ew));z-index:6;background:var(--bg);border-right:1px solid var(--line)}
+.remaining strong{font-size:15px;font-weight:600;line-height:1.2}
+.remaining small{font-size:11px;color:var(--sub)}
+.remaining.late strong{color:var(--past)}
+.remaining.soon strong{color:var(--amber)}
+.case summary:hover,.case[open] summary,.case summary:hover .label,.case[open] summary .label,.case summary:hover .no,.case[open] summary .no,.case summary:hover .remaining,.case[open] summary .remaining,.case summary:hover .elapsed,.case[open] summary .elapsed{background:var(--soft)}
+.lane{position:relative;overflow:hidden;min-height:58px}
+.vline{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);opacity:.6}
+.vline.month{border-left-color:#c3ccd8;opacity:1}
+.now-line{position:absolute;top:0;bottom:0;border-left:2px solid var(--blue);opacity:.55;z-index:3}
+.g-first{position:absolute;top:2px;bottom:2px;border-left:2px dashed var(--ink);opacity:.55;z-index:2}
+.g-ext{position:absolute;top:2px;bottom:2px;border-left:2px dashed var(--amber);opacity:.8;z-index:2}
+.bar{position:absolute;top:18px;height:12px;border-radius:3px;background:var(--case-color)}
+.bar.plan{opacity:.22}
+.bar.actual{opacity:.85}
+.bar.over{background:var(--past);opacity:.85}
+.m{position:absolute;transform:translateX(-50%);z-index:5}
+.m-review{top:20px;width:8px;height:8px;border-radius:50%;background:var(--ink);border:1px solid #fff}
+.m-supp{top:19px;width:9px;height:9px;background:var(--amber);transform:translateX(-50%) rotate(45deg);border:1px solid #fff}
+.m-done{top:18px;width:12px;height:12px;background:var(--green);border:1px solid #fff}
+.m-comp{top:18px;width:12px;height:12px;background:#fff;border:2px solid var(--green)}
+.bar.wait{background:repeating-linear-gradient(135deg,var(--green) 0 3px,transparent 3px 6px);opacity:.7}
+.bar.pend{background:var(--amber);opacity:.85}
+.remaining.pend strong{color:var(--amber);font-size:13px}
+.remaining.pend.late strong{color:var(--past)}
+.bar-label{position:absolute;top:35px;font-size:11px;color:var(--sub);white-space:nowrap;font-variant-numeric:tabular-nums;z-index:4}
+.info{padding:10px 14px;background:var(--soft);font-size:12px;overflow-wrap:anywhere;position:sticky;left:0;width:var(--view)}
+.info-title{font-weight:600;margin-bottom:3px;white-space:pre-line}
+.info-dates{display:flex;flex-wrap:wrap;gap:4px 16px;margin:8px 0;font-variant-numeric:tabular-nums}
+.info-note{white-space:pre-wrap;color:var(--sub);margin-top:6px}
+.issue{color:var(--past)}
+.empty{padding:36px 12px;text-align:center;color:var(--sub);position:sticky;left:0;width:var(--view)}
+.foot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:6px;font-size:11px;color:var(--sub)}
+</style>
+</head>
+<body>
+<section id="tl" aria-label="AI확인제 심사 일정 타임라인">
+  <div class="head">
+    <div><h2>AI확인제 심사 일정</h2><div class="sub" id="read-time">시트에서 불러오는 중…</div></div>
+    <div class="head-actions"><? if (appUrl) { ?><a href="<?= appUrl ?>?view=dashboard" target="_top">📈 현황 대시보드</a><? } ?><button type="button" id="refresh">새로고침</button><a id="source" href="#" target="_blank" rel="noopener">원본 시트</a></div>
+  </div>
+  <div class="tabs">
+    <button class="tab" type="button" data-scope="active" aria-pressed="true">진행 대상</button>
+    <button class="tab" type="button" data-scope="done" aria-pressed="false">완료</button>
+    <button class="tab" type="button" data-scope="cancel" aria-pressed="false">종료</button>
+    <button class="tab" type="button" data-scope="all" aria-pressed="false">전체</button>
+  </div>
+  <div id="error" class="message" role="alert" hidden></div>
+  <div id="warning" class="message" role="status" hidden></div>
+  <div class="tools">
+    <label class="field search"><span>순번 · 기업명 · 제품명 · 접수번호 · 심사원</span><input type="search" id="search" placeholder="검색어 입력" autocomplete="off"></label>
+    <label class="field"><span>담당 심사원</span><select id="owner"><option value="">전체 심사원</option></select></label>
+    <label class="field"><span>한 화면 폭</span><select id="span"><option value="28">4주</option><option value="56" selected>8주</option><option value="84">12주</option><option value="all">전체 기간 한눈에</option></select></label>
+  </div>
+  <div class="range"><div class="range-name" id="range-name"></div><div class="nav"><button type="button" id="previous">◀ 이전</button><button type="button" id="today">기준일</button><button type="button" id="next">다음 ▶</button></div></div>
+  <div class="legend">
+    <span><i class="k-bar"></i>신청 → 통보(또는 오늘까지) 경과</span>
+    <span><i class="k-plan"></i>마감까지 남은 기간</span>
+    <span><i class="k-over"></i>마감 초과</span>
+    <span><i class="k-review"></i>심사접수</span>
+    <span><i class="k-supp"></i>보완요청</span>
+    <span><i class="k-done"></i>적합 통보</span>
+    <span><i class="k-comp"></i>심사완료(통보일과 다를 때)</span>
+    <span><i class="k-wait"></i>심사완료 → 통보</span>
+    <span><i class="k-pend"></i>통보 대기</span>
+    <span><i class="k-first"></i>마감예정일</span>
+    <span><i class="k-ext"></i>연장마감일</span>
+    <span><i class="k-now"></i>기준일(오늘)</span>
+  </div>
+  <div class="scroll" id="scroll">
+    <div class="grid-head"><div class="no-head">순번</div><div class="col-name"><span>기업 / 제품</span><span class="sub" id="caption"></span><div class="resizer" id="resizer" title="끌어서 폭 조절 · 더블클릭하면 기본 폭"></div></div><div class="el-head">경과일</div><div class="rem-head">잔여일</div><div class="axis" id="axis"></div></div>
+    <div class="rz-guide" id="rz-guide" hidden></div><div class="rz-tip" id="rz-tip" hidden></div><div id="rows"><div class="empty">시트에서 일정을 불러오는 중입니다.</div></div>
+  </div>
+  <div class="foot"><span id="count"></span><span>경과 = 접수일자부터(완료 건은 심사완료일까지) · 경과·잔여는 영업일(WD: 주말·공휴일 제외) · 잔여 = 오늘 → 현재 마감(연장마감일 우선) · 마감 임박 순 정렬 · 좌우는 스크롤·Shift+휠·끌기로 이동 · 행을 누르면 상세정보</span></div>
+</section>
+<script>
+(()=>{
+  const root=document.getElementById('tl');
+  const $=s=>root.querySelector(s);
+  const DAY=86400000;
+  const parse=s=>{
+    if(!s)return null;
+    const m=String(s).trim().match(/^(\d{2}|\d{4})[-/.]\s*(\d{1,2})[-/.]\s*(\d{1,2})\s*\.?$/);
+    if(!m)return null;
+    const y=+m[1]<100?2000+ +m[1]:+m[1],mo=+m[2],d=+m[3],t=Date.UTC(y,mo-1,d),dt=new Date(t);
+    return dt.getUTCFullYear()===y&&dt.getUTCMonth()===mo-1&&dt.getUTCDate()===d?t:null;
+  };
+  const fmt=t=>t===null?'미입력':`${new Date(t).getUTCMonth()+1}/${new Date(t).getUTCDate()}`;
+  const full=t=>t===null?'미입력':`${new Date(t).getUTCFullYear()}.${String(new Date(t).getUTCMonth()+1).padStart(2,'0')}.${String(new Date(t).getUTCDate()).padStart(2,'0')}`;
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let BASE=null,SOURCE='',GID='',LASTCOL='N',data=[],loading=false;
+  const state={scope:'active',owner:'',search:'',span:56};
+  const RW=64,EW=60,NW=52,LW_DEFAULT=200,LW_MIN=120,LW_MAX=560,LW_KEY='timeline.labelWidth';
+  // 기업/제품 열 폭: 사용자가 끌어서 바꾼 값을 이 브라우저에 기억한다.
+  let labelW=(()=>{try{const v=Number(localStorage.getItem(LW_KEY));return v>=LW_MIN&&v<=LW_MAX?v:LW_DEFAULT;}catch(e){return LW_DEFAULT;}})();
+  let view=null,anchor=null;
+  const monday=t=>t-((new Date(t).getUTCDay()+6)%7)*DAY;
+  const color=r=>r.done?'var(--green)':r.cancel?'var(--wait)':r.status==='보완'?'var(--amber)':r.status==='대기'?'var(--wait)':'var(--blue)';
+
+  function apply(payload){
+    BASE=parse(payload.today);SOURCE=payload.sourceUrl||'';GID=payload.gid;LASTCOL=payload.lastColumn||'N';
+    data=(payload.records||[]).map(r=>{
+      const pend=!!r.pendingNotice,done=/^완료/.test(r.status)&&!pend,cancel=/^종료/.test(r.status);
+      const first=parse(r.original),ext=parse(r.extension),due=ext??first;
+      return {...r,recv:parse(r.received),start:parse(r.review),first,ext,due,end:parse(r.notice),comp:parse(r.completion),supp:parse(r.supplement),done,cancel,pend,
+        remaining:done||cancel||due===null?null:r.remainingWD,late:!done&&!cancel&&due!==null&&due<BASE};
+    });
+    const names=[...new Set(data.map(r=>r.reviewer).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+    if(state.owner&&!names.includes(state.owner))state.owner='';
+    $('#owner').innerHTML='<option value="">전체 심사원</option>'+names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    $('#owner').value=state.owner;
+    const counts={active:data.filter(r=>!r.done&&!r.cancel).length,done:data.filter(r=>r.done).length,cancel:data.filter(r=>r.cancel).length,all:data.length};
+    const label={active:'진행 대상',done:'완료',cancel:'종료',all:'전체'};
+    root.querySelectorAll('[data-scope]').forEach(b=>{b.textContent=`${label[b.dataset.scope]} ${counts[b.dataset.scope]}`;});
+    $('#source').href=SOURCE;
+    $('#read-time').textContent=`${payload.readAt} 조회 · ${data.length}건`;
+    const issues=data.filter(r=>r.dateIssues&&r.dateIssues.length).length;
+    const warns=[issues?`날짜 값에 오류가 있는 ${issues}건이 있습니다. 해당 행을 펼쳐 확인하세요.`:'',payload.holidayWarning||''].filter(Boolean);
+    $('#warning').hidden=!warns.length;
+    $('#warning').textContent=warns.join(' ');
+    $('#error').hidden=true;
+    render();
+  }
+
+  function matching(){
+    return data.filter(r=>(state.scope==='all'||(state.scope==='active'&&!r.done&&!r.cancel)||(state.scope==='done'&&r.done)||(state.scope==='cancel'&&r.cancel))
+        &&(!state.owner||r.reviewer===state.owner)
+        &&(!state.search||[r.seq,r.id,r.company,r.product,r.reviewer].join(' ').toLocaleLowerCase().includes(state.search)))
+      .sort((a,b)=>{
+        const ac=a.done||a.cancel,bc=b.done||b.cancel;
+        if(ac!==bc)return ac?1:-1;
+        if(!ac){
+          if(a.pend!==b.pend)return a.pend?-1:1;
+          const av=a.remaining??Infinity,bv=b.remaining??Infinity;
+          if(av!==bv)return av<bv?-1:1;
+        }else{
+          const d=(b.end||0)-(a.end||0);if(d)return d;
+        }
+        return (a.recv??Infinity)-(b.recv??Infinity)||String(a.id).localeCompare(String(b.id));
+      });
+  }
+
+  /* 전체 일정 범위(앞뒤 여유 포함)를 실제 폭으로 그리고 가로 스크롤로 이동한다. */
+  function domain(list){
+    const ds=list.flatMap(r=>[r.recv,r.start,r.first,r.ext,r.end]).filter(v=>v!==null);ds.push(BASE);
+    return [monday(Math.min(...ds))-14*DAY,monday(Math.max(...ds))+21*DAY];
+  }
+  const sc=()=>$('#scroll');
+  function visibleRange(){
+    if(!view)return;
+    const from=view.lo+Math.floor(sc().scrollLeft/view.px)*DAY,to=from+Math.max(0,Math.floor(view.vis/view.px)-1)*DAY;
+    $('#range-name').textContent=`${full(Math.max(view.lo,from))} – ${full(Math.min(view.hi-DAY,to))}`;
+    // 막대 시작점이 화면 왼쪽 밖이면 설명 글자를 보이는 위치로 당겨 온다(막대 끝을 넘지 않게).
+    const left=sc().scrollLeft+6;
+    root.querySelectorAll('.bar-label').forEach(el=>{
+      const st=+el.dataset.s,en=+el.dataset.e,w=el.offsetWidth;
+      el.style.left=Math.max(st,Math.min(left,Math.max(st,en-w)))+'px';
+    });
+  }
+  const dateAt=frac=>view?view.lo+(sc().scrollLeft+view.vis*frac)/view.px*DAY:null;
+  function scrollToDate(t,frac,smooth){
+    if(!view||t===null)return;
+    const left=Math.max(0,(t-view.lo)/DAY*view.px-view.vis*frac);
+    sc().scrollTo({left,behavior:smooth?'smooth':'auto'});
+  }
+
+  function render(){
+    if(BASE===null)return;
+    const keep=anchor??dateAt(.5);
+    const list=matching();
+    const [lo,hi]=domain(list),days=(hi-lo)/DAY;
+    const total=sc().clientWidth,LW=Math.round(Math.min(labelW,Math.max(LW_MIN,total-NW-EW-RW-200))),vis=Math.max(200,total-NW-LW-EW-RW);
+    const px=state.span==='all'?vis/days:vis/Number(state.span),laneW=Math.max(vis,Math.round(days*px));
+    view={lo,hi,px,vis,laneW};
+    root.style.setProperty('--nw',NW+'px');root.style.setProperty('--ew',EW+'px');root.style.setProperty('--lw',LW+'px');root.style.setProperty('--rw',RW+'px');
+    root.style.setProperty('--lane',laneW+'px');root.style.setProperty('--view',(NW+LW+EW+RW+vis)+'px');
+    const pos=t=>(t-lo)/DAY*px,inside=t=>t!==null&&t>=lo&&t<=hi;
+    const seg=(a,b,cls)=>{
+      if(a===null||b===null||b<=a)return '';
+      return `<div class="bar ${cls}" style="left:${pos(a)}px;width:${Math.max(2,pos(b)-pos(a))}px"></div>`;
+    };
+    const mark=(t,cls,title)=>inside(t)?`<i class="${cls}" style="left:${pos(t)}px" title="${esc(title)}"></i>`:'';
+    const step=px*7>=56?7:px*14>=56?14:28;
+    const ticks=[];
+    for(let t=monday(lo)+7*DAY;t<hi;t+=step*DAY)ticks.push(t);
+    const months=[];
+    for(let d=new Date(lo);d.getTime()<hi;d.setUTCMonth(d.getUTCMonth()+1,1)){const t=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1);if(t>lo)months.push(t);}
+    $('#axis').innerHTML=ticks.map(t=>`<span class="tick" style="left:${pos(t)}px">${fmt(t)}</span>`).join('')
+      +months.map(t=>`<span class="tick month" style="left:${pos(t)}px;bottom:24px">${new Date(t).getUTCFullYear()%100}.${new Date(t).getUTCMonth()+1}월</span>`).join('')
+      +`<span class="now-label" style="left:${pos(BASE)}px;top:auto;bottom:24px;transform:translateX(4px)">오늘 ${fmt(BASE)}</span>`;
+    $('#caption').textContent=`${list.length}건 · ${state.scope==='active'?'마감 임박 순':state.scope==='all'?'진행 → 완료 순':'최근 통보 순'}`;
+    const grid=ticks.map(t=>mark(t,'vline','')).join('')+months.map(t=>mark(t,'vline month','')).join('')+mark(BASE,'now-line','기준일(오늘) '+full(BASE));
+    const opened=new Set([...root.querySelectorAll('.case[open]')].map(d=>d.dataset.id));
+
+    $('#rows').innerHTML=list.length?list.map(r=>{
+      const S=r.recv??r.start;
+      let bars='',label='',endMark='';
+      // 심사완료일이 적합통보일과 같거나 없으면 통보 표식만, 다르면 심사완료 표식과 통보까지 빗금 구간을 따로 그린다.
+      const compDiff=r.comp!==null&&r.comp!==r.end;
+      if(r.done){
+        bars=compDiff&&r.end!==null&&r.end>r.comp?seg(S,r.comp,'actual')+seg(r.comp,r.end,'wait'):seg(S,r.end,'actual');
+        label=`${fmt(S)} 신청 → ${fmt(r.end)} 통보${r.elapsedWD!==null?` · 심사 ${r.elapsedWD}WD`:''}${compDiff&&r.noticeLagWD?` (심사완료 ${fmt(r.comp)}, 통보까지 ${r.noticeLagWD}WD)`:''}`;
+      }else if(r.pend){
+        const now=BASE;
+        bars=r.comp!==null?seg(S,r.comp,'actual')+seg(r.comp,Math.max(now,r.comp),'pend'):seg(S,now,'pend');
+        label=r.comp!==null?`${fmt(S)} 신청 → 심사완료 ${fmt(r.comp)} · 통보 대기 ${r.noticeLagWD??0}WD · 마감 ${fmt(r.due)}`:`상태는 완료인데 심사완료일·적합통보일이 비어 있음 · 마감 ${fmt(r.due)}`;
+      }else if(r.cancel){
+        bars=r.end!==null?seg(S,r.end,'actual'):seg(S,r.due,'plan');
+        label=`${fmt(S)} 신청 → ${r.end!==null?fmt(r.end)+' 종료':'종료'}`;
+      }else{
+        const now=BASE;
+        bars=seg(S,r.due!==null?Math.max(r.due,now):now,'plan')+seg(S,r.due!==null?Math.min(now,r.due):now,'actual')+(r.due!==null&&now>r.due?seg(r.due,now,'over'):'');
+        label=`${fmt(S)} 신청 · 경과 ${r.elapsedWD??'-'}WD · 마감 ${fmt(r.due)}${r.ext!==null?' (연장)':''}`;
+      }
+      if(r.done||r.cancel)endMark=mark(r.end,'m m-done','적합통보일 '+full(r.end));
+      if(compDiff)endMark+=mark(r.comp,'m m-comp','심사완료일 '+full(r.comp));
+      const guides=mark(r.first,'g-first','마감예정일 '+full(r.first))+mark(r.ext,'g-ext','연장마감일 '+full(r.ext));
+      const markers=mark(r.start,'m m-review','심사접수일 '+full(r.start))+mark(r.supp,'m m-supp','보완요청일 '+full(r.supp))+endMark;
+      const lastT=r.done||r.cancel?(r.end??r.due):Math.max(r.due??BASE,BASE);
+      const pendCls=r.pend?' pend':'';
+      const ls=S!==null?pos(S):4,le=lastT!==null?pos(lastT):ls;
+      const remainText=r.pend?'통보대기':r.done||r.cancel?'—':r.remaining===null?'미입력':r.remaining===0&&!r.late?'오늘':`${Math.abs(r.remaining)}WD`;
+      const remainSub=r.pend?(r.comp!==null?`완료 후 ${r.noticeLagWD??0}WD`:'날짜 없음'):r.done?'완료':r.cancel?'종료':r.remaining===null?'마감 확인':r.late?'초과':r.remaining===0?'마감':'남음';
+      const remainCls=pendCls+(!r.done&&!r.cancel&&r.remaining!==null?(r.late?' late':r.remaining<=3&&!r.pend?' soon':''):'');
+      const dates=[['접수일자',r.recv],['심사접수일',r.start],['마감예정일',r.first],['보완요청일',r.supp],['연장마감일',r.ext],['심사완료일',r.comp],['적합통보일',r.end]]
+        .map(([k,v])=>`<span>${k} <strong>${full(v)}</strong></span>`).join('');
+      const rowUrl=`${SOURCE.split('#')[0]}#gid=${GID}&range=A${r.row}:${LASTCOL}${r.row}`;
+      const issues=(r.dateIssues||[]).map(esc).join(' · ');
+      const product=String(r.product||'').replace(/\s*\n\s*/g,' / ');
+      return `<details class="case" data-id="${esc(r.id)}"${opened.has(String(r.id))?' open':''} style="--case-color:${color(r)}">`
+        +`<summary title="${esc(r.company+' / '+product)}"><div class="no">${esc(r.seq)}</div><div class="label"><div class="company">${esc(r.company)}</div><div class="product">${esc(product)}</div>`
+        +`<div class="meta"><span>${esc(r.reviewer||'미배정')}</span><i class="dot"></i><span>${esc(r.status)}</span><span>· ${esc(r.id)}</span></div></div>`
+        +`<div class="elapsed" title="접수일자부터 ${r.done||r.pend?'심사완료(없으면 통보)까지':r.cancel?'종료까지':'오늘까지'} 영업일"><strong>${r.elapsedWD===null||r.elapsedWD===undefined?'—':r.elapsedWD+'WD'}</strong><small>${r.done||r.pend?'심사':r.cancel?'종료':'진행'}</small></div>`
+        +`<div class="remaining${remainCls}"><strong>${remainText}</strong><small>${remainSub}</small></div>`
+        +`<div class="lane">${grid}${guides}${bars}${markers}<span class="bar-label" data-s="${ls}" data-e="${le}" style="left:${ls}px">${esc(label)}</span></div></summary>`
+        +`<div class="info"><div class="info-title">${esc(r.product)}</div><div>순번 ${esc(r.seq)} · ${esc(r.id)} · ${esc(r.company)} · 제품수 ${esc(r.count)} · 담당 ${esc(r.reviewer||'미배정')} · <a href="${esc(rowUrl)}" target="_blank" rel="noopener">원본 행</a></div>`
+        +`<div class="info-dates">${dates}</div>${issues?`<div class="issue">${issues}</div>`:''}<div class="info-note">${r.note?'특이사항: '+esc(r.note):'특이사항 미입력'}</div></div></details>`;
+    }).join(''):`<div class="empty">${loading?'시트에서 일정을 불러오는 중입니다.':'조건에 맞는 일정이 없습니다.'}</div>`;
+    $('#count').textContent=`${list.length}건 표시`;
+    const fit=laneW<=vis+1;
+    $('#previous').disabled=fit;$('#next').disabled=fit;
+    root.querySelectorAll('[data-scope]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scope===state.scope)));
+    anchor=null;
+    scrollToDate(keep??BASE,keep===null?.6:.5,false);
+    visibleRange();
+  }
+
+  function load(){
+    loading=true;$('#refresh').disabled=true;$('#read-time').textContent='시트에서 불러오는 중…';
+    google.script.run
+      .withSuccessHandler(p=>{loading=false;$('#refresh').disabled=false;try{apply(p);}catch(e){fail(e);}})
+      .withFailureHandler(e=>{loading=false;$('#refresh').disabled=false;fail(e);})
+      .심사일정자료조회();
+  }
+  function fail(e){$('#error').hidden=false;$('#error').textContent='불러오기 실패: '+(e&&e.message||e);$('#read-time').textContent='불러오기 실패';}
+
+  const toTop=()=>{sc().scrollTop=0;};
+  root.querySelectorAll('[data-scope]').forEach(b=>b.addEventListener('click',()=>{
+    state.scope=b.dataset.scope;
+    if(state.scope==='done'||state.scope==='cancel'){state.span='all';$('#span').value='all';}
+    render();toTop();
+  }));
+  $('#owner').addEventListener('change',e=>{state.owner=e.target.value;render();toTop();});
+  $('#search').addEventListener('input',e=>{state.search=e.target.value.trim().toLocaleLowerCase();render();toTop();});
+  $('#span').addEventListener('change',e=>{state.span=e.target.value==='all'?'all':Number(e.target.value);render();});
+  $('#previous').addEventListener('click',()=>{sc().scrollBy({left:-view.vis*.8,behavior:'smooth'});});
+  $('#next').addEventListener('click',()=>{sc().scrollBy({left:view.vis*.8,behavior:'smooth'});});
+  $('#today').addEventListener('click',()=>{
+    if(state.span==='all'){state.span=56;$('#span').value='56';anchor=BASE;render();}
+    scrollToDate(BASE,.6,true);
+  });
+  $('#refresh').addEventListener('click',load);
+  let ticking=false;
+  sc().addEventListener('scroll',()=>{if(!ticking){ticking=true;requestAnimationFrame(()=>{ticking=false;visibleRange();});}});
+  // 날짜 축 위에서 휠을 굴리면 가로로 이동
+  $('#axis').addEventListener('wheel',e=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){e.preventDefault();sc().scrollLeft+=e.deltaY;}},{passive:false});
+  // 막대 영역·날짜 축을 마우스로 끌어 좌우 이동 (끌었을 때는 행 펼침 클릭을 무시)
+  let drag=null,dragged=false;
+  sc().addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='mouse'||e.button!==0||!e.target.closest('.lane,.axis'))return;
+    drag={x:e.clientX,left:sc().scrollLeft};dragged=false;
+  });
+  window.addEventListener('pointermove',e=>{
+    if(!drag)return;
+    const dx=e.clientX-drag.x;
+    if(!dragged&&Math.abs(dx)>4){dragged=true;sc().classList.add('dragging');}
+    if(dragged)sc().scrollLeft=drag.left-dx;
+  });
+  window.addEventListener('pointerup',()=>{if(drag){drag=null;sc().classList.remove('dragging');}});
+  sc().addEventListener('click',e=>{if(dragged){e.preventDefault();e.stopPropagation();dragged=false;}},true);
+  // 기업/제품 열 머리 오른쪽 경계를 끌어 폭 조절. 끄는 동안은 안내선만 움직이고(행 재배치 없음)
+  // 놓을 때 한 번만 적용한다. 포인터가 조절선을 벗어나도 창 전체에서 움직임을 받는다.
+  const rz=$('#resizer'),guide=$('#rz-guide'),tip=$('#rz-tip');let rzStart=null,rzW=labelW;
+  rz.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    e.preventDefault();e.stopPropagation();
+    const box=sc().getBoundingClientRect();
+    rzStart={x:e.clientX,w:labelW,base:box.left+NW,top:box.top,h:sc().clientHeight};rzW=labelW;
+    rz.classList.add('on');document.body.classList.add('resizing');
+    guide.style.top=rzStart.top+'px';guide.style.height=rzStart.h+'px';
+    moveGuide();guide.hidden=false;tip.hidden=false;
+  });
+  function moveGuide(){
+    const x=rzStart.base+rzW;
+    guide.style.left=x+'px';tip.style.left=x+'px';tip.style.top=(rzStart.top+6)+'px';tip.textContent=rzW+'px';
+  }
+  window.addEventListener('pointermove',e=>{
+    if(!rzStart)return;
+    rzW=Math.round(Math.max(LW_MIN,Math.min(LW_MAX,rzStart.w+e.clientX-rzStart.x)));
+    moveGuide();
+  });
+  const rzEnd=()=>{
+    if(!rzStart)return;
+    rzStart=null;guide.hidden=true;tip.hidden=true;rz.classList.remove('on');document.body.classList.remove('resizing');
+    if(rzW===labelW)return;
+    labelW=rzW;try{localStorage.setItem(LW_KEY,String(labelW));}catch(e){}
+    render();
+  };
+  window.addEventListener('pointerup',rzEnd);window.addEventListener('pointercancel',rzEnd);window.addEventListener('blur',rzEnd);
+  rz.addEventListener('dblclick',()=>{labelW=LW_DEFAULT;try{localStorage.removeItem(LW_KEY);}catch(e){}render();});
+  let lastWidth=0;
+  new ResizeObserver(en=>{const w=en[0].contentRect.width;if(Math.abs(w-lastWidth)>2){lastWidth=w;render();}}).observe(root);
+  load();
+})();
+</script>
+</body>
+</html>

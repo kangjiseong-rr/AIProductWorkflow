@@ -4,12 +4,14 @@
   "description": "AI 제품/서비스 기술심사 관리 시스템 Google Apps Script 프로젝트",
   "main": "Main.js",
   "scripts": {
-    "test": "node tests/schema-smoke.test.js && node tests/schedule-performance.test.js",
+    "test": "node tests/schema-smoke.test.js && node tests/schedule-performance.test.js && node tests/timeline-workday.test.js",
     "push:dev": "clasp -P .clasp-dev.json push",
     "push:prod": "clasp -P .clasp-prod.json push",
     "pull:dev": "clasp -P .clasp-dev.json pull",
     "pull:prod": "clasp -P .clasp-prod.json pull",
-    "watch:dev": "clasp -P .clasp-dev.json push -w"
+    "watch:dev": "clasp -P .clasp-dev.json push -w",
+    "deploy:dev": "clasp -P .clasp-dev.json push --force && clasp -P .clasp-dev.json update-deployment AKfycbx2k9LCdYyg-udjEgwDsMZ45Zn7TC49wjONd3hUOAm87SW9qeDhEjRtIcleDLMpHFSF --description review-schedule-webapp",
+    "deploy:prod": "clasp -P .clasp-prod.json push --force && clasp -P .clasp-prod.json update-deployment AKfycbwJJXf9RcMoGwFWRteGcKA7fId5oKEJ8vvKKWG_P9UTjaWD3IhAHk-prTm1F5-ikI26OA --description review-schedule-webapp"
   },
   "keywords": [
     "google-apps-script",

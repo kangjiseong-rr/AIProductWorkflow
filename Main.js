@@ -159,6 +159,7 @@ const 시트헤더정의 = {
     '상태',          // 대기 / 심사중 / 보완 / 완료(적합) / 종료(부적합) / 종료(취소)
     '보완요청일',    // 내부 심사원이 직접 입력
     '연장마감일',    // 보완요청일 + 30 WD, 주말·공휴일 제외 (수식 자동 생성)
+    '심사완료일',    // 심사원이 심사를 마친 날 (직접 입력, 보고서 심사완료일의 원본)
     '적합통보일',    // 관리자가 직접 입력
     '담당심사원',
     '특이사항',      // 모든 사용자가 작성하는 내부 자유 메모·의견
@@ -509,6 +510,8 @@ function onOpen() {
       .addItem('📨 선택 행 배정 확정·알림 발송', '선택행배정확정알림발송')
       .addItem('🔁 선택 행 배정 알림 재발송', '선택행배정알림재발송')
       .addSeparator()
+      .addItem('📊 심사 일정 타임라인', '심사일정타임라인열기')
+      .addItem('📈 심사 현황 대시보드', '심사현황대시보드열기')
       .addItem('🎨 일정관리 색상 서식 갱신', '일정관리색상서식갱신')
       .addItem('🔎 일정관리 색상 진단', '일정관리색상진단')
       .addItem('💬 Chat 알림 테스트', '챗알림테스트')
@@ -546,7 +549,8 @@ function _관리자여부() {
 
   // 목록이 비어 있으면(설정 전) 스프레드시트 소유자를 관리자로 간주
   try {
-    const owner = SpreadsheetApp.getActiveSpreadsheet().getOwner();
+    // 웹 앱(새 탭)에는 열린 시트가 없으므로 메뉴가 기억해 둔 시트를 쓴다(Timeline.js).
+    const owner = _대상스프레드시트_().getOwner();
     const ownerEmail = owner ? (owner.getEmail() || '').toLowerCase() : '';
     if (ownerEmail && 이메일) return 이메일 === ownerEmail;
   } catch (e) {}
