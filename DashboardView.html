@@ -34,6 +34,12 @@ body{background:#fcfcfb}
 .card h3{margin:0;font-size:14px;font-weight:600}
 .card .desc{font-size:11px;color:var(--sub);margin:2px 0 6px}
 .legend{display:flex;gap:4px 14px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-bottom:4px}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex-shrink:0}
+#db .seg button{border:0;border-radius:0;min-height:26px;padding:2px 10px;font-size:12px;background:var(--card);color:var(--sub)}
+#db .seg button+button{border-left:1px solid var(--line)}
+#db .seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
 .sw-line{width:14px;height:0;border-top:2px dashed var(--ink);display:inline-block}
@@ -99,8 +105,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <div class="card"><h3>누적 완료율</h3><div class="desc">N WD 안에 완료된 비율 (처리기간 분포를 누적한 곡선)</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>누적 완료율</span><span><i class="sw-line"></i>기본 마감 15WD</span></div>
       <div class="plot" id="cdf"></div></div>
-    <div class="card"><h3>월별 처리기간 추이</h3><div class="desc">심사완료 월별 각 건의 처리기간(점)과 월 중앙값(굵은 선) · 끝점은 심사완료일(없으면 적합통보일)</div>
-      <div class="legend"><span><i class="sw" style="background:var(--s1);border-radius:50%"></i>접수일 기준</span><span><i class="sw" style="background:var(--s3);border-radius:50%"></i>심사접수일 기준</span><span><i class="sw-line"></i>기본 마감 15WD</span></div>
+    <div class="card"><div class="card-head"><h3 id="strip-title">월별 처리기간 추이</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-trend="month" aria-pressed="true">월별</button><button type="button" data-trend="week" aria-pressed="false">주차별</button></div></div>
+      <div class="desc" id="strip-desc"></div>
+      <div class="legend" id="strip-legend"></div>
       <div class="plot" id="strip"></div></div>
     <div class="card"><h3>월별 접수·완료 건수</h3><div class="desc">접수는 접수일자 월, 완료는 심사완료일(없으면 적합통보일) 월 기준</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>접수</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div>
@@ -121,7 +128,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   const $=s=>document.querySelector(s);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const BASIC=15;
-  let payload=null,data=[],state={period:'6',owner:'',sort:{key:'active',dir:-1}};
+  let payload=null,data=[],state={period:'6',owner:'',trend:'month',sort:{key:'active',dir:-1}};
 
   const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
   const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
@@ -260,19 +267,37 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   }
 
   /* ── 월별 처리기간 추이 (점 + 월 중앙값) ── */
-  function strip(done){
-    const el=$('#strip');
+  function trend(done){
+    const week=state.trend==='week';
+    $('#strip-title').textContent=week?'주차별 처리기간 추이':'월별 처리기간 추이';
+    $('#strip-desc').textContent=`심사완료 ${week?'주(월요일 시작)':'월'}별 각 건의 처리기간(점)과 ${week?'주':'월'} 중앙값(굵은 선) · 끝점은 심사완료일(없으면 적합통보일)`;
+    const dot=c=>`<i class="sw" style="background:${c};border-radius:50%"></i>`;
+    $('#strip-legend').innerHTML=`<span>${dot('var(--s1)')}접수일 기준</span><span>${dot('var(--s3)')}심사접수일 기준</span><span><i class="sw-med"></i>${week?'주':'월'} 중앙값</span><span><i class="sw-line"></i>기본 마감 15WD</span>`;
+    root.querySelectorAll('[data-trend]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.trend===state.trend)));
+    return strip(done,week);
+  }
+
+  function strip(done,week){
+    const el=$('#strip'),DAYMS=86400000;
     if(!done.length){el.innerHTML='<div class="empty">선택 기간에 완료된 건이 없습니다.</div>';return;}
-    // 같은 달 칸을 반으로 나눠 왼쪽=접수일 기준(파랑), 오른쪽=심사접수일 기준(빨강) 점과 월 중앙값을 그린다.
+    // 같은 달(또는 주) 칸을 반으로 나눠 왼쪽=접수일 기준(파랑), 오른쪽=심사접수일 기준(빨강) 점과 중앙값을 그린다.
     const SER=[{k:'elapsedWD',c:'var(--s1)',n:'접수일 기준',from:r=>r.received},{k:'reviewWD',c:'var(--s3)',n:'심사접수일 기준',from:r=>r.review}];
-    const ms=months(done.map(r=>ym(r.fin)));
+    const mon=s=>{const t=Date.parse(s+'T00:00:00Z');return new Date(t-((new Date(t).getUTCDay()+6)%7)*DAYMS).toISOString().slice(0,10);};
+    const keyOf=week?r=>mon(r.fin):r=>ym(r.fin);
+    let ms;
+    if(week){
+      const ks=done.map(keyOf).sort();ms=[];
+      for(let t=Date.parse(ks[0]+'T00:00:00Z');t<=Date.parse(ks[ks.length-1]+'T00:00:00Z');t+=7*DAYMS)ms.push(new Date(t).toISOString().slice(0,10));
+    }else ms=months(done.map(keyOf));
+    const label=k=>week?`${+k.slice(5,7)}/${+k.slice(8,10)}`:monthLabel(k);
+    const tipLabel=k=>week?`${label(k)} 주`:`${monthLabel(k)}월`;
     const w=W(el),h=230,m={t:16,r:12,b:30,l:34};
     const all=done.flatMap(r=>SER.map(z=>r[z.k])).filter(v=>v!==null&&v!==undefined);
     const yMax=niceMax(Math.max(...all,BASIC+5),4);
     const {y,g}=frame(w,h,m,yMax,ticks(yMax),v=>v);
     const iw=w-m.l-m.r,band=iw/ms.length;
     let s=g;
-    const by={};done.forEach(r=>{(by[ym(r.fin)]=by[ym(r.fin)]||[]).push(r);});
+    const by={};done.forEach(r=>{(by[keyOf(r)]=by[keyOf(r)]||[]).push(r);});
     ms.forEach((k,i)=>{
       const rs=by[k]||[];
       SER.forEach((z,si)=>{
@@ -281,17 +306,18 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
         pts.forEach(r=>{
           const hh=[...String(r.id)+si].reduce((a,c)=>(a*31+c.charCodeAt(0))%9973,7)/9973;
           const jx=pts.length>1?cx-spread/2+spread*hh:cx,cy=y(r[z.k]);
-          s+=`<circle cx="${jx}" cy="${cy}" r="3.5" fill="${z.c}" fill-opacity=".55" stroke="var(--card)" stroke-width="1"/>`;
+          s+=`<circle cx="${jx}" cy="${cy}" r="${week?2.8:3.5}" fill="${z.c}" fill-opacity=".55" stroke="var(--card)" stroke-width="1"/>`;
           s+=`<circle class="hit" cx="${jx}" cy="${cy}" r="7" data-tip="${esc(`${r.company}\n${z.n} ${r[z.k]}WD (${z.from(r)} → ${r.fin})`)}"/>`;
         });
         if(pts.length){
           const md=median(pts.map(r=>r[z.k])),half=Math.min(band*.17,16);
           s+=`<line x1="${cx-half}" x2="${cx+half}" y1="${y(md)}" y2="${y(md)}" stroke="${z.c}" stroke-width="3" stroke-linecap="round"/>`;
-          s+=`<rect class="hit" x="${cx-band/4}" y="${y(md)-5}" width="${band/2}" height="10" data-tip="${esc(`${monthLabel(k)}월 · ${z.n} ${pts.length}건\n중앙값 ${n1(md)}WD · 평균 ${n1(avg(pts.map(r=>r[z.k])))}WD`)}"/>`;
+          s+=`<rect class="hit" x="${cx-band/4}" y="${y(md)-5}" width="${band/2}" height="10" data-tip="${esc(`${tipLabel(k)} · ${z.n} ${pts.length}건\n중앙값 ${n1(md)}WD · 평균 ${n1(avg(pts.map(r=>r[z.k])))}WD`)}"/>`;
         }
       });
-      const every=ms.length>12?2:1;
-      if(i%every===0)s+=`<text x="${m.l+band*(i+.5)}" y="${h-12}" text-anchor="middle">${monthLabel(k)}</text>`;
+      const every=Math.max(1,Math.ceil(ms.length/(w/56)));
+      const newMonth=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));
+      if(i%every===0)s+=`<text x="${m.l+band*(i+.5)}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}</text>`;
     });
     s+=`<line x1="${m.l}" x2="${w-m.r}" y1="${y(BASIC)}" y2="${y(BASIC)}" stroke="var(--ink)" stroke-dasharray="4 3" stroke-width="1.2"/><text class="ann" x="${m.l+4}" y="${y(BASIC)-4}">15WD</text>`;
     el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="월별 처리기간 추이: 접수일 기준과 심사접수일 기준">${s}</svg>`;
@@ -439,7 +465,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   function render(){
     if(!payload)return;
     const S=sets();
-    tiles(S);hist(S.done);cdf(S.done);strip(S.done);monthly(S.recv,S.done);comply(S);heat(S);table(S);
+    tiles(S);hist(S.done);cdf(S.done);trend(S.done);monthly(S.recv,S.done);comply(S);heat(S);table(S);
   }
 
   function load(){
@@ -452,6 +478,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   function fail(e){$('#error').hidden=false;$('#error').textContent='불러오기 실패: '+(e&&e.message||e);$('#read-time').textContent='불러오기 실패';}
 
   $('#period').addEventListener('change',e=>{state.period=e.target.value;render();});
+  root.querySelectorAll('[data-trend]').forEach(b=>b.addEventListener('click',()=>{state.trend=b.dataset.trend;trend(sets().done);}));
   $('#owner').addEventListener('change',e=>{state.owner=e.target.value;render();});
   $('#refresh').addEventListener('click',load);
   let lastW=0;new ResizeObserver(en=>{const w=en[0].contentRect.width;if(Math.abs(w-lastW)>2){lastW=w;render();}}).observe(root);
