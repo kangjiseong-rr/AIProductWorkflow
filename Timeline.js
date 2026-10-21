@@ -1,5 +1,5 @@
 /**
- * Timeline.js — 관리자 전용 "심사 일정 타임라인"·"심사 현황 대시보드" 다이얼로그
+ * Timeline.js — 관리자 전용 "심사 일정 타임라인"·"심사 현황 대시보드" (웹 앱, 새 탭)
  *
  * 일정관리 시트를 헤더명 기준으로 읽어 두 화면(TimelineView.html, DashboardView.html)이
  * 같은 자료를 쓰도록 한다. 경과·잔여·처리기간은 마감 계산(WORKDAY)과 같은 기준인
@@ -25,27 +25,91 @@ const 타임라인_컬럼 = {
 const 타임라인_날짜키 = ['received', 'review', 'original', 'supplement', 'extension', 'notice'];
 const 타임라인_하루 = 86400000;
 
+// 웹 앱 배포 ID (Apps Script 프로젝트 scriptId별). 같은 배포를 버전만 갱신해 쓰므로 URL은 바뀌지 않는다.
+const 심사일정웹앱배포 = {
+  '1bx5uSpQYH1EHz39W_OcyZRcP2EVKX4AzRObZyvcAyO60XjpkirllRbE3': 'AKfycbx2k9LCdYyg-udjEgwDsMZ45Zn7TC49wjONd3hUOAm87SW9qeDhEjRtIcleDLMpHFSF', // dev
+  '1UXFGYy3N5UkyqLkZdsd6TwVsgS583kMUmi-BtVPLvJ6zmew7ccPtRior': 'AKfycbwJJXf9RcMoGwFWRteGcKA7fId5oKEJ8vvKKWG_P9UTjaWD3IhAHk-prTm1F5-ikI26OA', // prod
+};
+const 심사일정_시트ID속성 = 'SCHEDULE_SPREADSHEET_ID';
+
 function 심사일정타임라인열기() {
-  _심사일정창열기_('TimelineView', 'AI확인제 심사 일정 타임라인');
+  _심사일정새탭열기_('timeline');
 }
 
 function 심사현황대시보드열기() {
-  _심사일정창열기_('DashboardView', 'AI확인제 심사 현황 대시보드');
+  _심사일정새탭열기_('dashboard');
 }
 
-function _심사일정창열기_(파일명, 제목) {
+/** 시트 메뉴에서 웹 앱을 새 탭으로 연다. 팝업이 막히면 버튼을 대신 보여준다. */
+function _심사일정새탭열기_(화면) {
+  const ui = SpreadsheetApp.getUi();
   if (!_관리자여부()) {
-    SpreadsheetApp.getUi().alert('관리자만 볼 수 있는 화면입니다.');
+    ui.alert('관리자만 볼 수 있는 화면입니다.');
     return;
   }
-  const html = HtmlService.createHtmlOutputFromFile(파일명).setWidth(1280).setHeight(820);
-  SpreadsheetApp.getUi().showModalDialog(html, 제목);
+  // 웹 앱에는 "열린 시트"가 없으므로 이 시트의 ID를 기억해 둔다(바뀔 때만 기록).
+  const 속성 = PropertiesService.getScriptProperties();
+  const id = SpreadsheetApp.getActiveSpreadsheet().getId();
+  if (속성.getProperty(심사일정_시트ID속성) !== id) 속성.setProperty(심사일정_시트ID속성, id);
+
+  const 기본URL = _심사일정웹앱URL_();
+  if (!기본URL) {
+    ui.alert('심사 일정 웹 앱이 아직 배포되지 않았습니다. 관리자에게 웹 앱 배포를 요청하세요.');
+    return;
+  }
+  const url = JSON.stringify(`${기본URL}?view=${화면}`).replace(/</g, '\u003c');
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font:13px Arial,\'Noto Sans KR\',sans-serif;padding:4px 6px">' +
+    '<p id="m" style="margin:0 0 12px">새 탭을 여는 중입니다…</p>' +
+    '<a id="a" target="_blank" rel="noopener" style="display:inline-block;padding:7px 14px;border-radius:6px;background:#306cc5;color:#fff;text-decoration:none">새 탭에서 열기</a></div>' +
+    `<script>const u=${url};const a=document.getElementById('a');a.href=u;` +
+    'a.addEventListener("click",()=>setTimeout(()=>google.script.host.close(),300));' +
+    'const w=window.open(u,"_blank");' +
+    'if(w){google.script.host.close();}else{document.getElementById("m").textContent="브라우저가 새 탭을 막았습니다. 아래 버튼을 눌러 주세요.";}</script>'
+  ).setWidth(360).setHeight(120);
+  ui.showModalDialog(html, 화면 === 'dashboard' ? '심사 현황 대시보드' : '심사 일정 타임라인');
+}
+
+function _심사일정웹앱URL_() {
+  const 배포ID = 심사일정웹앱배포[ScriptApp.getScriptId()];
+  if (배포ID) {
+    // 도메인 전용 웹 앱은 /a/macros/<도메인>/ 주소로 열어야 여러 계정이 로그인된 브라우저에서도
+    // 회사 계정으로 열린다(일반 /macros/s/ 주소는 "현재 파일을 열 수 없습니다"가 날 수 있음).
+    let 도메인 = '';
+    try { 도메인 = (Session.getActiveUser().getEmail() || '').split('@')[1] || ''; } catch (e) {}
+    const 경로 = 도메인 && 도메인 !== 'gmail.com' ? `a/macros/${도메인}` : 'macros';
+    return `https://script.google.com/${경로}/s/${배포ID}/exec`;
+  }
+  try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
+
+/** 시트 메뉴에서 실행되면 열린 시트, 웹 앱에서는 메뉴가 기억해 둔 시트를 연다. */
+function _대상스프레드시트_() {
+  const 활성 = SpreadsheetApp.getActiveSpreadsheet();
+  if (활성) return 활성;
+  const id = PropertiesService.getScriptProperties().getProperty(심사일정_시트ID속성);
+  if (!id) throw new Error('시트 메뉴에서 타임라인이나 대시보드를 한 번 연 뒤 다시 시도하세요.');
+  return SpreadsheetApp.openById(id);
+}
+
+/** 웹 앱 진입점 — ?view=timeline | dashboard. 실행 계정(접속한 사용자) 기준으로 관리자만 허용. */
+function doGet(e) {
+  const 화면 = e && e.parameter && e.parameter.view === 'dashboard' ? 'dashboard' : 'timeline';
+  if (!_관리자여부()) {
+    return HtmlService.createHtmlOutput('<p style="font:14px Arial,sans-serif;padding:24px">관리자만 볼 수 있는 화면입니다.</p>')
+      .setTitle('접근 권한 없음');
+  }
+  const 템플릿 = HtmlService.createTemplateFromFile(화면 === 'dashboard' ? 'DashboardView' : 'TimelineView');
+  템플릿.appUrl = _심사일정웹앱URL_();
+  return 템플릿.evaluate()
+    .setTitle(화면 === 'dashboard' ? 'AI확인제 심사 현황' : 'AI확인제 심사 일정')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 /** 타임라인·대시보드에서 google.script.run으로 호출 — 일정관리 시트를 화면용 자료로 변환한다. */
 function 심사일정자료조회() {
   if (!_관리자여부()) throw new Error('관리자만 조회할 수 있습니다.');
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _대상스프레드시트_();
   const 시트 = ss.getSheetByName(SHEET.일정관리);
   if (!시트) throw new Error('일정관리 시트를 찾을 수 없습니다.');
 

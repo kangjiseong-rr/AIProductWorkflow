@@ -548,7 +548,8 @@ function _관리자여부() {
 
   // 목록이 비어 있으면(설정 전) 스프레드시트 소유자를 관리자로 간주
   try {
-    const owner = SpreadsheetApp.getActiveSpreadsheet().getOwner();
+    // 웹 앱(새 탭)에는 열린 시트가 없으므로 메뉴가 기억해 둔 시트를 쓴다(Timeline.js).
+    const owner = _대상스프레드시트_().getOwner();
     const ownerEmail = owner ? (owner.getEmail() || '').toLowerCase() : '';
     if (ownerEmail && 이메일) return 이메일 === ownerEmail;
   } catch (e) {}
