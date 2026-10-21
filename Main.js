@@ -51,6 +51,9 @@ function loadConfig() {
 
     // ── 관리자 이메일 목록 (초기화·재생성 등 위험 메뉴를 볼 수 있는 계정) ──
     관리자이메일: [],
+
+    // ── 조회자 이메일 목록 (타임라인·대시보드 조회만 허용, 관리자 메뉴는 안 보임) ──
+    조회자이메일: [],
   };
 
   try {
@@ -66,6 +69,10 @@ function loadConfig() {
     if (properties.ADMIN_EMAILS) {
       // 쉼표로 구분된 관리자 이메일 목록 파싱
       baseConfig.관리자이메일 = properties.ADMIN_EMAILS.split(',').map(function(s) { return s.trim(); });
+    }
+    if (properties.VIEWER_EMAILS) {
+      // 쉼표로 구분된 조회자 이메일 목록 파싱
+      baseConfig.조회자이메일 = properties.VIEWER_EMAILS.split(',').map(function(s) { return s.trim(); });
     }
   } catch (e) {
     if (typeof Logger !== 'undefined') {
@@ -493,11 +500,19 @@ function _드라이브ID추출(입력) {
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   const 관리자 = _관리자여부();
+  const 조회자 = !관리자 && _조회자여부_();
 
   const menu = ui.createMenu('🔍 인공지능심사관리')
     // ── 심사원 공통 메뉴 ──
     .addItem('📑 기술심사보고서 생성 (선택 행)', '증적명세서생성')
     .addItem('📧 기술심사 일정 확인 요청 메일 초안 (선택 행)', '기술심사일정확인요청메일초안');
+
+  // ── 조회자 메뉴 (타임라인·대시보드만) ──
+  if (조회자) {
+    menu.addSeparator()
+      .addItem('📊 심사 일정 타임라인', '심사일정타임라인열기')
+      .addItem('📈 심사 현황 대시보드', '심사현황대시보드열기');
+  }
 
   // ── 관리자 전용 메뉴 (관리자가 아니면 아예 표시 안 함) ──
   if (관리자) {
@@ -529,6 +544,23 @@ function onOpen() {
   }
 
   menu.addToUi();
+}
+
+/**
+ * 조회자: 스크립트 속성 VIEWER_EMAILS에 등록된 계정. 타임라인·대시보드 조회만 허용한다.
+ * 목록이 비어 있으면 조회자는 없다(관리자만 조회).
+ */
+function _조회자여부_() {
+  let 이메일 = '';
+  try { 이메일 = (Session.getActiveUser().getEmail() || '').toLowerCase(); } catch (e) {}
+  if (!이메일) return false;
+  const 목록 = (CONFIG.조회자이메일 || []).map(e => String(e).toLowerCase().trim()).filter(Boolean);
+  return 목록.indexOf(이메일) >= 0;
+}
+
+/** 타임라인·대시보드 조회 권한 = 관리자 또는 조회자 */
+function _조회권한여부() {
+  return _관리자여부() || _조회자여부_();
 }
 
 /**

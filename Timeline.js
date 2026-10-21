@@ -45,8 +45,8 @@ function 심사현황대시보드열기() {
 /** 시트 메뉴에서 웹 앱을 새 탭으로 연다. 팝업이 막히면 버튼을 대신 보여준다. */
 function _심사일정새탭열기_(화면) {
   const ui = SpreadsheetApp.getUi();
-  if (!_관리자여부()) {
-    ui.alert('관리자만 볼 수 있는 화면입니다.');
+  if (!_조회권한여부()) {
+    ui.alert('관리자 또는 조회자로 등록된 계정만 볼 수 있는 화면입니다.');
     return;
   }
   // 웹 앱에는 "열린 시트"가 없으므로 이 시트의 ID를 기억해 둔다(바뀔 때만 기록).
@@ -94,11 +94,14 @@ function _대상스프레드시트_() {
   return SpreadsheetApp.openById(id);
 }
 
-/** 웹 앱 진입점 — ?view=timeline | dashboard. 실행 계정(접속한 사용자) 기준으로 관리자만 허용. */
+/**
+ * 웹 앱 진입점 — ?view=timeline | dashboard.
+ * 배포한 계정 권한으로 실행되며(조회자에게 권한 동의 요구 없음), 접속한 사람의 이메일로 관리자·조회자만 허용한다.
+ */
 function doGet(e) {
   const 화면 = e && e.parameter && e.parameter.view === 'dashboard' ? 'dashboard' : 'timeline';
-  if (!_관리자여부()) {
-    return HtmlService.createHtmlOutput('<p style="font:14px Arial,sans-serif;padding:24px">관리자만 볼 수 있는 화면입니다.</p>')
+  if (!_조회권한여부()) {
+    return HtmlService.createHtmlOutput('<p style="font:14px Arial,sans-serif;padding:24px">관리자 또는 조회자로 등록된 계정만 볼 수 있는 화면입니다.</p>')
       .setTitle('접근 권한 없음');
   }
   const 템플릿 = HtmlService.createTemplateFromFile(화면 === 'dashboard' ? 'DashboardView' : 'TimelineView');
@@ -110,7 +113,7 @@ function doGet(e) {
 
 /** 타임라인·대시보드에서 google.script.run으로 호출 — 일정관리 시트를 화면용 자료로 변환한다. */
 function 심사일정자료조회() {
-  if (!_관리자여부()) throw new Error('관리자만 조회할 수 있습니다.');
+  if (!_조회권한여부()) throw new Error('관리자 또는 조회자로 등록된 계정만 조회할 수 있습니다.');
   const ss = _대상스프레드시트_();
   const 시트 = ss.getSheetByName(SHEET.일정관리);
   if (!시트) throw new Error('일정관리 시트를 찾을 수 없습니다.');
