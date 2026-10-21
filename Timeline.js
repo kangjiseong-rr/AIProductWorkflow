@@ -130,6 +130,8 @@ function 심사일정자료조회() {
     lastColumn: columnLetter(Math.max(1, 시트.getLastColumn())),
     holidayWarning: 휴일.연도.has(Number(오늘.slice(0, 4)))
       ? '' : `공휴일 시트에 ${오늘.slice(0, 4)}년 공휴일이 없어 WD가 주말만 제외하고 계산되었습니다.`,
+    // 대시보드 일별 히트맵에서 공휴일 칸을 표시하기 위한 목록(yyyy-MM-dd)
+    holidays: [...휴일.날짜].sort(),
     records: [],
   };
   const 마지막행 = 시트.getLastRow();
