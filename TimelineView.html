@@ -45,10 +45,19 @@ body{background:#fff}
 .message{font-size:12px;padding:6px 0;color:var(--past)}
 .scroll{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--line);position:relative;overscroll-behavior:contain}
 .scroll.dragging{cursor:grabbing;user-select:none}
-.grid-head,.case summary{display:grid;grid-template-columns:var(--lw) var(--rw) var(--lane);width:max-content}
+.grid-head,.case summary{display:grid;grid-template-columns:var(--nw) var(--lw) var(--rw) var(--lane);width:max-content}
 .grid-head{position:sticky;top:0;z-index:10;background:var(--soft);border-bottom:1px solid var(--line)}
-.col-name{padding:4px 10px 4px 2px;display:flex;flex-direction:column;justify-content:center;position:sticky;left:0;z-index:12;background:var(--soft)}
-.rem-head{display:flex;align-items:center;justify-content:center;font-size:12px;position:sticky;left:var(--lw);z-index:12;background:var(--soft);border-right:1px solid var(--line)}
+.no-head,.no{position:sticky;left:0;z-index:12;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;border-right:1px solid var(--line)}
+.no-head{background:var(--soft);font-size:12px}
+.no{z-index:6;background:var(--bg);font-weight:600;color:var(--sub)}
+.resizer{position:absolute;top:0;right:-5px;width:10px;height:100%;cursor:col-resize;z-index:14;touch-action:none}
+.resizer::after{content:"";position:absolute;left:4px;top:8px;bottom:8px;width:2px;border-radius:1px;background:var(--line)}
+.resizer:hover::after,.resizer.on::after{background:var(--blue)}
+.rz-guide{position:fixed;width:2px;background:var(--blue);z-index:50;pointer-events:none}
+.rz-tip{position:fixed;z-index:51;pointer-events:none;background:var(--ink);color:#fff;font-size:11px;padding:2px 6px;border-radius:4px;transform:translate(6px,0)}
+body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!important}
+.col-name{padding:4px 10px 4px 8px;display:flex;flex-direction:column;justify-content:center;position:sticky;left:var(--nw);z-index:12;background:var(--soft)}
+.rem-head{display:flex;align-items:center;justify-content:center;font-size:12px;position:sticky;left:calc(var(--nw) + var(--lw));z-index:12;background:var(--soft);border-right:1px solid var(--line)}
 .axis{height:44px;position:relative;cursor:grab}
 .tick{position:absolute;bottom:6px;font-size:11px;color:var(--sub);white-space:nowrap;transform:translateX(-50%);font-variant-numeric:tabular-nums}
 .tick.month{font-weight:600;color:var(--ink)}
@@ -56,17 +65,17 @@ body{background:#fff}
 .case{border-bottom:1px solid var(--line);width:max-content}
 .case summary{list-style:none;cursor:pointer;min-height:58px}
 .case summary::-webkit-details-marker{display:none}
-.label{padding:5px 8px 5px 2px;min-width:0;position:sticky;left:0;z-index:6;background:var(--bg);display:flex;flex-direction:column;justify-content:center}
+.label{padding:5px 8px 5px 8px;min-width:0;position:sticky;left:var(--nw);z-index:6;background:var(--bg);display:flex;flex-direction:column;justify-content:center}
 .company{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .product{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .meta{font-size:11px;color:var(--sub);display:flex;gap:5px;align-items:center;white-space:nowrap;overflow:hidden}
 .dot{width:6px;height:6px;border-radius:50%;background:var(--case-color);flex-shrink:0}
-.remaining{display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;position:sticky;left:var(--lw);z-index:6;background:var(--bg);border-right:1px solid var(--line)}
+.remaining{display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;position:sticky;left:calc(var(--nw) + var(--lw));z-index:6;background:var(--bg);border-right:1px solid var(--line)}
 .remaining strong{font-size:15px;font-weight:600;line-height:1.2}
 .remaining small{font-size:11px;color:var(--sub)}
 .remaining.late strong{color:var(--past)}
 .remaining.soon strong{color:var(--amber)}
-.case summary:hover,.case[open] summary,.case summary:hover .label,.case[open] summary .label,.case summary:hover .remaining,.case[open] summary .remaining{background:var(--soft)}
+.case summary:hover,.case[open] summary,.case summary:hover .label,.case[open] summary .label,.case summary:hover .no,.case[open] summary .no,.case summary:hover .remaining,.case[open] summary .remaining{background:var(--soft)}
 .lane{position:relative;overflow:hidden;min-height:58px}
 .vline{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);opacity:.6}
 .vline.month{border-left-color:#c3ccd8;opacity:1}
@@ -106,7 +115,7 @@ body{background:#fff}
   <div id="error" class="message" role="alert" hidden></div>
   <div id="warning" class="message" role="status" hidden></div>
   <div class="tools">
-    <label class="field search"><span>기업명 · 제품명 · 접수번호 · 심사원</span><input type="search" id="search" placeholder="검색어 입력" autocomplete="off"></label>
+    <label class="field search"><span>순번 · 기업명 · 제품명 · 접수번호 · 심사원</span><input type="search" id="search" placeholder="검색어 입력" autocomplete="off"></label>
     <label class="field"><span>담당 심사원</span><select id="owner"><option value="">전체 심사원</option></select></label>
     <label class="field"><span>한 화면 폭</span><select id="span"><option value="28">4주</option><option value="56" selected>8주</option><option value="84">12주</option><option value="all">전체 기간 한눈에</option></select></label>
   </div>
@@ -123,8 +132,8 @@ body{background:#fff}
     <span><i class="k-now"></i>기준일(오늘)</span>
   </div>
   <div class="scroll" id="scroll">
-    <div class="grid-head"><div class="col-name"><span>기업 / 제품</span><span class="sub" id="caption"></span></div><div class="rem-head">잔여일</div><div class="axis" id="axis"></div></div>
-    <div id="rows"><div class="empty">시트에서 일정을 불러오는 중입니다.</div></div>
+    <div class="grid-head"><div class="no-head">순번</div><div class="col-name"><span>기업 / 제품</span><span class="sub" id="caption"></span><div class="resizer" id="resizer" title="끌어서 폭 조절 · 더블클릭하면 기본 폭"></div></div><div class="rem-head">잔여일</div><div class="axis" id="axis"></div></div>
+    <div class="rz-guide" id="rz-guide" hidden></div><div class="rz-tip" id="rz-tip" hidden></div><div id="rows"><div class="empty">시트에서 일정을 불러오는 중입니다.</div></div>
   </div>
   <div class="foot"><span id="count"></span><span>경과·잔여는 영업일(WD: 주말·공휴일 제외) · 잔여 = 오늘 → 현재 마감(연장마감일 우선) · 마감 임박 순 정렬 · 좌우는 스크롤·Shift+휠·끌기로 이동 · 행을 누르면 상세정보</span></div>
 </section>
@@ -145,7 +154,9 @@ body{background:#fff}
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let BASE=null,SOURCE='',GID='',LASTCOL='N',data=[],loading=false;
   const state={scope:'active',owner:'',search:'',span:56};
-  const RW=64;
+  const RW=64,NW=52,LW_DEFAULT=200,LW_MIN=120,LW_MAX=560,LW_KEY='timeline.labelWidth';
+  // 기업/제품 열 폭: 사용자가 끌어서 바꾼 값을 이 브라우저에 기억한다.
+  let labelW=(()=>{try{const v=Number(localStorage.getItem(LW_KEY));return v>=LW_MIN&&v<=LW_MAX?v:LW_DEFAULT;}catch(e){return LW_DEFAULT;}})();
   let view=null,anchor=null;
   const monday=t=>t-((new Date(t).getUTCDay()+6)%7)*DAY;
   const color=r=>r.done?'var(--green)':r.cancel?'var(--wait)':r.status==='보완'?'var(--amber)':r.status==='대기'?'var(--wait)':'var(--blue)';
@@ -178,7 +189,7 @@ body{background:#fff}
   function matching(){
     return data.filter(r=>(state.scope==='all'||(state.scope==='active'&&!r.done&&!r.cancel)||(state.scope==='done'&&r.done)||(state.scope==='cancel'&&r.cancel))
         &&(!state.owner||r.reviewer===state.owner)
-        &&(!state.search||[r.id,r.company,r.product,r.reviewer].join(' ').toLocaleLowerCase().includes(state.search)))
+        &&(!state.search||[r.seq,r.id,r.company,r.product,r.reviewer].join(' ').toLocaleLowerCase().includes(state.search)))
       .sort((a,b)=>{
         const ac=a.done||a.cancel,bc=b.done||b.cancel;
         if(ac!==bc)return ac?1:-1;
@@ -221,11 +232,11 @@ body{background:#fff}
     const keep=anchor??dateAt(.5);
     const list=matching();
     const [lo,hi]=domain(list),days=(hi-lo)/DAY;
-    const total=sc().clientWidth,LW=Math.round(Math.max(220,Math.min(380,total*.28))),vis=Math.max(200,total-LW-RW);
+    const total=sc().clientWidth,LW=Math.round(Math.min(labelW,Math.max(LW_MIN,total-NW-RW-200))),vis=Math.max(200,total-NW-LW-RW);
     const px=state.span==='all'?vis/days:vis/Number(state.span),laneW=Math.max(vis,Math.round(days*px));
     view={lo,hi,px,vis,laneW};
-    root.style.setProperty('--lw',LW+'px');root.style.setProperty('--rw',RW+'px');
-    root.style.setProperty('--lane',laneW+'px');root.style.setProperty('--view',(LW+RW+vis)+'px');
+    root.style.setProperty('--nw',NW+'px');root.style.setProperty('--lw',LW+'px');root.style.setProperty('--rw',RW+'px');
+    root.style.setProperty('--lane',laneW+'px');root.style.setProperty('--view',(NW+LW+RW+vis)+'px');
     const pos=t=>(t-lo)/DAY*px,inside=t=>t!==null&&t>=lo&&t<=hi;
     const seg=(a,b,cls)=>{
       if(a===null||b===null||b<=a)return '';
@@ -272,11 +283,11 @@ body{background:#fff}
       const issues=(r.dateIssues||[]).map(esc).join(' · ');
       const product=String(r.product||'').replace(/\s*\n\s*/g,' / ');
       return `<details class="case" data-id="${esc(r.id)}"${opened.has(String(r.id))?' open':''} style="--case-color:${color(r)}">`
-        +`<summary title="${esc(r.company+' / '+product)}"><div class="label"><div class="company">${esc(r.company)}</div><div class="product">${esc(product)}</div>`
+        +`<summary title="${esc(r.company+' / '+product)}"><div class="no">${esc(r.seq)}</div><div class="label"><div class="company">${esc(r.company)}</div><div class="product">${esc(product)}</div>`
         +`<div class="meta"><span>${esc(r.reviewer||'미배정')}</span><i class="dot"></i><span>${esc(r.status)}</span><span>· ${esc(r.id)}</span></div></div>`
         +`<div class="remaining${remainCls}"><strong>${remainText}</strong><small>${remainSub}</small></div>`
         +`<div class="lane">${grid}${guides}${bars}${markers}<span class="bar-label" data-s="${ls}" data-e="${le}" style="left:${ls}px">${esc(label)}</span></div></summary>`
-        +`<div class="info"><div class="info-title">${esc(r.product)}</div><div>${esc(r.id)} · ${esc(r.company)} · 제품수 ${esc(r.count)} · 담당 ${esc(r.reviewer||'미배정')} · <a href="${esc(rowUrl)}" target="_blank" rel="noopener">원본 행</a></div>`
+        +`<div class="info"><div class="info-title">${esc(r.product)}</div><div>순번 ${esc(r.seq)} · ${esc(r.id)} · ${esc(r.company)} · 제품수 ${esc(r.count)} · 담당 ${esc(r.reviewer||'미배정')} · <a href="${esc(rowUrl)}" target="_blank" rel="noopener">원본 행</a></div>`
         +`<div class="info-dates">${dates}</div>${issues?`<div class="issue">${issues}</div>`:''}<div class="info-note">${r.note?'특이사항: '+esc(r.note):'특이사항 미입력'}</div></div></details>`;
     }).join(''):`<div class="empty">${loading?'시트에서 일정을 불러오는 중입니다.':'조건에 맞는 일정이 없습니다.'}</div>`;
     $('#count').textContent=`${list.length}건 표시`;
@@ -331,6 +342,36 @@ body{background:#fff}
   });
   window.addEventListener('pointerup',()=>{if(drag){drag=null;sc().classList.remove('dragging');}});
   sc().addEventListener('click',e=>{if(dragged){e.preventDefault();e.stopPropagation();dragged=false;}},true);
+  // 기업/제품 열 머리 오른쪽 경계를 끌어 폭 조절. 끄는 동안은 안내선만 움직이고(행 재배치 없음)
+  // 놓을 때 한 번만 적용한다. 포인터가 조절선을 벗어나도 창 전체에서 움직임을 받는다.
+  const rz=$('#resizer'),guide=$('#rz-guide'),tip=$('#rz-tip');let rzStart=null,rzW=labelW;
+  rz.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    e.preventDefault();e.stopPropagation();
+    const box=sc().getBoundingClientRect();
+    rzStart={x:e.clientX,w:labelW,base:box.left+NW,top:box.top,h:sc().clientHeight};rzW=labelW;
+    rz.classList.add('on');document.body.classList.add('resizing');
+    guide.style.top=rzStart.top+'px';guide.style.height=rzStart.h+'px';
+    moveGuide();guide.hidden=false;tip.hidden=false;
+  });
+  function moveGuide(){
+    const x=rzStart.base+rzW;
+    guide.style.left=x+'px';tip.style.left=x+'px';tip.style.top=(rzStart.top+6)+'px';tip.textContent=rzW+'px';
+  }
+  window.addEventListener('pointermove',e=>{
+    if(!rzStart)return;
+    rzW=Math.round(Math.max(LW_MIN,Math.min(LW_MAX,rzStart.w+e.clientX-rzStart.x)));
+    moveGuide();
+  });
+  const rzEnd=()=>{
+    if(!rzStart)return;
+    rzStart=null;guide.hidden=true;tip.hidden=true;rz.classList.remove('on');document.body.classList.remove('resizing');
+    if(rzW===labelW)return;
+    labelW=rzW;try{localStorage.setItem(LW_KEY,String(labelW));}catch(e){}
+    render();
+  };
+  window.addEventListener('pointerup',rzEnd);window.addEventListener('pointercancel',rzEnd);window.addEventListener('blur',rzEnd);
+  rz.addEventListener('dblclick',()=>{labelW=LW_DEFAULT;try{localStorage.removeItem(LW_KEY);}catch(e){}render();});
   let lastWidth=0;
   new ResizeObserver(en=>{const w=en[0].contentRect.width;if(Math.abs(w-lastWidth)>2){lastWidth=w;render();}}).observe(root);
   load();
