@@ -49,6 +49,18 @@ body{background:#fcfcfb}
 .stack-legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px}
 .stack-legend b{font-variant-numeric:tabular-nums}
 .full{grid-column:1/-1}
+.heat-wrap{overflow-x:auto;padding-bottom:4px}
+.heat{border-collapse:separate;border-spacing:2px;font-size:12px;font-variant-numeric:tabular-nums;width:auto}
+.heat th,.heat td{border:0;padding:0;text-align:center;white-space:nowrap}
+.heat thead th{font-weight:400;color:var(--sub);font-size:11px;background:none;cursor:default;padding:0 2px 4px;min-width:34px}
+.heat thead th.mo{color:var(--ink);font-weight:600}
+.heat th.name{text-align:left;padding:0 10px 0 0;color:var(--ink);font-weight:600;background:var(--card);position:sticky;left:0;z-index:2}
+.heat td.c{width:34px;height:28px;border-radius:4px;background:#f3f2ef;color:var(--muted)}
+.heat td.tot{padding:0 6px 0 10px;font-weight:600;text-align:right}
+.heat tr.sum td.c{background:none;color:var(--sub);font-weight:600}
+.heat thead th.now{color:var(--s1);font-weight:600}
+.heat-legend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sub);margin:4px 0 6px}
+.heat-legend i{display:inline-block;width:22px;height:12px;border-radius:3px}
 .tbl-wrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
@@ -85,6 +97,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <div class="card"><h3>월별 접수·완료 건수</h3><div class="desc">접수는 접수일자 월, 완료는 적합통보일 월 기준</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>접수</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div>
       <div class="plot" id="monthly"></div></div>
+    <div class="card full"><h3>심사원별 주차별 배정 현황</h3><div class="desc">심사접수일(없으면 접수일자)이 속한 주(월요일 시작) 기준 배정 건수 · 칸에 마우스를 올리면 배정된 건 목록</div>
+      <div class="heat-legend" id="heat-legend"></div>
+      <div class="heat-wrap" id="heat"></div></div>
     <div class="card full"><h3>마감 준수 현황</h3><div class="desc">기간 내 완료 건의 적합통보일을 마감예정일·연장마감일과 비교</div>
       <div id="comply"></div></div>
     <div class="card full"><h3>심사원별 현황</h3><div class="desc">진행·초과·임박은 오늘 기준, 완료·처리기간·준수율은 선택 기간 기준 · 열 제목을 누르면 정렬</div>
@@ -332,10 +347,41 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     }));
   }
 
+  /* ── 심사원별 주차별 배정 (히트맵 표) ── */
+  const HEAT=[['#f3f2ef','var(--muted)'],['#cde2fb','#0b0b0b'],['#9ec5f4','#0b0b0b'],['#6da7ec','#0b0b0b'],['#3987e5','#fff'],['#256abf','#fff'],['#184f95','#fff']];
+  const heatStep=n=>n<=0?0:n>=8?6:n>=6?5:n;
+  function heat(S){
+    const el=$('#heat'),DAYMS=86400000;
+    const mon=s=>{const t=Date.parse(s+'T00:00:00Z');return new Date(t-((new Date(t).getUTCDay()+6)%7)*DAYMS).toISOString().slice(0,10);};
+    const assigned=S.mine.filter(r=>inPeriod(r.review||r.received));
+    if(!assigned.length){el.innerHTML='<div class="empty">선택 기간에 배정된 건이 없습니다.</div>';$('#heat-legend').innerHTML='';return;}
+    // 기간 앞쪽의 배정 없는 주는 생략하고 첫 배정 주부터 보여준다.
+    const first=mon(assigned.map(r=>r.review||r.received).sort()[0]),last=mon(payload.today);
+    const weeks=[];for(let t=Date.parse(first+'T00:00:00Z');t<=Date.parse(last+'T00:00:00Z');t+=7*DAYMS)weeks.push(new Date(t).toISOString().slice(0,10));
+    const names=[...new Set(assigned.map(r=>r.reviewer||'미배정'))].sort((a,b)=>a==='미배정'?1:b==='미배정'?-1:a.localeCompare(b,'ko'));
+    const cell={};assigned.forEach(r=>{const k=(r.reviewer||'미배정')+'|'+mon(r.review||r.received);(cell[k]=cell[k]||[]).push(r);});
+    const md=w=>`${+w.slice(5,7)}/${+w.slice(8,10)}`;
+    const head=weeks.map((w,i)=>{const newMonth=i===0||w.slice(5,7)!==weeks[i-1].slice(5,7);return `<th class="${w===last?'now':newMonth?'mo':''}" title="${w} 주">${newMonth?+w.slice(5,7)+'월<br>':'<br>'}${md(w)}</th>`;}).join('');
+    const td=(list,label)=>{
+      const n=list.length,[bg,fg]=HEAT[heatStep(n)];
+      const tipText=n?`${label}\n${n}건\n`+list.slice(0,12).map(r=>`· ${r.company} (${r.status})`).join('\n')+(n>12?`\n… 외 ${n-12}건`:''):`${label}\n배정 없음`;
+      return `<td class="c" style="background:${bg};color:${fg}" data-tip="${esc(tipText)}">${n||'·'}</td>`;
+    };
+    const rows=names.map(nm=>{
+      const tot=weeks.reduce((a,w)=>a+(cell[nm+'|'+w]||[]).length,0);
+      return `<tr><th class="name">${esc(nm)}</th>${weeks.map(w=>td(cell[nm+'|'+w]||[],`${nm} · ${md(w)} 주`)).join('')}<td class="tot">${tot}</td></tr>`;
+    }).join('');
+    const sums=weeks.map(w=>names.reduce((a,nm)=>a+(cell[nm+'|'+w]||[]).length,0));
+    el.innerHTML=`<table class="heat"><thead><tr><th class="name"></th>${head}<th style="text-align:right;padding-left:10px">합계</th></tr></thead><tbody>${rows}`
+      +`<tr class="sum"><th class="name" style="color:var(--sub)">주 합계</th>${sums.map(n=>`<td class="c">${n||''}</td>`).join('')}<td class="tot">${assigned.length}</td></tr></tbody></table>`;
+    $('#heat-legend').innerHTML='건수 '+[[0,'0'],[1,'1'],[2,'2'],[3,'3'],[4,'4'],[5,'5'],[6,'6~7'],[8,'8+']].map(([n,l])=>`<i style="background:${HEAT[heatStep(n)][0]}"></i>${l}`).join(' ');
+    el.scrollLeft=el.scrollWidth;
+  }
+
   function render(){
     if(!payload)return;
     const S=sets();
-    tiles(S);hist(S.done);cdf(S.done);strip(S.done);monthly(S.recv,S.done);comply(S.done);table(S);
+    tiles(S);hist(S.done);cdf(S.done);strip(S.done);monthly(S.recv,S.done);comply(S.done);heat(S);table(S);
   }
 
   function load(){
