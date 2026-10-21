@@ -7,7 +7,7 @@
 html,body{height:100%;margin:0}
 body{background:#fcfcfb}
 #db{--surface:#fcfcfb;--card:#fff;--ink:#0b0b0b;--sub:#52514e;--muted:#8a8984;--line:#e4e3de;--grid:#efeeea;
-  --s1:#2a78d6;--s2:#1baf7a;--good:#0ca30c;--warn:#fab219;--crit:#d03b3b;--none:#b9b8b1;
+  --s1:#4f86cc;--s2:#3fa883;--good:#4fa04f;--warn:#d9a535;--crit:#cc6262;--none:#c9c8c1;
   height:100%;overflow:auto;padding:12px 16px 20px;box-sizing:border-box;color:var(--ink);background:var(--surface);
   font-family:Arial,'Noto Sans KR',sans-serif;font-size:13px;line-height:1.45;color-scheme:light}
 #db *{box-sizing:border-box}
@@ -381,7 +381,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   }
 
   /* ── 심사원별 주차별 배정 (히트맵 표) ── */
-  const HEAT=[['#f3f2ef','var(--muted)'],['#cde2fb','#0b0b0b'],['#9ec5f4','#0b0b0b'],['#6da7ec','#0b0b0b'],['#3987e5','#fff'],['#256abf','#fff'],['#184f95','#fff']];
+  const HEAT=[['#f3f2ef','var(--muted)'],['#e4eefa','#0b0b0b'],['#d0e1f6','#0b0b0b'],['#b6cff0','#0b0b0b'],['#97b9e6','#0b0b0b'],['#749fd8','#fff'],['#5585c6','#fff']];
   const heatStep=n=>n<=0?0:n>=8?6:n>=6?5:n;
   function heat(S){
     const el=$('#heat'),DAYMS=86400000;
