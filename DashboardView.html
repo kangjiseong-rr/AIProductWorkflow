@@ -327,6 +327,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     }else ms=months(done.map(keyOf));
     const label=k=>week?`${+k.slice(5,7)}/${+k.slice(8,10)}`:monthLabel(k);
     const tipLabel=k=>week?`${label(k)} 주`:`${monthLabel(k)}월`;
+    // 이번 주·이번 달은 아직 끝나지 않았다: 흐리게 칠하고 "(진행 중)" 표시
+    const curKey=keyOf(payload.today),open=k=>k===curKey;
     const w=W(el),h=230,m={t:16,r:12,b:30,l:34};
     const all=done.flatMap(r=>SER.map(z=>r[z.k])).filter(v=>v!==null&&v!==undefined);
     const yMax=niceMax(Math.max(...all,BASIC+5),4);
@@ -385,13 +387,13 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     if(state.volView==='heat'){
       // 히트맵: 행 = 접수·심사접수·완료, 칸 색은 행마다 그 행의 최댓값 대비 6단계(행끼리 규모가 달라도 각자의 높낮이가 보이게)
       const R3=[['접수','기업 신청 · 접수일자',a,HEAT,'k-a'],['심사접수','심사 유입 · 심사접수일',v,HEAT_REV,'k-r'],['완료','심사완료일(없으면 적합통보일)',b,HEAT_DONE,'k-d']];
-      const head=ms.map((k,i)=>{const nm=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));return `<th class="${nm||!week?'mo':''}" title="${tipLabel(k)}">${week?(nm?+k.slice(5,7)+'월<br>':'<br>')+label(k):+k.slice(5,7)+'월<br><span style="font-weight:400">'+k.slice(2,4)+'년</span>'}</th>`;}).join('');
+      const head=ms.map((k,i)=>{const nm=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));return `<th class="${nm||!week?'mo':''}" title="${tipLabel(k)}">${week?(nm?+k.slice(5,7)+'월<br>':'<br>')+label(k):+k.slice(5,7)+'월<br><span style="font-weight:400">'+k.slice(2,4)+'년</span>'}${open(k)?'*':''}</th>`;}).join('');
       const body=R3.map(([nm,sub,o,ramp,cls])=>{
         const mx=Math.max(1,...ms.map(k=>o[k]||0)),tot=ms.reduce((t,k)=>t+(o[k]||0),0);
         return `<tr><th class="name ${cls}" style="min-width:74px" title="${sub}">${nm}</th>${ms.map(k=>{const n=o[k]||0,[bg,fg]=ramp[n?Math.max(1,Math.ceil(n/mx*6)):0];
-          return `<td class="c" style="background:${bg};color:${fg}" data-tip="${esc(`${tipLabel(k)} · ${nm} ${n}건${nm==='접수'&&e[k]?` (이 중 종료 ${e[k]})`:''}`)}">${n||'·'}</td>`;}).join('')}<td class="tot">${tot}</td></tr>`;
+          return `<td class="c" style="background:${bg};color:${fg}${open(k)?';opacity:.45;outline:1px dashed var(--muted)':''}" data-tip="${esc(`${tipLabel(k)}${open(k)?' (진행 중)':''} · ${nm} ${n}건${nm==='접수'&&e[k]?` (이 중 종료 ${e[k]})`:''}`)}">${n||'·'}</td>`;}).join('')}<td class="tot">${tot}</td></tr>`;
       }).join('<tr class="gap"><td colspan="'+(ms.length+2)+'"></td></tr>');
-      el.innerHTML=`<div class="heat-wrap"><table class="heat"><thead><tr><th class="name"></th>${head}<th style="text-align:right;padding-left:10px">합계</th></tr></thead><tbody>${body}</tbody></table></div><div class="muted" style="margin-top:4px">칸 색은 행마다 그 행의 최댓값 대비 농도입니다(행끼리 색 농도는 비교하지 않음).</div>`;
+      el.innerHTML=`<div class="heat-wrap"><table class="heat"><thead><tr><th class="name"></th>${head}<th style="text-align:right;padding-left:10px">합계</th></tr></thead><tbody>${body}</tbody></table></div><div class="muted" style="margin-top:4px">칸 색은 행마다 그 행의 최댓값 대비 농도입니다(행끼리 색 농도는 비교하지 않음). * 흐린 칸은 아직 끝나지 않은 이번 주·이번 달입니다.</div>`;
       const wrap=el.querySelector('.heat-wrap');wrap.scrollLeft=wrap.scrollWidth;
       return;
     }
@@ -403,12 +405,12 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const every=Math.max(1,Math.ceil(ms.length/(w/56)));
     ms.forEach((k,i)=>{
       const c=m.l+band*(i+.5);
-      s+=bar(c-bw*1.5-1,a[k]||0,'var(--s1)')+bar(c-bw/2,v[k]||0,'#d9a535')+bar(c+bw/2+1,b[k]||0,'var(--s2)');
-      s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''}
+      s+=(open(k)?'<g opacity=".4">':'<g>')+bar(c-bw*1.5-1,a[k]||0,'var(--s1)')+bar(c-bw/2,v[k]||0,'#d9a535')+bar(c+bw/2+1,b[k]||0,'var(--s2)')+'</g>';
+      s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}${open(k)?' (진행 중 — 아직 끝나지 않음)':''}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''}
 심사접수 ${v[k]||0}건
 완료 ${b[k]||0}건`)}"/>`;
       const newMonth=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));
-      if(i%every===0)s+=`<text x="${c}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}</text>`;
+      if(i%every===0||open(k))s+=`<text x="${c}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}${open(k)?'*':''}</text>`;
     });
     el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="${week?'주차별':'월별'} 접수·심사접수·완료 건수">${s}</svg>`;
   }
@@ -588,7 +590,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const wdIn=(a,b)=>{let n=0;for(let t=t0(a);t<=t0(b);t+=DAY)if(isWD(iso(t)))n++;return n;};
     // 비교 기간 K주(state.cmpWeeks, 1~4): 최근 K주(오늘까지 7K일) vs 직전 K주
     const K=state.cmpWeeks;
-    const w0={a:iso(t0(T)-(14*K-1)*DAY),b:iso(t0(T)-7*K*DAY)},w1={a:iso(t0(T)-(7*K-1)*DAY),b:T};
+    // 주간 비교는 끝난 주(월~일)로만 한다: 최근 K주 = 지난 일요일까지 K주, 직전 K주 = 그 앞 K주. 이번 주는 따로 일평균으로 본다.
+    const lastSun=iso(t0(T)-new Date(t0(T)).getUTCDay()*DAY);
+    const w0={a:iso(t0(lastSun)-(14*K-1)*DAY),b:iso(t0(lastSun)-7*K*DAY)},w1={a:iso(t0(lastSun)-(7*K-1)*DAY),b:lastSun};
+    const wNow={a:iso(t0(lastSun)+DAY),b:T},nowOpen=lastSun!==T;
     const inW=(d,w)=>!!d&&d>=w.a&&d<=w.b;
     // 적체(진행 중) = 그날까지 접수됐고 아직 심사완료(없으면 적합통보)되지 않은 건. 종료 건은 뺀다.
     const backlogAt=d=>S.mine.filter(r=>!r.cancel&&r.received&&r.received<=d&&(r.fin?r.fin>d:!r.done)).length;
@@ -633,7 +638,13 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const qr=ks=>{const w=ks.reduce((t,k)=>t+mWD(k),0);return w?ks.reduce((t,k)=>t+mRecv(k),0)/w:0;};
     const q1=qr(mk.slice(3,6)),q0=qr(mk.slice(0,3));
 
-    const lvl=p=>p===null?['b-warn','신규']:p>=30?['b-up','급증']:p>=10?['b-up','증가']:p<=-30?['b-down','급감']:p<=-10?['b-down','감소']:['b-flat','보합'];
+    // 증감 판정은 % 크기만 보지 않고 건수 차이가 우연 범위(95%)를 넘는지 함께 본다.
+    // 두 구간 건수 a·b, 영업일 ea·eb: 차이가 없다면 b ~ 이항(a+b, eb/(ea+eb)). z = (b − 기대값) / 표준편차.
+    const zOf=(a,ea,b,eb)=>{const n=a+b;if(!n||!ea||!eb)return null;const p=eb/(ea+eb),sd=Math.sqrt(n*p*(1-p));return sd?(b-n*p)/sd:null;};
+    const sigOk=z=>z!==null&&Math.abs(z)>=1.96;
+    const lvl=(p,z)=>p===null?['b-warn','비교 불가']:!sigOk(z)?['b-flat',Math.abs(p)>=10?'차이 불확실':'보합']
+      :p>=30?['b-up','급증']:p>=10?['b-up','증가']:p<=-30?['b-down','급감']:p<=-10?['b-down','감소']:['b-flat','보합'];
+    const sigTxt=z=>z===null?'':sigOk(z)?' 통계적으로 의미 있는 차이입니다.':' 건수가 적어 우연히 생길 수 있는 범위의 차이입니다.';
     const badge=([c,t])=>`<span class="badge ${c}">${t}</span>`;
     const wdGap=(a,b)=>b>a?wdIn(iso(t0(a)+DAY),b):0;
     const lagRv=median(S.mine.filter(r=>r.received&&inW(r.review,w1)).map(r=>wdGap(r.received,r.review)));
@@ -653,38 +664,61 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const orphan=S.active.filter(r=>r.reviewer&&outAt(r.reviewer,T));
     const orphanBy=[...new Set(orphan.map(r=>r.reviewer))].map(n=>`${n} ${orphan.filter(r=>r.reviewer===n).length}`).join(', ');
     const outLabel=outNames.map(n=>`${n}${제외.get(n)?` ${+제외.get(n).slice(5,7)}/${+제외.get(n).slice(8,10)}~`:''}`).join(', ');
-    if(A.recv+B.recv<10)caveats.push(`최근 ${2*K}주 접수가 ${A.recv+B.recv}건으로 적어 증감률이 크게 흔들릴 수 있습니다.`);
+    if(A.recv+B.recv<10)caveats.push(`지난 ${2*K}주 접수가 ${A.recv+B.recv}건으로 적어 증감률이 크게 흔들릴 수 있습니다.`);
 
     const rows=[];
-    // 이동 추이: 주(월요일 시작)별 건수를 직전 N주(state.maWin, 1~4) 합 ÷ 영업일 합 × 5 = 주당 환산으로. 이번 주는 오늘까지의 영업일만 센다.
+    // 이동 추이: 주(월요일 시작)별 건수를 직전 N주(state.maWin, 1~4) 합 ÷ 영업일 합 × 5 = 주당 환산으로. 끝난 주(지난 일요일까지)만 쓴다.
     const N=state.maWin;
     const monOf=d=>iso(t0(d)-((new Date(t0(d)).getUTCDay()+6)%7)*DAY);
     const firstDay=S.mine.map(r=>r.received).filter(Boolean).sort()[0];
     const weeks=[];
-    if(firstDay)for(let t=t0(monOf(firstDay));t<=t0(T);t+=7*DAY){const a=iso(t),b=iso(Math.min(t+6*DAY,t0(T)));
+    if(firstDay)for(let t=t0(monOf(firstDay));t+6*DAY<=t0(lastSun);t+=7*DAY){const a=iso(t),b=iso(t+6*DAY);
       const inR=d=>!!d&&d>=a&&d<=b;
       weeks.push({a,wd:wdIn(a,b),recv:S.mine.filter(r=>inR(r.received)).length,rev:S.mine.filter(r=>inR(r.review)).length,done:S.mine.filter(r=>!r.cancel&&inR(r.fin)).length});}
     const ma=(i,k)=>{const ws=weeks.slice(Math.max(0,i-N+1),i+1),wd=ws.reduce((t,w)=>t+w.wd,0);return wd?ws.reduce((t,w)=>t+w[k],0)/wd*5:null;};
     const maRows=weeks.map((w,i)=>({a:w.a,recv:ma(i,'recv'),rev:ma(i,'rev'),done:ma(i,'done'),full:i>=N-1}));
     const maShow=maRows.filter(m=>m.full).slice(-12);
     // 변화는 겹치지 않게 N주 앞 값과 비교
+    // N주 이동 판정용: 최근 N주와 그 앞 N주의 실제 건수·영업일로 z 계산
+    const maZ=k=>{const n=weeks.length;if(n<2*N)return null;const b=weeks.slice(n-N),a=weeks.slice(n-2*N,n-N),sum=(ws,x)=>ws.reduce((t,w)=>t+w[x],0);return zOf(sum(a,k),sum(a,'wd'),sum(b,k),sum(b,'wd'));};
     const maChg=k=>{const n=maShow.length;if(n<=N)return null;const a=maShow[n-1-N][k],b=maShow[n-1][k];return a?Math.round((b-a)/a*100):null;};
     const maTxt=(k,lab)=>{const n=maShow.length;if(!n)return '';const p=maChg(k);return `${lab} 주 ${r1(maShow[n-1][k])}건${p===null?'':`(${N}주 전 ${r1(maShow[n-1-N][k])}건, ${sgn(p)})`}`;};
-    rows.push(['신청 수요',lvl(dRecv),`기업 신청(접수일자) 최근 ${K}주 ${B.recv}건(영업일 ${B.wd}일, 하루 ${r1(perWD(B.recv,B))}건·주 ${r1(wk(B.recv,B))}건), 직전 ${K}주 ${A.recv}건(영업일 ${A.wd}일, 하루 ${r1(perWD(A.recv,A))}건) 대비 영업일당 ${sgn(dRecv)}.`
+    // 이번 주(진행 중): 오늘까지 영업일당 건수를 지난 K주 영업일당과 비교
+    // 이번 주(진행 중) 현황: 오늘까지 영업일당 건수. 각 줄 끝에 붙인다(주간 비교에는 넣지 않음).
+    const nW=nowOpen?wdIn(wNow.a,wNow.b):0,inN=d=>nowOpen&&inW(d,wNow),nWfull=wdIn(wNow.a,iso(t0(wNow.a)+4*DAY));
+    const nowRecs={recv:S.mine.filter(r=>inN(r.received)),rev:S.mine.filter(r=>inN(r.review)),done:S.mine.filter(r=>!r.cancel&&inN(r.fin))};
+    const nowHead=`이번 주(${+wNow.a.slice(5,7)}/${+wNow.a.slice(8,10)}~, 영업일 ${nWfull}일 중 ${nW}일 지남)`;
+    const nowSent=(k,lab)=>{if(!nowOpen)return '';if(!nW)return ` 이번 주는 아직 영업일이 지나지 않았습니다.`;
+      const now=nowRecs[k].length/nW,base=B.wd?B[k]/B.wd:0;
+      return ` ${nowHead} ${lab} ${nowRecs[k].length}건, 하루 평균 ${r1(now)}건(지난 ${K}주 하루 ${r1(base)}건).`;};
+    const nowExtra=()=>{
+      if(!nowOpen||!nW)return {};
+      const med=median(nowRecs.done.map(r=>r.elapsedWD).filter(v=>v!==null));
+      const perFteDay=v=>v;
+      return {
+        '신청 수요':nowSent('recv','접수'),
+        '심사 수요':nowSent('rev','심사접수'),
+        '처리':nowSent('done','심사완료'),
+        '처리 기간':med===null?` ${nowHead} 심사완료된 건은 아직 없습니다.`:` ${nowHead} 심사완료 ${nowRecs.done.length}건의 처리기간 중앙값 ${r1(med)}WD.`,
+        '인력':curFte?` ${nowHead} 풀타임 1명이 하루 평균 ${r1(nowRecs.done.length/nW/curFte)}건을 끝냈습니다(지난 ${K}주 ${B.fte&&B.wd?r1(B.done/B.wd/B.fte):'—'}건).`:'',
+      };
+    };
+    const zRecv=zOf(A.recv,A.wd,B.recv,B.wd),zRev=zOf(A.rev,A.wd,B.rev,B.wd);
+    rows.push(['신청 수요',lvl(dRecv,zRecv),`기업 신청(접수일자) 지난 ${K}주 ${B.recv}건(영업일 ${B.wd}일, 하루 ${r1(perWD(B.recv,B))}건·주 ${r1(wk(B.recv,B))}건), 직전 ${K}주 ${A.recv}건(영업일 ${A.wd}일, 하루 ${r1(perWD(A.recv,A))}건) 대비 영업일당 ${sgn(dRecv)}.`
       +` 최근 3개월 영업일당 ${r1(q1)}건, 그 전 3개월 ${r1(q0)}건${q0?` 대비 ${sgn(chg(q0,q1))}`:''}.`
-      +` 이번 달 ${mRecv(cur)}건(월말 환산 약 ${curProj}건).`]);
-    rows.push(['심사 수요',lvl(dRev),`심사로 넘어온 건(심사접수일) 최근 ${K}주 ${B.rev}건(하루 ${r1(perWD(B.rev,B))}건·주 ${r1(wk(B.rev,B))}건), 직전 ${K}주 ${A.rev}건(하루 ${r1(perWD(A.rev,A))}건) 대비 영업일당 ${sgn(dRev)}.`
-      +(lagRv===null?'':` 접수→심사접수 중앙값 ${r1(lagRv)}WD.`)]);
-    if(maShow.length)rows.push([`${N}주 이동`,lvl(maChg('rev')),`최근 ${N}주 ${N===1?'(주별)':'이동평균'}(주당 환산): ${[maTxt('recv','접수'),maTxt('rev','심사접수'),maTxt('done','완료')].join(' · ')}. 아래 그래프에서 묶는 주 수(1~${K}주)를 바꿔 촘촘하게 또는 넓게 볼 수 있습니다.`]);
-    rows.push(['처리',flowB,`최근 ${K}주 심사완료 ${B.done}건(주 ${r1(weekDone)}건), 직전 ${K}주 ${A.done}건(주 ${r1(wk(A.done,A))}건, 영업일당 ${sgn(chgWD(A.done,B.done))}).`
+      +` 이번 달 ${mRecv(cur)}건(월말 환산 약 ${curProj}건).`+sigTxt(zRecv)]);
+    rows.push(['심사 수요',lvl(dRev,zRev),`심사로 넘어온 건(심사접수일) 지난 ${K}주 ${B.rev}건(하루 ${r1(perWD(B.rev,B))}건·주 ${r1(wk(B.rev,B))}건), 직전 ${K}주 ${A.rev}건(하루 ${r1(perWD(A.rev,A))}건) 대비 영업일당 ${sgn(dRev)}.`
+      +(lagRv===null?'':` 접수→심사접수 중앙값 ${r1(lagRv)}WD.`)+sigTxt(zRev)]);
+    if(maShow.length)rows.push([`${N}주 이동`,lvl(maChg('rev'),maZ('rev')),`최근 ${N}주 ${N===1?'(주별)':'이동평균'}(주당 환산): ${[maTxt('recv','접수'),maTxt('rev','심사접수'),maTxt('done','완료')].join(' · ')}. 아래 그래프에서 묶는 주 수(1~4주)를 바꿔 촘촘하게 또는 넓게 볼 수 있습니다.`+(maZ('rev')===null?'':` 심사접수 기준으로 보면${sigTxt(maZ('rev'))}`)]);
+    rows.push(['처리',flowB,`지난 ${K}주 심사완료 ${B.done}건(주 ${r1(weekDone)}건), 직전 ${K}주 ${A.done}건(주 ${r1(wk(A.done,A))}건, 영업일당 ${sgn(chgWD(A.done,B.done))}).`
       +(flow===null?'':` 같은 기간 심사 유입(종료 제외) ${B.revValid}건 대비 ${Math.round(flow*100)}%를 처리했습니다.`)]);
     // 처리 기간: 기간 안에 심사완료된 건 기준. 진행 중인 건은 오늘까지 경과일.
     const actMed=median(S.active.map(r=>r.elapsedWD).filter(v=>v!==null));
     const pB=B.pt,pA=A.pt,dMed=pB.med!==null&&pA.med!==null?pB.med-pA.med:null;
     const ptBadge=pB.med===null?['b-flat','완료 없음']:dMed===null?['b-flat','—']:dMed>=1?['b-up','길어짐']:dMed<=-1?['b-down','짧아짐']:['b-flat','비슷'];
     const wdTxt=v=>v===null?'—':`${r1(v)}WD`;
-    rows.push(['처리 기간',ptBadge,pB.med===null?`최근 ${K}주에 심사완료된 건이 없습니다.`
-      :`최근 ${K}주 심사완료 건의 처리기간(접수→심사완료) 중앙값 ${wdTxt(pB.med)}, 직전 ${K}주 ${wdTxt(pA.med)}.`
+    rows.push(['처리 기간',ptBadge,pB.med===null?`지난 ${K}주에 심사완료된 건이 없습니다.`
+      :`지난 ${K}주 심사완료 건의 처리기간(접수→심사완료) 중앙값 ${wdTxt(pB.med)}, 직전 ${K}주 ${wdTxt(pA.med)}.`
       +(pB.rev===null?'':` 심사접수 후 심사완료까지는 중앙값 ${wdTxt(pB.rev)}.`)
       +(pB.ok===null?'':` 최초 마감(${BASIC}WD) 안에 끝낸 비율 ${n1(pB.ok)}%(직전 ${K}주 ${pA.ok===null?'—':n1(pA.ok)+'%'}), 연장 마감까지 포함하면 ${n1(pB.okExt)}%.`)
       +(pB.lag===null?'':` 심사완료→적합통보 중앙값 ${wdTxt(pB.lag)}.`)
@@ -716,30 +750,32 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const strainWhy=[late?`마감 초과 ${late}건`:'',loadUp?`1명이 동시에 맡은 건 ${r1(A.backlogPer)}→${r1(B.backlogPer)}건`:'',orphan.length?`제외된 심사원 담당 진행 ${orphan.length}건`:''].filter(Boolean).join(', ');
     // 인력 줄은 경영진이 바로 읽을 수 있게 "사람 수"와 "일수"로 쓴다. 1일 = 1명이 하루 심사한 양(MD).
     const dayN=v=>`${r1(v)}일`;
-    const 사람=`최근 ${K}주에 심사한 사람은 ${B.people}명이고, 각자 심사에 쓰는 시간을 합치면 풀타임 ${r1(B.fte)}명과 같습니다(직전 ${K}주 ${r1(A.fte)}명).`;
+    const 사람=`지난 ${K}주에 심사한 사람은 ${B.people}명이고, 각자 심사에 쓰는 시간을 합치면 풀타임 ${r1(B.fte)}명과 같습니다(직전 ${K}주 ${r1(A.fte)}명).`;
     const 지금=outNames.length||newcomers.length
       ?` 오늘 기준 ${outNames.length?`${outLabel} 제외`:''}${outNames.length&&newcomers.length?', ':''}${newcomers.length?`신규 ${newcomers.join(', ')} 포함`:''}으로 지금 일할 수 있는 인력은 풀타임 ${r1(curFte)}명입니다.`:'';
-    const 일한양=B.md?` 심사에 쓴 시간은 일주일에 ${dayN(B.md/K)}(최근 ${K}주 합계 ${dayN(B.md)}, 약 ${r1(B.md/MD_PER_MM)}개월)${B.mdPerCase===null?'':`, 1건에 평균 ${dayN(B.mdPerCase)}`}입니다.`:'';
+    const 일한양=B.md?` 심사에 쓴 시간은 일주일에 ${dayN(B.md/K)}(지난 ${K}주 합계 ${dayN(B.md)}, 약 ${r1(B.md/MD_PER_MM)}개월)${B.mdPerCase===null?'':`, 1건에 평균 ${dayN(B.mdPerCase)}`}입니다.`:'';
     const 속도=B.perWeek===null?'':` 풀타임 1명이 일주일에 ${r1(B.perWeek)}건을 끝냈고(직전 ${K}주 ${A.perWeek===null?'—':r1(A.perWeek)+'건'}), 1명이 동시에 맡고 있는 건은 ${r1(B.backlogPer)}건입니다(${K}주 전 ${A.backlogPer===null?'—':r1(A.backlogPer)+'건'}).`;
     const 기준=std
-      ?` 1건에 ${std}일(방문 이동 포함)이 정상이라고 보면, 최근 ${K}주 들어온 ${B.revValid}건을 처리하려면 ${dayN(needMD)}이 필요하고 지금 인력으로 쓸 수 있는 시간은 ${dayN(availMD)}입니다 — 풀타임 ${r1(need)}명이 필요하고 지금은 ${r1(curFte)}명입니다.`
+      ?` 1건에 ${std}일(방문 이동 포함)이 정상이라고 보면, 지난 ${K}주 들어온 ${B.revValid}건을 처리하려면 ${dayN(needMD)}이 필요하고 지금 인력으로 쓸 수 있는 시간은 ${dayN(availMD)}입니다 — 풀타임 ${r1(need)}명이 필요하고 지금은 ${r1(curFte)}명입니다.`
         +` 쌓여 있는 ${B.backlog}건을 끝내는 데는 ${dayN(backlogMD)}${backlogWeeks===null?'':`(지금 인력으로 약 ${r1(backlogWeeks)}주)`}이 걸립니다.`
       :need===null?'':` 지금 들어오는 양을 같은 속도로 처리하려면 풀타임 ${r1(need)}명이 필요합니다(지금 ${r1(curFte)}명).`;
     const 과부하문=staffVerdict==='과부하'
-      ?`최근 ${K}주에 끝낸 ${B.done}건은 정상 속도(1건 ${std}일)라면 ${dayN(stdUsedMD)}이 걸려야 하는데, 근무 시간으로 잡힌 건 ${dayN(B.md)}뿐입니다. 약 ${dayN(gapMD)}(${r1(gapMD/MD_PER_MM)}개월)어치 일이 근무 시간 밖에서 처리됐다는 뜻입니다(1건 평균 ${dayN(B.mdPerCase)}, 풀타임 1명이 주 ${r1(B.perWeek)}건 — 정상은 주 ${r1(stdWeekPerFte)}건). `:'';
+      ?`지난 ${K}주에 끝낸 ${B.done}건은 정상 속도(1건 ${std}일)라면 ${dayN(stdUsedMD)}이 걸려야 하는데, 근무 시간으로 잡힌 건 ${dayN(B.md)}뿐입니다. 약 ${dayN(gapMD)}(${r1(gapMD/MD_PER_MM)}개월)어치 일이 근무 시간 밖에서 처리됐다는 뜻입니다(1건 평균 ${dayN(B.mdPerCase)}, 풀타임 1명이 주 ${r1(B.perWeek)}건 — 정상은 주 ${r1(stdWeekPerFte)}건). `:'';
     rows.push(['인력',vb,과부하문+사람+지금+일한양+속도+기준]);
     if(overload!==null)caveats.push(`근무 시간 밖 작업량 = 끝낸 건수 × ${std}일 − 근무 시간으로 잡힌 일수(풀타임 환산 인원 × 영업일). 야근·휴일 근무 기록이 시트에 없어 추정치이고, 근무 시간은 평균 투입률(REVIEW_RATE) 설정에 따라 달라집니다.`);
     if(staffVerdict==='부담')caveats.push(`처리가 유입을 따라가고 있지만 ${strainWhy}이라 인력에 여유가 있다고 보기 어렵습니다.`);
     caveats.push('심사원 제외는 심사원관리 시트의 "제외" 날짜(활성여부 N)를 기준으로 했습니다. 단기 휴가처럼 시트에 없는 부재는 반영되지 않습니다.');
     caveats.push(`풀타임 환산 인원: 심사원은 업무 시간의 일부만 심사에 씁니다. 평균 ${Math.round(avgRate*100)}%로 보고(REVIEW_RATE), 배정을 많이 받은 사람은 더 높게(최대 100%), 적게 받은 사람은 더 낮게 잡아 합친 값입니다. 1일 = 1명이 하루 심사한 양(MD), 1개월 = ${MD_PER_MM}일.`);
 
-    const demandPhrase=dRecv===null?`직전 ${K}주에 접수가 없어 비교할 수 없고`:dRecv>=30?`영업일당 직전 ${K}주보다 ${dRecv}% 늘어 급증세이고`:dRecv>=10?`영업일당 직전 ${K}주보다 ${dRecv}% 늘어 증가세이고`:dRecv<=-10?`영업일당 직전 ${K}주보다 ${-dRecv}% 줄어 감소세이고`:'직전 ${K}주와 비슷한 수준이고';
-    const capPhrase=flow===null?`최근 ${K}주 심사 유입이 없습니다`
+    {const ex=nowExtra();rows.forEach(r=>{if(ex[r[0]])r[2]+=ex[r[0]];});}
+    rows.forEach(r=>{if(r[0]==='적체')r[2]=r[2].replace('진행 중 ','오늘 기준 진행 중 ');});
+    const demandPhrase=dRecv===null?`직전 ${K}주에 접수가 없어 비교할 수 없고`:!sigOk(zRecv)?`직전 ${K}주와 통계적으로 의미 있는 차이가 없고(영업일당 ${sgn(dRecv)})`:dRecv>=30?`영업일당 직전 ${K}주보다 ${dRecv}% 늘어 급증세이고`:dRecv>=10?`영업일당 직전 ${K}주보다 ${dRecv}% 늘어 증가세이고`:dRecv<=-10?`영업일당 직전 ${K}주보다 ${-dRecv}% 줄어 감소세이고`:`직전 ${K}주와 비슷한 수준이고`;
+    const capPhrase=flow===null?`지난 ${K}주 심사 유입이 없습니다`
       :flow<0.9?`처리가 유입을 따라가지 못해 적체가 ${dBack>0?`${dBack}건 늘었습니다`:'쌓이고 있습니다'}${staffVerdict==='부족'||staffVerdict==='과부하'?' — 인력 보강 검토가 필요합니다':''}`
       :flow>=1.1?`처리가 유입을 앞서 적체가 ${dBack<0?`${-dBack}건 줄었습니다`:'줄고 있습니다'}${staffVerdict==='부담'?` — 다만 ${strainWhy}`:''}`
       :`현재 인력으로 처리가 유입을 따라가고 있습니다`;
-    const revPhrase=dRev===null?'':dRev>=10?`심사 유입은 ${dRev}% 늘었으며 `:dRev<=-10?`심사 유입은 ${-dRev}% 줄었으며 `:'심사 유입은 비슷하며 ';
-    const overPhrase=staffVerdict==='과부하'?` 최근 ${K}주 처리량은 정상 속도라면 ${r1(stdUsedMD)}일이 필요한데 근무 시간은 ${r1(B.md)}일뿐이라, 약 ${r1(gapMD)}일(${r1(gapMD/MD_PER_MM)}개월)어치를 근무 시간 밖에서 처리한 것으로 보입니다${shortFte>0?` — 풀타임 ${r1(shortFte)}명이 부족한 상태에서 처리량을 유지하고 있습니다`:''}.`:'';
+    const revPhrase=dRev===null?'':!sigOk(zRev)?'심사 유입도 의미 있는 변화가 없으며 ':dRev>=10?`심사 유입은 ${dRev}% 늘었으며 `:dRev<=-10?`심사 유입은 ${-dRev}% 줄었으며 `:'심사 유입은 비슷하며 ';
+    const overPhrase=staffVerdict==='과부하'?` 지난 ${K}주 처리량은 정상 속도라면 ${r1(stdUsedMD)}일이 필요한데 근무 시간은 ${r1(B.md)}일뿐이라, 약 ${r1(gapMD)}일(${r1(gapMD/MD_PER_MM)}개월)어치를 근무 시간 밖에서 처리한 것으로 보입니다${shortFte>0?` — 풀타임 ${r1(shortFte)}명이 부족한 상태에서 처리량을 유지하고 있습니다`:''}.`:'';
     const head=`기업 신청은 ${demandPhrase}, ${revPhrase}${capPhrase}.${overPhrase}`;
 
     const fmt=v=>v===null||v===undefined?'—':r1(v).toLocaleString('ko-KR');
@@ -777,19 +813,19 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     ].concat(std?[tr(`들어온 건 처리에 필요한 시간 (×${std}일)`,A.revValid*std,needMD,'일',1),tr(`끝낸 건에 정상적으로 들었어야 할 시간 (×${std}일)`,A.done*std,stdUsedMD,'일',1),tr('근무 시간 밖 작업량',A.md&&A.done*std>A.md?A.done*std-A.md:null,gapMD>0?gapMD:null,'일'),tr('지금 인력으로 쓸 수 있는 시간',null,availMD,'일')]:[]);
     const rng=w=>`${+w.a.slice(5,7)}/${+w.a.slice(8,10)}~${+w.b.slice(5,7)}/${+w.b.slice(8,10)}`;
 
-    $('#brief-desc').textContent=`최근 ${K}주(오늘까지 ${7*K}일)와 직전 ${K}주 비교 · 건수 증감은 영업일당으로 보정(명절·공휴일로 영업일 수가 달라도 공정하게 비교) · 위 기간 필터와 관계없음, 담당 심사원 필터는 적용 · 종료(취소·부적합)는 수요에는 넣고 처리·적체에서는 뺌`;
+    $('#brief-desc').textContent=`끝난 주 기준: 지난 ${K}주(${rng(w1)}, 지난 일요일까지)와 직전 ${K}주 비교 · 이번 주는 일평균으로 따로 표시 · 건수 증감은 영업일당으로 보정(명절·공휴일로 영업일 수가 달라도 공정하게 비교) · 위 기간 필터와 관계없음, 담당 심사원 필터는 적용 · 종료(취소·부적합)는 수요에는 넣고 처리·적체에서는 뺌`;
     root.querySelectorAll('[data-cmp]').forEach(x=>x.setAttribute('aria-pressed',String(+x.dataset.cmp===K)));
     $('#brief').innerHTML=`<div class="brief-head">${lines(head)}</div>`
       +`<div id="brief-body"><div class="brief-grid">${rows.map(([l,b,t])=>`<div class="brief-row"><span class="lab">${l}</span>${badge(b)}<span>${lines(t)}</span></div>`).join('')}</div>`
       +maChart()
-      +`<div class="tbl-wrap brief-tbl"><table><thead><tr><th>지표</th><th>직전 ${K}주 (${rng(w0)})</th><th>최근 ${K}주 (${rng(w1)})</th><th>변화</th></tr></thead><tbody>`
+      +`<div class="tbl-wrap brief-tbl"><table><thead><tr><th>지표</th><th>직전 ${K}주 (${rng(w0)})</th><th>지난 ${K}주 (${rng(w1)})</th><th>변화</th></tr></thead><tbody>`
       +tbl.map(([k,a,b,p,u])=>`<tr><td>${k} <span class="muted">${u}</span></td><td>${a}</td><td>${b}</td><td>${p}</td></tr>`).join('')+`</tbody></table></div>`
       +`<div class="brief-note">월별 접수/심사접수/완료: ${months6.map(m=>`${+m.month.slice(5,7)}월 ${m.recv}/${m.review}/${m.done}`).join(' · ')} — 이번 달은 진행 중`
       +` · 1 MM = ${MD_PER_MM} MD · * 표시 변화율은 영업일당 기준`
       +(caveats.length?`<br>※ ${caveats.map(esc).join('<br>※ ')}`:'')+`</div></div>`;
 
     briefText=[`[AI확인제 심사 현황 요약] ${T} 기준${state.owner?' · 심사원 1명 기준':''}`,head,...rows.map(([l,b,t])=>`- ${l}(${b[1]}): ${t}`),
-      '',`지표\t직전 ${K}주 (${rng(w0)})\t최근 ${K}주 (${rng(w1)})\t변화`,...tbl.map(([k,a,b,p,u])=>`${k.trim()}(${u})\t${a}\t${b}\t${p}`),
+      '',`지표\t직전 ${K}주 (${rng(w0)})\t지난 ${K}주 (${rng(w1)})\t변화`,...tbl.map(([k,a,b,p,u])=>`${k.trim()}(${u})\t${a}\t${b}\t${p}`),
       ...caveats.map(c=>'※ '+c)].join('\n');
     // MD 다운로드: 현황 카드(사실) → 현황 요약(판단) → 비교표 → 이동평균 → 각주
     const md=[];
@@ -803,7 +839,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     }
     md.push('## 현황 요약','',`**${head}**`,'');
     rows.forEach(([l,b,t])=>{md.push(`### ${l} — ${b[1]}`,'');String(t).split(/(?<=\.)\s+(?=\S)/).filter(x=>!x.includes('그래프에서')).forEach(x=>md.push(`- ${x}`));md.push('');});
-    md.push('### 비교표','',`| 지표 | 직전 ${K}주 (${rng(w0)}) | 최근 ${K}주 (${rng(w1)}) | 변화 |`,'|---|---:|---:|---:|');
+    md.push('### 비교표','',`| 지표 | 직전 ${K}주 (${rng(w0)}) | 지난 ${K}주 (${rng(w1)}) | 변화 |`,'|---|---:|---:|---:|');
     tbl.forEach(([k,a,b,p,u])=>md.push(`| ${mdCell(k)} (${u}) | ${a} | ${b} | ${p} |`));
     md.push('','\* 변화율은 영업일당 기준','');
     if(maShow.length){
