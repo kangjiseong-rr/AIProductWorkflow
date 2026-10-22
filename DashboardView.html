@@ -138,7 +138,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>완료 건수</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-med"></i>중앙값</span></div>
       <div class="plot" id="hist"></div></div>
     <div class="card"><h3>누적 완료율</h3><div class="desc">N WD 안에 완료된 비율 (처리기간 분포를 누적한 곡선)</div>
-      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>누적 완료율</span><span><i class="sw-line"></i>기본 마감 15WD</span></div>
+      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>누적 완료율</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-line" style="border-color:var(--crit)"></i>처리 최대 45WD</span><span>○ 기록 최대</span></div>
       <div class="plot" id="cdf"></div></div>
     <div class="card"><div class="card-head"><h3 id="strip-title">월별 처리기간 추이</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-trend="month" aria-pressed="true">월별</button><button type="button" data-trend="week" aria-pressed="false">주차별</button></div></div>
       <div class="desc" id="strip-desc"></div>
@@ -167,7 +167,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   const root=document.getElementById('db');
   const $=s=>document.querySelector(s);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const BASIC=15;
+  const BASIC=15,MAXWD=45;
   let payload=null,data=[],state={period:'6',owner:'',trend:'month',volume:'month',volView:'bar',heat:'week',cmpWeeks:4,sort:{key:'active',dir:-1}};
 
   const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
@@ -293,6 +293,12 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const bx=x(BASIC),bp=at(BASIC);
     s+=`<line x1="${bx}" x2="${bx}" y1="${m.t-6}" y2="${y(0)}" stroke="var(--ink)" stroke-dasharray="4 3" stroke-width="1.5"/>`;
     s+=`<circle cx="${bx}" cy="${y(bp)}" r="4.5" fill="var(--s1)" stroke="var(--card)" stroke-width="2"/><text class="ann" x="${bx+8}" y="${y(bp)+16}">15WD 내 ${n1(bp)}%</text>`;
+    // 처리 최대 45WD(마감 상한)와 기록된 최대 처리기간
+    const lx=x(MAXWD);
+    s+=`<line x1="${lx}" x2="${lx}" y1="${m.t-6}" y2="${y(0)}" stroke="var(--crit)" stroke-dasharray="4 3" stroke-width="1.5"/><text x="${lx-4}" y="${y(0)-6}" text-anchor="end" style="fill:var(--crit)">처리 최대 ${MAXWD}WD</text>`;
+    const top=vals[vals.length-1];
+    if(top<=maxX)s+=`<circle cx="${x(top)}" cy="${y(100)}" r="4.5" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/><text class="ann" x="${x(top)+(top>maxX-12?-8:8)}" y="${y(100)+16}" text-anchor="${top>maxX-12?'end':'start'}">기록 최대 ${top}WD</text>`;
+    else s+=`<text class="ann" x="${w-m.r}" y="${m.t+26}" text-anchor="end">기록 최대 ${top}WD</text>`;
     for(let v=0;v<=maxX;v++){
       const c=vals.filter(k=>k<=v).length;
       s+=`<rect class="hit" x="${x(v-0.5)}" y="${m.t}" width="${iw/maxX}" height="${y(0)-m.t}" data-tip="${esc(`${v}WD 이내 완료\n${c}/${vals.length}건 (${n1(c*100/vals.length)}%)`)}"/>`;
