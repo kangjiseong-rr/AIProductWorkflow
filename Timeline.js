@@ -278,8 +278,6 @@ function _특이사항심사일_(레코드, 오늘, 휴일) {
   레코드.noteReviewPlanned = false;
   레코드.waitWD = null;
   레코드.reqWD = null;
-  // 심사접수 후 오늘까지(요청·심사 미기재 건 목록 정렬용)
-  레코드.sinceReviewWD = 레코드.review ? _영업일수_(레코드.review, 오늘, 휴일) : null;
   if (!메모 || !기준) return;
 
   const 토큰 = /\(\s*(\d{1,2})\s*[\/,]\s*(\d{1,2})[^)]*\)|(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/g;
