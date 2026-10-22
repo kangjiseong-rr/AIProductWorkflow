@@ -163,7 +163,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   const $=s=>document.querySelector(s);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const BASIC=15;
-  let payload=null,data=[],state={period:'6',owner:'',trend:'month',volume:'month',volView:'bar',heat:'week',maWin:3,cmpWeeks:4,sort:{key:'active',dir:-1}};
+  let payload=null,data=[],state={period:'6',owner:'',trend:'month',volume:'month',volView:'bar',heat:'week',cmpWeeks:4,sort:{key:'active',dir:-1}};
 
   const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
   const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
@@ -668,8 +668,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     if(A.recv+B.recv<10)caveats.push(`최근 ${2*K}주 접수가 ${A.recv+B.recv}건으로 적어 증감률이 크게 흔들릴 수 있습니다.`);
 
     const rows=[];
-    // 이동 추이: 주(월요일 시작)별 건수를 직전 N주(state.maWin, 1~4) 합 ÷ 영업일 합 × 5 = 주당 환산으로. 끝난 주(지난 일요일까지)만 쓴다.
-    const N=state.maWin;
+    // 이동 추이: 주(월요일 시작)별 건수를 직전 N주 합 ÷ 영업일 합 × 5 = 주당 환산으로. 끝난 주(지난 일요일까지)만 쓴다.
+    // N은 비교 기간(state.cmpWeeks)과 같다 — 표·그래프·판정이 모두 같은 "N주로 묶어 보기"를 쓴다.
+    const N=K;
     const monOf=d=>iso(t0(d)-((new Date(t0(d)).getUTCDay()+6)%7)*DAY);
     const firstDay=S.mine.map(r=>r.received).filter(Boolean).sort()[0];
     const weeks=[];
@@ -677,7 +678,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       const inR=d=>!!d&&d>=a&&d<=b;
       weeks.push({a,wd:wdIn(a,b),recv:S.mine.filter(r=>inR(r.received)).length,rev:S.mine.filter(r=>inR(r.review)).length,done:S.mine.filter(r=>!r.cancel&&inR(r.fin)).length});}
     const ma=(i,k)=>{const ws=weeks.slice(Math.max(0,i-N+1),i+1),wd=ws.reduce((t,w)=>t+w.wd,0);return wd?ws.reduce((t,w)=>t+w[k],0)/wd*5:null;};
-    const maRows=weeks.map((w,i)=>({a:w.a,recv:ma(i,'recv'),rev:ma(i,'rev'),done:ma(i,'done'),full:i>=N-1}));
+    const maRows=weeks.map((w,i)=>({a:w.a,e:iso(t0(w.a)+6*DAY),recv:ma(i,'recv'),rev:ma(i,'rev'),done:ma(i,'done'),full:i>=N-1}));
     const maShow=maRows.filter(m=>m.full).slice(-12);
     // 변화는 겹치지 않게 N주 앞 값과 비교
     // N주 이동 판정용: 최근 N주와 그 앞 N주의 실제 건수·영업일로 z 계산
@@ -710,7 +711,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       +` 이번 달 ${mRecv(cur)}건(월말 환산 약 ${curProj}건).`+sigTxt(zRecv)]);
     rows.push(['심사 수요',lvl(dRev,zRev),`심사로 넘어온 건(심사접수일) 최근 ${K}주 ${B.rev}건(하루 ${r1(perWD(B.rev,B))}건·주 ${r1(wk(B.rev,B))}건), 그 전 ${K}주 ${A.rev}건(하루 ${r1(perWD(A.rev,A))}건) 대비 영업일당 ${sgn(dRev)}.`
       +(lagRv===null?'':` 접수→심사접수 중앙값 ${r1(lagRv)}WD.`)+sigTxt(zRev)]);
-    if(maShow.length)rows.push([`${N}주 이동`,lvl(maChg('rev'),maZ('rev')),`최근 ${N}주 ${N===1?'(주별)':'이동평균'}(주당 환산): ${[maTxt('recv','접수'),maTxt('rev','심사접수'),maTxt('done','완료')].join(' · ')}. 아래 그래프에서 묶는 주 수(1~4주)를 바꿔 촘촘하게 또는 넓게 볼 수 있습니다.`+(maZ('rev')===null?'':` 심사접수 기준으로 보면${sigTxt(maZ('rev'))}`)]);
+    // (N주 이동 줄은 두지 않는다: 겹치지 않는 N주 비교는 신청·심사 수요 줄과 같고, 흐름은 아래 그래프·표가 보여 준다)
     rows.push(['처리',flowB,`최근 ${K}주 심사완료 ${B.done}건(주 ${r1(weekDone)}건), 그 전 ${K}주 ${A.done}건(주 ${r1(wk(A.done,A))}건, 영업일당 ${sgn(chgWD(A.done,B.done))}).`
       +(flow===null?'':` 같은 기간 심사 유입(종료 제외) ${B.revValid}건 대비 ${Math.round(flow*100)}%를 처리했습니다.`)]);
     // 처리 기간: 기간 안에 심사완료된 건 기준. 진행 중인 건은 오늘까지 경과일.
@@ -801,11 +802,11 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       labs.sort((a,b)=>a.y-b.y).forEach((l,i,arr)=>{if(i&&l.y-arr[i-1].y<13)l.y=arr[i-1].y+13;out+=`<text x="${x(maShow.length-1)+6}" y="${l.y}" style="fill:${l.c}">${l.t}</text>`;});
       maShow.forEach((p,i)=>{
         const bw=iw/Math.max(1,maShow.length-1);
-        out+=`<text x="${x(i)}" y="${h-8}" text-anchor="middle">${+p.a.slice(5,7)}/${+p.a.slice(8,10)}</text>`;
-        out+=`<rect class="hit" x="${x(i)-bw/2}" y="${m.t}" width="${bw}" height="${y(0)-m.t}" data-tip="${esc(`${+p.a.slice(5,7)}/${+p.a.slice(8,10)} 주까지 3주 이동평균(주당)
+        out+=`<text x="${x(i)}" y="${h-8}" text-anchor="middle">~${+p.e.slice(5,7)}/${+p.e.slice(8,10)}</text>`;
+        out+=`<rect class="hit" x="${x(i)-bw/2}" y="${m.t}" width="${bw}" height="${y(0)-m.t}" data-tip="${esc(`~${+p.e.slice(5,7)}/${+p.e.slice(8,10)}까지 ${N}주 ${N===1?'':'이동평균'}(주당)
 접수 ${r1(p.recv)} · 심사접수 ${r1(p.rev)} · 완료 ${r1(p.done)}`)}"/>`;
       });
-      return `<div class="brief-ma"><div class="card-head"><div class="legend"><b style="color:var(--ink);font-weight:600">${N===1?'주별':N+'주 이동평균'} (주당 환산 건수)</b><span><i class="sw" style="background:var(--s1)"></i>접수</span><span><i class="sw" style="background:#d9a535"></i>심사접수</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div><div class="seg" role="group" aria-label="묶는 주 수">${[1,2,3,4].map(n=>`<button type="button" data-mawin="${n}" aria-pressed="${n===N}">${n}주</button>`).join('')}</div></div><div class="plot"><svg viewBox="0 0 ${w} ${h}" height="${h}" style="max-width:${w}px" role="img" aria-label="${N}주 이동평균">${out}</svg></div></div>`;
+      return `<div class="brief-ma"><div class="card-head"><div class="legend"><b style="color:var(--ink);font-weight:600">${N===1?'주별':N+'주 이동평균'} (주당 환산 건수)</b><span><i class="sw" style="background:var(--s1)"></i>접수</span><span><i class="sw" style="background:#d9a535"></i>심사접수</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div></div></div><div class="plot"><svg viewBox="0 0 ${w} ${h}" height="${h}" style="max-width:${w}px" role="img" aria-label="${N}주 이동평균">${out}</svg></div></div>`;
     }
     const tr=(k,a,b,unit,flow)=>{const p=a===null||b===null||a===undefined||b===undefined?null:flow?chgWD(a,b):chg(a,b);return [k,fmt(a),fmt(b),a?sgn(p)+(flow?' *':''):'—',unit];};
     // 겹치는 K주 집계: 기준일(일요일)을 1주씩 앞으로 밀며 매번 K주를 묶는다. 최근 6개 시점. 건수는 영업일당 주(5일) 환산.
@@ -855,8 +856,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     md.push(`### ${K}주 집계 추이 (1주씩 밀며, 각 열 = 그 날짜까지의 ${K}주)`,'',`| 지표 | ${rollHead.join(' | ')} |`,`|---|${roll.map(()=>'---:').join('|')}|`);
     rollRows.forEach(([k,u,fn])=>md.push(`| ${k} (${u}) | ${roll.map(x=>fmt(fn(x.o))).join(' | ')} |`));
     if(maShow.length){
-      md.push(`### ${N===1?'주별':N+'주 이동평균'} (주당 환산 건수)`,'','| 주 시작 | 접수 | 심사접수 | 완료 |','|---|---:|---:|---:|');
-      maShow.forEach(p=>md.push(`| ${p.a} | ${r1(p.recv)} | ${r1(p.rev)} | ${r1(p.done)} |`));
+      md.push(`### ${N===1?'주별':N+'주 이동평균'} (주당 환산 건수)`,'','| 기준일(~일요일) | 접수 | 심사접수 | 완료 |','|---|---:|---:|---:|');
+      maShow.forEach(p=>md.push(`| ~${p.e} | ${r1(p.recv)} | ${r1(p.rev)} | ${r1(p.done)} |`));
       md.push('');
     }
     md.push('### 월별 접수 / 심사접수 / 완료','','| 월 | 접수 | 심사접수 | 완료 |','|---|---:|---:|---:|');
@@ -940,7 +941,6 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   });
   // 이동평균 묶는 주 수(1~4): 요약 카드는 다시 그릴 때마다 버튼을 새로 만들므로 위임으로 받는다
   root.querySelectorAll('[data-cmp]').forEach(b=>b.addEventListener('click',()=>{state.cmpWeeks=+b.dataset.cmp;brief(sets());$('#brief-ai-out').hidden=true;}));
-  $('#brief').addEventListener('click',e=>{const b=e.target.closest('[data-mawin]');if(!b)return;state.maWin=+b.dataset.mawin;brief(sets());});
   // 현황 요약 접기: 결론 한 줄만 남긴다. 상태는 이 브라우저에만 기억(저장 실패해도 무시).
   const setFold=on=>{root.querySelector('.brief').classList.toggle('folded',on);const b=$('#brief-fold');b.textContent=on?'펼치기':'접기';b.setAttribute('aria-expanded',String(!on));};
   try{setFold(localStorage.getItem('db-brief-fold')==='1');}catch(e){}
