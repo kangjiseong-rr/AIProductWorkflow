@@ -239,6 +239,7 @@ function _영업일수_(시작, 종료, 휴일) {
  * elapsedWD      : 접수일자 → 심사완료일(없으면 적합통보일). 아직 진행 중이면 오늘까지.
  * remainingWD    : 오늘 → 현재 마감(연장마감일 우선). 적합통보 전·종료 아닌 건만, 지났으면 음수.
  * reviewWD       : 심사접수일 → 심사완료일(없으면 적합통보일). TTA 인수 이후 실제 심사 기간. 둘 중 하나라도 없으면 null.
+ * intakeWD       : 접수일자 → 심사접수일.
  * noticeLagWD    : 심사완료일 → 적합통보일(통보 전이면 오늘까지). 심사완료일이 없으면 null.
  * pendingNotice  : 통보 대기 — 종료가 아니고 적합통보일이 없는데 심사완료일이 있거나 상태가 완료인 건.
  */
@@ -253,6 +254,7 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
     : 종료 || 상태완료 ? null : _영업일수_(레코드.received, 오늘, 휴일);
   레코드.remainingWD = 종료 || 레코드.notice ? null : _영업일수_(오늘, 마감, 휴일);
   레코드.reviewWD = 레코드.review && 심사끝 ? _영업일수_(레코드.review, 심사끝, 휴일) : null;
+  레코드.intakeWD = 레코드.received && 레코드.review ? _영업일수_(레코드.received, 레코드.review, 휴일) : null;
   레코드.noticeLagWD = 레코드.completion
     ? _영업일수_(레코드.completion, 레코드.notice || 오늘, 휴일)
     : null;
@@ -268,6 +270,7 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
  * noteReviewPlanned: 심사일이 오늘 이후(예정).
  * waitWD    : 심사접수일 → 심사일 (지난 심사만)
  * reqWD     : 심사접수일 → 일정확인요청일 (적극 대응 지표)
+ * afterWD   : 심사일 → 심사완료일(없으면 적합통보일)
  */
 function _특이사항심사일_(레코드, 오늘, 휴일) {
   const 메모 = String(레코드.note || '');
@@ -278,6 +281,7 @@ function _특이사항심사일_(레코드, 오늘, 휴일) {
   레코드.noteReviewPlanned = false;
   레코드.waitWD = null;
   레코드.reqWD = null;
+  레코드.afterWD = null;
   if (!메모 || !기준) return;
 
   const 토큰 = /\(\s*(\d{1,2})\s*[\/,]\s*(\d{1,2})[^)]*\)|(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/g;
@@ -309,6 +313,8 @@ function _특이사항심사일_(레코드, 오늘, 휴일) {
   레코드.noteReviewPlanned = 레코드.noteReview > 오늘;
   if (레코드.noteReviewPlanned || !레코드.review) return;
   레코드.waitWD = _영업일수_(레코드.review, 레코드.noteReview, 휴일);
+  const 심사끝 = 레코드.completion || 레코드.notice;
+  if (심사끝) 레코드.afterWD = _영업일수_(레코드.noteReview, 심사끝, 휴일);
 }
 
 /* ─────────────────────────────────────────────
