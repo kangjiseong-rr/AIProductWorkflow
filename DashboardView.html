@@ -601,7 +601,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     // 투입률은 배정 건수로 환산: 배정받은 심사원 평균 = REVIEW_RATE(없으면 100%), 사람별로는 배정 건수 비례(평균보다 많이 받으면 높게), 1인 최대 100%.
     // 환산 인원(명분) = 투입률 합, MD = 명분 × 영업일.
     const avgRate=payload.reviewRate||1;
-    const rateOf=w=>{const c={};S.mine.forEach(r=>{if(r.reviewer&&inW(r.review||r.received,w))c[r.reviewer]=(c[r.reviewer]||0)+1;});const ks=Object.keys(c),mean=ks.length?ks.reduce((t,k)=>t+c[k],0)/ks.length:0,o={};ks.forEach(k=>o[k]=Math.min(1,avgRate*c[k]/mean));return o;};
+    // 사람별 참여율은 비교 기간이 짧아도(1~3주) 흔들리지 않게 기간 끝에서 거꾸로 최소 4주의 배정으로 나눈다.
+    const rateOf=w0_=>{const w=t0(w0_.b)-t0(w0_.a)>=27*DAY?w0_:{a:iso(t0(w0_.b)-27*DAY),b:w0_.b};const c={};S.mine.forEach(r=>{if(r.reviewer&&inW(r.review||r.received,w))c[r.reviewer]=(c[r.reviewer]||0)+1;});const ks=Object.keys(c),mean=ks.length?ks.reduce((t,k)=>t+c[k],0)/ks.length:0,o={};ks.forEach(k=>o[k]=Math.min(1,avgRate*c[k]/mean));return o;};
     const fteOf=w=>Object.values(rateOf(w)).reduce((t,v)=>t+v,0);
     // 심사원관리 시트의 제외일: 그날부터 배정·처리 불가. 활성여부 N인데 날짜가 없으면 지금은 제외로 본다.
     const 제외=new Map((payload.reviewers||[]).filter(p=>p.excludeFrom||!p.active).map(p=>[p.name,p.excludeFrom]));
@@ -750,9 +751,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const strainWhy=[late?`마감 초과 ${late}건`:'',loadUp?`1명이 동시에 맡은 건 ${r1(A.backlogPer)}→${r1(B.backlogPer)}건`:'',orphan.length?`제외된 심사원 담당 진행 ${orphan.length}건`:''].filter(Boolean).join(', ');
     // 인력 줄은 경영진이 바로 읽을 수 있게 "사람 수"와 "일수"로 쓴다. 1일 = 1명이 하루 심사한 양(MD).
     const dayN=v=>`${r1(v)}일`;
-    const 사람=`최근 ${K}주에 심사한 사람은 ${B.people}명이고, 각자 심사에 쓰는 시간을 합치면 풀타임 ${r1(B.fte)}명과 같습니다(그 전 ${K}주 ${r1(A.fte)}명).`;
+    const rateN=Object.keys(rateOf(w1)).length;
+    const 사람=`최근 ${K}주에 심사한 사람은 ${B.people}명이고, 각자 심사에 쓰는 시간을 합치면 풀타임 ${r1(B.fte)}명과 같습니다(배정받은 ${rateN}명 × 평균 참여율 ${Math.round(avgRate*100)}%를 배정량에 따라 나눔, 1인 최대 100% · 그 전 ${K}주 ${r1(A.fte)}명).`;
     const 지금=outNames.length||newcomers.length
-      ?` 오늘 기준 ${outNames.length?`${outLabel} 제외`:''}${outNames.length&&newcomers.length?', ':''}${newcomers.length?`신규 ${newcomers.join(', ')} 포함`:''}으로 지금 일할 수 있는 인력은 풀타임 ${r1(curFte)}명입니다.`:'';
+      ?` 오늘 기준 ${outNames.length?`${outLabel} 제외`:''}${outNames.length&&newcomers.length?', ':''}${newcomers.length?`신규 ${newcomers.join(', ')} 포함`:''}으로 지금 일할 수 있는 인력은 풀타임 ${r1(curFte)}명입니다(제외된 사람의 참여율을 빼고${newcomers.length?`, 신규는 평균 참여율 ${Math.round(avgRate*100)}%로 더함`:''}).`:'';
     const 일한양=B.md?` 심사에 쓴 시간은 일주일에 ${dayN(B.md/K)}(최근 ${K}주 합계 ${dayN(B.md)}, 약 ${r1(B.md/MD_PER_MM)}개월)${B.mdPerCase===null?'':`, 1건에 평균 ${dayN(B.mdPerCase)}`}입니다.`:'';
     const 속도=B.perWeek===null?'':` 풀타임 1명이 일주일에 ${r1(B.perWeek)}건을 끝냈고(그 전 ${K}주 ${A.perWeek===null?'—':r1(A.perWeek)+'건'}), 1명이 동시에 맡고 있는 건은 ${r1(B.backlogPer)}건입니다(${K}주 전 ${A.backlogPer===null?'—':r1(A.backlogPer)+'건'}).`;
     const 기준=std
