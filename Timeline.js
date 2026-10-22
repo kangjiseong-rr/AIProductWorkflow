@@ -239,7 +239,7 @@ function _영업일수_(시작, 종료, 휴일) {
  * elapsedWD      : 접수일자 → 심사완료일(없으면 적합통보일). 아직 진행 중이면 오늘까지.
  * remainingWD    : 오늘 → 현재 마감(연장마감일 우선). 적합통보 전·종료 아닌 건만, 지났으면 음수.
  * reviewWD       : 심사접수일 → 심사완료일(없으면 적합통보일). TTA 인수 이후 실제 심사 기간. 둘 중 하나라도 없으면 null.
- * intakeWD       : 접수일자 → 심사접수일.
+ * intakeWD       : 접수일자 → 심사접수일. 단계별 소요 기간용으로 당일 = 1WD(_소요영업일_).
  * noticeLagWD    : 심사완료일 → 적합통보일(통보 전이면 오늘까지). 심사완료일이 없으면 null.
  * pendingNotice  : 통보 대기 — 종료가 아니고 적합통보일이 없는데 심사완료일이 있거나 상태가 완료인 건.
  */
@@ -254,10 +254,19 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
     : 종료 || 상태완료 ? null : _영업일수_(레코드.received, 오늘, 휴일);
   레코드.remainingWD = 종료 || 레코드.notice ? null : _영업일수_(오늘, 마감, 휴일);
   레코드.reviewWD = 레코드.review && 심사끝 ? _영업일수_(레코드.review, 심사끝, 휴일) : null;
-  레코드.intakeWD = 레코드.received && 레코드.review ? _영업일수_(레코드.received, 레코드.review, 휴일) : null;
+  레코드.intakeWD = 레코드.received && 레코드.review ? _소요영업일_(레코드.received, 레코드.review, 휴일) : null;
   레코드.noticeLagWD = 레코드.completion
     ? _영업일수_(레코드.completion, 레코드.notice || 오늘, 휴일)
     : null;
+}
+
+/** 단계별 소요 기간: 시작일과 종료일을 모두 세는 영업일 수(당일 처리 = 1WD). 종료가 앞서면 _영업일수_와 같은 음수. */
+function _소요영업일_(시작, 종료, 휴일) {
+  const n = _영업일수_(시작, 종료, 휴일);
+  if (n === null || 종료 < 시작) return n;
+  const d = new Date(시작 + 'T00:00:00Z');
+  const 시작영업일 = d.getUTCDay() !== 0 && d.getUTCDay() !== 6 && !휴일.has(시작);
+  return Math.max(1, n + (시작영업일 ? 1 : 0));
 }
 
 /**
@@ -271,6 +280,7 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
  * waitWD    : 심사접수일 → 심사일 (지난 심사만)
  * reqWD     : 심사접수일 → 일정확인요청일 (적극 대응 지표)
  * noticeAfterWD : 심사일 → 적합통보일
+ * 위 세 값은 당일 = 1WD(_소요영업일_).
  */
 function _특이사항심사일_(레코드, 오늘, 휴일) {
   const 메모 = String(레코드.note || '');
@@ -308,12 +318,12 @@ function _특이사항심사일_(레코드, 오늘, 휴일) {
       }
     }
   });
-  if (레코드.noteReq && 레코드.review) 레코드.reqWD = _영업일수_(레코드.review, 레코드.noteReq, 휴일);
+  if (레코드.noteReq && 레코드.review) 레코드.reqWD = _소요영업일_(레코드.review, 레코드.noteReq, 휴일);
   if (!레코드.noteReview) return;
   레코드.noteReviewPlanned = 레코드.noteReview > 오늘;
   if (레코드.noteReviewPlanned || !레코드.review) return;
-  레코드.waitWD = _영업일수_(레코드.review, 레코드.noteReview, 휴일);
-  if (레코드.notice) 레코드.noticeAfterWD = _영업일수_(레코드.noteReview, 레코드.notice, 휴일);
+  레코드.waitWD = _소요영업일_(레코드.review, 레코드.noteReview, 휴일);
+  if (레코드.notice) 레코드.noticeAfterWD = _소요영업일_(레코드.noteReview, 레코드.notice, 휴일);
 }
 
 /* ─────────────────────────────────────────────

@@ -150,7 +150,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <div class="card full"><div class="card-head"><h3 id="heat-title">심사원별 주차별 배정·완료 현황</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-heat="month" aria-pressed="false">월별</button><button type="button" data-heat="week" aria-pressed="true">주차별</button><button type="button" data-heat="day" aria-pressed="false">일별</button></div></div><div class="desc" id="heat-desc"></div>
       <div class="heat-legend" id="heat-legend"></div>
       <div class="heat-wrap" id="heat"></div></div>
-    <div class="card full"><h3>단계별 소요 기간</h3><div class="desc">접수 → 심사접수 → 심사일정 요청 → 심사(현장·온라인, 첫 심사일) → 적합통보 · 기간은 심사접수일 기준 · 날짜가 없는 건은 통계에서 빠지며 구간별 제외 건수를 표시</div>
+    <div class="card full"><h3>단계별 소요 기간</h3><div class="desc">접수 → 심사접수 → 심사일정협의 → 심사 → 심사완료 → 적합통보 · 심사일정 요청일·심사일(현장·온라인, 첫 심사일)은 특이사항 기준 · 시작일과 종료일을 모두 세어 당일 처리 = 1WD · 기간은 심사접수일 기준 · 날짜가 없는 건은 통계에서 빠지며 구간별 제외 건수를 표시</div>
       <div id="start"></div></div>
     <div class="card full"><h3>마감 준수 · 통보 현황</h3><div class="desc">막대는 심사원 기준(심사완료일을 마감과 비교) · 통보가 늦거나 빠진 건은 아래 행정 확인 목록에 따로 표시 · 위쪽 "마감 초과" 카드는 진행 중인 건만 셉니다</div>
       <div id="comply"></div></div>
@@ -527,7 +527,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     ];
     const cell=v=>v===null?'—':n1(v);
     $('#start').innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>구간</th><th>집계 / 대상</th><th>통계 제외</th><th>중앙값(WD)</th><th>평균(WD)</th></tr></thead><tbody>${R.map(([k,all,f,why])=>{
-      const a=all.map(f).filter(v=>v!==null),miss=all.length-a.length;
+      const a=all.map(f).filter(v=>typeof v==='number'&&isFinite(v)),miss=all.length-a.length;
       return `<tr><td>${k}</td><td>${a.length} / ${all.length}</td><td>${miss?`${miss}건 · ${why}`:'없음'}</td><td>${cell(median(a))}</td><td>${cell(avg(a))}</td></tr>`;}).join('')}</tbody></table></div>
       <div class="brief-note">대상 = 선택 기간에 심사접수된 ${inRev.length}건에서 종료(취소·부적합) ${cancelN}건을 뺀 ${valid.length}건${writtenN?`(심사일정 요청·심사 구간은 서면심사 ${writtenN}건도 제외)`:''}. 심사일정 요청일·심사일은 특이사항 기재 날짜이며, 날짜를 적은 건만으로 계산합니다. 심사 → 적합통보는 통보까지 끝난 건만 대상입니다.</div>`;
   }

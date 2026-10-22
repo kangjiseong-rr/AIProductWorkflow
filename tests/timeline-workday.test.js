@@ -162,9 +162,11 @@ const 메모 = (note, review = '2026-09-01', extra = {}) => {
 // 연말 → 다음 해, 지난 심사만 waitWD, 예정은 noteReviewPlanned
 eq(메모('(1/5) 현장 심사', '2025-12-22').noteReview, '2026-01-05', '해 넘김');
 const 지난 = 메모('(9/2)심사일정확인요청, (9/8) 현장 심사', '2026-09-01', { completion: '2026-09-14', notice: '2026-09-15' });
-eq(지난.reqWD, 1, '심사접수→요청 WD');
-eq(지난.waitWD, 5, '심사접수→심사 WD');
-eq(지난.noticeAfterWD, 5, '심사→적합통보 WD');
+eq(지난.reqWD, 2, '심사접수→요청 WD (당일 = 1WD)');
+eq(지난.waitWD, 6, '심사접수→심사 WD');
+eq(지난.noticeAfterWD, 6, '심사→적합통보 WD');
+eq(메모('(9/1) 현장 심사', '2026-09-01').waitWD, 1, '당일 심사 = 1WD');
+eq(메모('(9/7) 현장 심사', '2026-09-05').waitWD, 1, '토요일 심사접수 → 월요일 심사 = 1WD');
 const 예정 = 메모('(10/29) 현장심사', '2026-10-01');
 eq(예정.noteReviewPlanned, true, '오늘 이후는 예정');
 eq(예정.waitWD, null, '예정은 대기 기간 미집계');
