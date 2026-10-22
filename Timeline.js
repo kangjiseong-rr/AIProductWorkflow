@@ -270,7 +270,7 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
  * noteReviewPlanned: 심사일이 오늘 이후(예정).
  * waitWD    : 심사접수일 → 심사일 (지난 심사만)
  * reqWD     : 심사접수일 → 일정확인요청일 (적극 대응 지표)
- * afterWD   : 심사일 → 심사완료일(없으면 적합통보일)
+ * noticeAfterWD : 심사일 → 적합통보일
  */
 function _특이사항심사일_(레코드, 오늘, 휴일) {
   const 메모 = String(레코드.note || '');
@@ -281,7 +281,7 @@ function _특이사항심사일_(레코드, 오늘, 휴일) {
   레코드.noteReviewPlanned = false;
   레코드.waitWD = null;
   레코드.reqWD = null;
-  레코드.afterWD = null;
+  레코드.noticeAfterWD = null;
   if (!메모 || !기준) return;
 
   const 토큰 = /\(\s*(\d{1,2})\s*[\/,]\s*(\d{1,2})[^)]*\)|(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/g;
@@ -313,8 +313,7 @@ function _특이사항심사일_(레코드, 오늘, 휴일) {
   레코드.noteReviewPlanned = 레코드.noteReview > 오늘;
   if (레코드.noteReviewPlanned || !레코드.review) return;
   레코드.waitWD = _영업일수_(레코드.review, 레코드.noteReview, 휴일);
-  const 심사끝 = 레코드.completion || 레코드.notice;
-  if (심사끝) 레코드.afterWD = _영업일수_(레코드.noteReview, 심사끝, 휴일);
+  if (레코드.notice) 레코드.noticeAfterWD = _영업일수_(레코드.noteReview, 레코드.notice, 휴일);
 }
 
 /* ─────────────────────────────────────────────
