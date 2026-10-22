@@ -618,7 +618,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const caveats=[];
     // 현재 가용 명분 = 최근 4주 배정 환산 투입률 중 오늘 기준 제외되지 않은 사람만. 판단은 이 값과 비교한다.
     const rB=rateOf(w1),outNames=Object.keys(rB).filter(n=>outAt(n,T));
-    const curFte=Object.keys(rB).filter(n=>!outAt(n,T)).reduce((t,n)=>t+rB[n],0);
+    // 최근 4주에 배정이 없어도 투입일이 지났고 제외되지 않은 활성 심사원(새로 투입된 사람)은 평균 투입률로 가용 인원에 넣는다.
+    const newcomers=(payload.reviewers||[]).filter(p=>p.active&&p.startFrom&&p.startFrom<=T&&!(p.name in rB)&&!outAt(p.name,T)).map(p=>p.name);
+    const curFte=Object.keys(rB).filter(n=>!outAt(n,T)).reduce((t,n)=>t+rB[n],0)+newcomers.length*avgRate;
     const orphan=S.active.filter(r=>r.reviewer&&outAt(r.reviewer,T));
     const orphanBy=[...new Set(orphan.map(r=>r.reviewer))].map(n=>`${n} ${orphan.filter(r=>r.reviewer===n).length}`).join(', ');
     const outLabel=outNames.map(n=>`${n}${제외.get(n)?` ${+제외.get(n).slice(5,7)}/${+제외.get(n).slice(8,10)}~`:''}`).join(', ');
@@ -658,7 +660,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       :need<curFte*0.9&&B.backlogPer!==null&&A.backlogPer!==null&&B.backlogPer<A.backlogPer?'여유':'균형';
     const vb=staffVerdict==='과부하'?['b-up','과부하']:staffVerdict==='부족'?['b-up','부족 신호']:staffVerdict==='부담'?['b-warn','부담 지속']:staffVerdict==='여유'?['b-down','여유 가능성']:staffVerdict==='균형'?['b-flat','균형']:['b-warn','판단 보류'];
     const strainWhy=[late?`마감 초과 ${late}건`:'',loadUp?`1명분당 진행 중 ${r1(A.backlogPer)}→${r1(B.backlogPer)}건`:'',orphan.length?`제외된 심사원 담당 진행 ${orphan.length}건`:''].filter(Boolean).join(', ');
-    rows.push(['인력',vb,(staffVerdict==='과부하'?`최근 4주 심사완료 ${B.done}건을 표준(건당 ${std} MD, 방문 이동 포함)으로 환산하면 ${r1(stdUsedMD)} MD가 필요했으나 정규 투입은 ${r1(B.md)} MD로, 약 ${r1(gapMD)} MD(${r1(gapMD/MD_PER_MM)} MM)가 정규 투입으로 설명되지 않습니다(실측 건당 ${r1(B.mdPerCase)} MD, 1명분당 주 ${r1(B.perWeek)}건 — 표준 ${r1(stdWeekPerFte)}건). `:'')+`최근 4주 활동 심사원 ${B.people}명, 배정으로 환산하면 ${r1(B.fte)}명분(직전 4주 ${r1(A.fte)}명분)`+(outNames.length?` — 그중 ${outLabel} 제외로 현재 가용 ${r1(curFte)}명분`:'')+'.'
+    rows.push(['인력',vb,(staffVerdict==='과부하'?`최근 4주 심사완료 ${B.done}건을 표준(건당 ${std} MD, 방문 이동 포함)으로 환산하면 ${r1(stdUsedMD)} MD가 필요했으나 정규 투입은 ${r1(B.md)} MD로, 약 ${r1(gapMD)} MD(${r1(gapMD/MD_PER_MM)} MM)가 정규 투입으로 설명되지 않습니다(실측 건당 ${r1(B.mdPerCase)} MD, 1명분당 주 ${r1(B.perWeek)}건 — 표준 ${r1(stdWeekPerFte)}건). `:'')+`최근 4주 활동 심사원 ${B.people}명, 배정으로 환산하면 ${r1(B.fte)}명분(직전 4주 ${r1(A.fte)}명분)`+(outNames.length||newcomers.length?` — ${outNames.length?`그중 ${outLabel} 제외`:''}${outNames.length&&newcomers.length?', ':''}${newcomers.length?`신규 투입 ${newcomers.join(', ')} 포함`:''}으로 현재 가용 ${r1(curFte)}명분`:'')+'.'
       +(B.md?` 투입 주 ${r1(B.md/4)} MD(4주 ${r1(B.md)} MD, 약 ${r1(B.md/MD_PER_MM)} MM)${B.mdPerCase===null?'':`, 건당 ${r1(B.mdPerCase)} MD`}.`:'')
       +(B.perWeek===null?'':` 1명분당 주 ${r1(B.perWeek)}건 처리(직전 4주 ${A.perWeek===null?'—':r1(A.perWeek)+'건'}), 1명분당 진행 중 ${r1(B.backlogPer)}건(4주 전 ${A.backlogPer===null?'—':r1(A.backlogPer)+'건'}).`)
       +(std

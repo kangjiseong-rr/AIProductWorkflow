@@ -306,7 +306,7 @@ function _Gemini예비모델_(키, 기본) {
 }
 
 /**
- * 심사원관리 시트(읽기만): 심사원명·활성여부·제외. 제외는 '10/6'처럼 월/일만 적어도 되며 오늘이 속한 연도로 본다.
+ * 심사원관리 시트(읽기만): 심사원명·활성여부·제외·투입(투입일). 제외는 '10/6'처럼 월/일만 적어도 되며 오늘이 속한 연도로 본다.
  * 활성여부가 N인데 제외일이 비어 있으면 excludeFrom='' + active=false(시점 모름 → 지금은 제외).
  */
 function _심사원제외읽기_(ss, tz, 오늘) {
@@ -317,6 +317,7 @@ function _심사원제외읽기_(ss, tz, 오늘) {
   const 이름 = 헤더.indexOf('심사원명');
   const 활성 = 헤더.indexOf('활성여부');
   const 제외 = 헤더.indexOf('제외');
+  const 투입 = 헤더.indexOf('투입') >= 0 ? 헤더.indexOf('투입') : 헤더.indexOf('투입일');
   if (이름 < 0) return [];
   return 값.slice(1).map(행 => {
     const name = String(행[이름] == null ? '' : 행[이름]).trim();
@@ -325,6 +326,7 @@ function _심사원제외읽기_(ss, tz, 오늘) {
       name,
       active: 활성 < 0 || String(행[활성] || '').trim().toUpperCase() !== 'N',
       excludeFrom: 제외 < 0 ? '' : _제외일정규화_(행[제외], tz, 오늘),
+      startFrom: 투입 < 0 ? '' : _제외일정규화_(행[투입], tz, 오늘),
     };
   }).filter(Boolean);
 }
