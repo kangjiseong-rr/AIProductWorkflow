@@ -484,7 +484,6 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const firstOk=S.done.filter(r=>compliance(r)==='first').length;
     const recvValid=S.recv.filter(r=>!/^종료(취소)/.test(r.status));
     const suppRate=pct(recvValid.filter(r=>r.supplement).length,recvValid.length);
-    const lag=S.done.filter(r=>r.completion&&r.notice).map(r=>r.noticeLagWD).filter(v=>v!==null);
     const pend=S.pend.length,pendLate=S.pend.filter(r=>r.pendLate).length;
     // 기간 내 접수 건의 현재 구성: 종료(취소·부적합) / 심사완료(통보 대기 포함) / 진행. 합이 접수 건수와 같다.
     const recvEnd=S.recv.filter(r=>r.cancel).length,recvCancel=S.recv.filter(r=>/취소/.test(r.status)).length;
@@ -505,7 +504,6 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       ['마감 임박',soon,'건','잔여 3WD 이하','var(--warn)'],
       ['처리기간 중앙값',median(vals)===null?'—':n1(median(vals)),'WD',`평균 ${n1(avg(vals))}WD · 접수→심사완료`,''],
       ['최초 마감 내 심사완료',pct(firstOk,S.done.length)===null?'—':n1(pct(firstOk,S.done.length)),'%',`${firstOk}/${S.done.length}건`,'var(--good)'],
-      ['통보 소요 중앙값',lag.length?n1(median(lag)):'—','WD','심사완료 → 적합통보',''],
       ['보완요청 발생',suppRate===null?'—':n1(suppRate),'%','기간 내 접수(취소 제외) 기준',''],
     ];
     tileRows={flow:F,subs:T};
