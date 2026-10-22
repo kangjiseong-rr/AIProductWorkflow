@@ -259,7 +259,7 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
 const 현황요약_투입률속성 = 'REVIEW_RATE';
 const 현황요약_키속성 = 'GEMINI_API_KEY';
 const 현황요약_모델속성 = 'GEMINI_MODEL';
-const 현황요약_기본모델 = 'gemini-2.5-flash';
+const 현황요약_기본모델 = 'gemini-3.8-flash';
 
 /** 30%·0.3·30 → 0.3. 비었거나 숫자가 아니면 null. */
 function _투입률정규화_(v) {

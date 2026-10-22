@@ -91,9 +91,15 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
 .brief-actions{display:flex;gap:6px}
 #db .brief-actions button{min-height:26px;padding:2px 10px;font-size:12px}
 .brief-head{font-size:15px;font-weight:600;margin:4px 0 10px;line-height:1.5}
-.brief-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:10px 24px}
+.brief-grid{display:flex;flex-direction:column;gap:6px}
+.brief.folded #brief-body,.brief.folded .desc,.brief.folded #brief-ai-out{display:none}
+.brief.folded .brief-head{margin-bottom:0}
 .brief-row{display:flex;gap:10px;align-items:baseline;line-height:1.55}
+.brief-row{padding:6px 0;border-bottom:1px solid var(--grid)}
+.brief-row:last-child{border-bottom:0}
 .brief-row .lab{flex:0 0 34px;font-weight:600;color:var(--sub)}
+.brief-row .badge{min-width:68px;text-align:center;margin-right:0}
+.brief-row>span:last-child{flex:1}
 .badge{display:inline-block;font-size:11px;font-weight:600;border-radius:10px;padding:1px 8px;margin-right:6px;white-space:nowrap}
 .b-up{background:#fbe3df;color:#a8443a}.b-down{background:#e1f0e4;color:#2f7a3c}.b-flat{background:#efeeea;color:var(--sub)}.b-warn{background:#fbf0d6;color:#8a6510}
 .brief-tbl{margin-top:14px}
@@ -119,7 +125,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <label>담당 심사원<select id="owner"><option value="">전체 심사원</option></select></label>
     <span class="muted">접수 지표는 접수일자, 완료 지표는 심사완료일(비어 있으면 적합통보일) 기준으로 기간을 적용합니다. 진행 현황은 항상 오늘 기준입니다. 기간·일수는 모두 영업일(WD)입니다.</span>
   </div>
-  <div class="card full brief"><div class="card-head"><h3>현황 요약</h3><div class="brief-actions"><button type="button" id="brief-copy">요약 복사</button><button type="button" id="brief-ai" hidden>Gemini 보고 문장</button></div></div>
+  <div class="card full brief"><div class="card-head"><h3>현황 요약</h3><div class="brief-actions"><button type="button" id="brief-fold" aria-expanded="true">접기</button><button type="button" id="brief-copy">요약 복사</button><button type="button" id="brief-ai" hidden>Gemini 보고 문장</button></div></div>
     <div class="desc">최근 4주(오늘까지 28일)와 직전 4주 비교 · 위 기간 필터와 관계없이 고정, 담당 심사원 필터는 적용 · 종료(취소·부적합)는 수요에는 넣고 처리·적체에서는 뺌</div>
     <div id="brief"></div><div id="brief-ai-out" hidden></div></div>
   <div class="tiles" id="tiles"></div>
@@ -628,12 +634,12 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const rng=w=>`${+w.a.slice(5,7)}/${+w.a.slice(8,10)}~${+w.b.slice(5,7)}/${+w.b.slice(8,10)}`;
 
     $('#brief').innerHTML=`<div class="brief-head">${esc(head)}</div>`
-      +`<div class="brief-grid">${rows.map(([l,b,t])=>`<div class="brief-row"><span class="lab">${l}</span><span>${badge(b)}${esc(t)}</span></div>`).join('')}</div>`
+      +`<div id="brief-body"><div class="brief-grid">${rows.map(([l,b,t])=>`<div class="brief-row"><span class="lab">${l}</span>${badge(b)}<span>${esc(t)}</span></div>`).join('')}</div>`
       +`<div class="tbl-wrap brief-tbl"><table><thead><tr><th>지표</th><th>직전 4주 (${rng(w0)})</th><th>최근 4주 (${rng(w1)})</th><th>변화</th></tr></thead><tbody>`
       +tbl.map(([k,a,b,p,u])=>`<tr><td>${k} <span class="muted">${u}</span></td><td>${a}</td><td>${b}</td><td>${p}</td></tr>`).join('')+`</tbody></table></div>`
       +`<div class="brief-note">월별 접수(완료): ${months6.map(m=>`${+m.month.slice(5,7)}월 ${m.recv}(${m.done})`).join(' · ')} — 이번 달은 진행 중`
       +(rate?` · 1 MM = ${MD_PER_MM} MD`:'')
-      +(caveats.length?`<br>※ ${caveats.map(esc).join('<br>※ ')}`:'')+`</div>`;
+      +(caveats.length?`<br>※ ${caveats.map(esc).join('<br>※ ')}`:'')+`</div></div>`;
 
     briefText=[`[AI확인제 심사 현황 요약] ${T} 기준${state.owner?' · 심사원 1명 기준':''}`,head,...rows.map(([l,b,t])=>`- ${l}(${b[1]}): ${t}`),
       '',`지표\t직전 4주 (${rng(w0)})\t최근 4주 (${rng(w1)})\t변화`,...tbl.map(([k,a,b,p,u])=>`${k.trim()}(${u})\t${a}\t${b}\t${p}`),
@@ -693,6 +699,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   $('#owner').addEventListener('change',e=>{state.owner=e.target.value;render();});
   $('#refresh').addEventListener('click',load);
   $('#brief-copy').addEventListener('click',()=>copyText(briefText));
+  // 현황 요약 접기: 결론 한 줄만 남긴다. 상태는 이 브라우저에만 기억(저장 실패해도 무시).
+  const setFold=on=>{root.querySelector('.brief').classList.toggle('folded',on);const b=$('#brief-fold');b.textContent=on?'펼치기':'접기';b.setAttribute('aria-expanded',String(!on));};
+  try{setFold(localStorage.getItem('db-brief-fold')==='1');}catch(e){}
+  $('#brief-fold').addEventListener('click',()=>{const on=!root.querySelector('.brief').classList.contains('folded');setFold(on);try{localStorage.setItem('db-brief-fold',on?'1':'0');}catch(e){}});
   $('#brief-ai').addEventListener('click',aiBrief);
   let lastW=0;new ResizeObserver(en=>{const w=en[0].contentRect.width;if(Math.abs(w-lastW)>2){lastW=w;render();}}).observe(root);
   load();
