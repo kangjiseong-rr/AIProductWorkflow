@@ -259,6 +259,7 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
 const 현황요약_투입률속성 = 'REVIEW_RATE';
 const 현황요약_키속성 = 'GEMINI_API_KEY';
 const 현황요약_모델속성 = 'GEMINI_MODEL';
+const 현황요약_예비모델속성 = 'GEMINI_FALLBACK_MODEL';
 const 현황요약_기본모델 = 'gemini-3.8-flash';
 
 /** 30%·0.3·30 → 0.3. 비었거나 숫자가 아니면 null. */
@@ -302,28 +303,43 @@ function 현황요약AI문장(사실) {
     '6) 인력의 명분·MD는 배정 건수로 환산한 추정치임을 한 번 밝힌다.',
   ].join('\n');
 
-  const 응답 = UrlFetchApp.fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(모델)}:generateContent`, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { 'x-goog-api-key': 키 },
-      muteHttpExceptions: true,
-      payload: JSON.stringify({
-        systemInstruction: { parts: [{ text: 지시 }] },
-        contents: [{ role: 'user', parts: [{ text: 본문 }] }],
-        generationConfig: { temperature: 0.2 },
-      }),
-    });
-  const 코드 = 응답.getResponseCode();
+  // 혼잡(429·500·503)은 잠깐 쉬고 다시 시도한다. 그래도 안 되면 GEMINI_FALLBACK_MODEL(쉼표로 여러 개)을 차례로 쓴다.
+  const 예비 = (속성.getProperty(현황요약_예비모델속성) || '').split(',').map(v => v.trim()).filter(v => v && v !== 모델);
+  const 요청본문 = JSON.stringify({
+    systemInstruction: { parts: [{ text: 지시 }] },
+    contents: [{ role: 'user', parts: [{ text: 본문 }] }],
+    generationConfig: { temperature: 0.2 },
+  });
   let 결과 = null;
-  try { 결과 = JSON.parse(응답.getContentText()); } catch (e) {}
-  if (코드 !== 200) {
-    const 메시지 = 결과 && 결과.error && 결과.error.message || 응답.getContentText().slice(0, 200);
-    throw new Error(`Gemini 호출 실패(${코드}): ${메시지}`);
+  let 사용모델 = '';
+  let 마지막오류 = '';
+  for (const m of [모델].concat(예비)) {
+    for (let 시도 = 0; 시도 < 3 && !결과; 시도++) {
+      if (시도) Utilities.sleep(시도 === 1 ? 2000 : 5000);
+      const 응답 = UrlFetchApp.fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
+          method: 'post',
+          contentType: 'application/json',
+          headers: { 'x-goog-api-key': 키 },
+          muteHttpExceptions: true,
+          payload: 요청본문,
+        });
+      const 코드 = 응답.getResponseCode();
+      let 내용 = null;
+      try { 내용 = JSON.parse(응답.getContentText()); } catch (e) {}
+      if (코드 === 200) { 결과 = 내용; 사용모델 = m; break; }
+      마지막오류 = `${m} ${코드}: ${내용 && 내용.error && 내용.error.message || 응답.getContentText().slice(0, 200)}`;
+      if ([429, 500, 503].indexOf(코드) < 0) break;   // 키·모델명 문제 등은 재시도해도 같으므로 다음 모델로
+    }
+    if (결과) break;
+  }
+  if (!결과) {
+    throw new Error(`Gemini 호출 실패(${마지막오류}). 혼잡 오류면 잠시 뒤 다시 눌러 주세요` +
+      (예비.length ? '.' : ` — 스크립트 속성 ${현황요약_예비모델속성}에 예비 모델을 넣으면 자동으로 바꿔 시도합니다.`));
   }
   const 후보 = 결과 && 결과.candidates && 결과.candidates[0];
   const 문장 = 후보 && 후보.content && (후보.content.parts || []).map(p => p.text || '').join('').trim();
   if (!문장) throw new Error('Gemini 응답에 문장이 없습니다' + (후보 && 후보.finishReason ? `(${후보.finishReason})` : '') + '.');
   캐시.put(캐시키, 문장, 6 * 3600);
-  return { text: 문장, model: 모델, cached: false };
+  return { text: 문장, model: 사용모델, cached: false };
 }
