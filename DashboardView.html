@@ -424,7 +424,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       s+=(isOpen(k)?'<g opacity=".4">':'<g>')+bar(c-bw*1.5-1,a[k]||0,'var(--s1)')+bar(c-bw/2,v[k]||0,'#d9a535')+bar(c+bw/2+1,b[k]||0,'var(--s2)')+'</g>';
       s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}${isOpen(k)?' (진행 중 — 아직 끝나지 않음)':''}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''}
 심사접수 ${v[k]||0}건
-완료 ${b[k]||0}건${a[k]?` (접수 대비 ${pct(b[k]||0,a[k])})`:''}
+완료 ${b[k]||0}건
 누적: 접수 ${ca[k]} · 심사접수 ${cv[k]} · 완료 ${cb[k]} (접수 대비 ${pct(cb[k],ca[k])})`)}"/>`;
       const newMonth=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));
       if(i%every===0||isOpen(k))s+=`<text x="${c}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}${isOpen(k)?'*':''}</text>`;
