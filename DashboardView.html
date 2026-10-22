@@ -606,7 +606,12 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       const recv=S.mine.filter(r=>inW(r.received,w)),end=recv.filter(r=>r.cancel).length;
       // 심사 수요 = 심사접수일이 이 기간인 건(우리에게 실제로 넘어온 건). 종료 건은 처리와 맞추려고 뺀 값도 둔다.
       const rv=S.mine.filter(r=>inW(r.review,w));
-      const o={recv:recv.length,end,valid:recv.length-end,rev:rv.length,revValid:rv.filter(r=>!r.cancel).length,done:S.mine.filter(r=>!r.cancel&&inW(r.fin,w)).length,wd:wdIn(w.a,w.b),backlog:backlogAt(w.b)};
+      const dn=S.mine.filter(r=>!r.cancel&&inW(r.fin,w));
+      const pt={med:median(dn.map(r=>r.elapsedWD).filter(v=>v!==null)),rev:median(dn.map(r=>r.reviewWD).filter(v=>v!==null)),
+        ok:pct(dn.filter(r=>compliance(r)==='first').length,dn.filter(r=>r.original).length),
+        okExt:pct(dn.filter(r=>compliance(r)!=='late'&&r.original).length,dn.filter(r=>r.original).length),
+        lag:median(dn.filter(r=>r.completion&&r.notice).map(r=>r.noticeLagWD).filter(v=>v!==null))};
+      const o={pt,recv:recv.length,end,valid:recv.length-end,rev:rv.length,revValid:rv.filter(r=>!r.cancel).length,done:S.mine.filter(r=>!r.cancel&&inW(r.fin,w)).length,wd:wdIn(w.a,w.b),backlog:backlogAt(w.b)};
       o.people=people(w);o.fte=fteOf(w);o.md=o.fte*o.wd;o.mdPerCase=o.done&&o.md?o.md/o.done:null;
       o.perWeek=o.fte&&o.wd?o.done/o.wd*5/o.fte:null;o.backlogPer=o.fte?o.backlog/o.fte:null;
       return o;
@@ -673,6 +678,17 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     if(maShow.length)rows.push([`${N}주 이동`,lvl(maChg('rev')),`최근 ${N}주 ${N===1?'(주별)':'이동평균'}(주당 환산): ${[maTxt('recv','접수'),maTxt('rev','심사접수'),maTxt('done','완료')].join(' · ')}. 아래 그래프에서 묶는 주 수(1~${K}주)를 바꿔 촘촘하게 또는 넓게 볼 수 있습니다.`]);
     rows.push(['처리',flowB,`최근 ${K}주 심사완료 ${B.done}건(주 ${r1(weekDone)}건), 직전 ${K}주 ${A.done}건(주 ${r1(wk(A.done,A))}건, 영업일당 ${sgn(chgWD(A.done,B.done))}).`
       +(flow===null?'':` 같은 기간 심사 유입(종료 제외) ${B.revValid}건 대비 ${Math.round(flow*100)}%를 처리했습니다.`)]);
+    // 처리 기간: 기간 안에 심사완료된 건 기준. 진행 중인 건은 오늘까지 경과일.
+    const actMed=median(S.active.map(r=>r.elapsedWD).filter(v=>v!==null));
+    const pB=B.pt,pA=A.pt,dMed=pB.med!==null&&pA.med!==null?pB.med-pA.med:null;
+    const ptBadge=pB.med===null?['b-flat','완료 없음']:dMed===null?['b-flat','—']:dMed>=1?['b-up','길어짐']:dMed<=-1?['b-down','짧아짐']:['b-flat','비슷'];
+    const wdTxt=v=>v===null?'—':`${r1(v)}WD`;
+    rows.push(['처리 기간',ptBadge,pB.med===null?`최근 ${K}주에 심사완료된 건이 없습니다.`
+      :`최근 ${K}주 심사완료 건의 처리기간(접수→심사완료) 중앙값 ${wdTxt(pB.med)}, 직전 ${K}주 ${wdTxt(pA.med)}.`
+      +(pB.rev===null?'':` 심사접수 후 심사완료까지는 중앙값 ${wdTxt(pB.rev)}.`)
+      +(pB.ok===null?'':` 최초 마감(${BASIC}WD) 안에 끝낸 비율 ${n1(pB.ok)}%(직전 ${K}주 ${pA.ok===null?'—':n1(pA.ok)+'%'}), 연장 마감까지 포함하면 ${n1(pB.okExt)}%.`)
+      +(pB.lag===null?'':` 심사완료→적합통보 중앙값 ${wdTxt(pB.lag)}.`)
+      +(actMed===null?'':` 지금 진행 중인 ${S.active.length}건은 접수 후 중앙값 ${wdTxt(actMed)} 지났습니다.`)]);
     rows.push(['적체',dBack>0?['b-up','증가']:dBack<0?['b-down','감소']:['b-flat','변동 없음'],
       `진행 중 ${B.backlog}건(${K}주 전 ${A.backlog}건, ${2*K}주 전 ${start0}건). 마감 초과 ${late}건.`
       +(clear===null?'':` 지금 처리 속도면 소진까지 약 ${r1(clear)}주.`)
@@ -697,19 +713,25 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       :strain?'부담'
       :need<curFte*0.9&&B.backlogPer!==null&&A.backlogPer!==null&&B.backlogPer<A.backlogPer?'여유':'균형';
     const vb=staffVerdict==='과부하'?['b-up','과부하']:staffVerdict==='부족'?['b-up','부족 신호']:staffVerdict==='부담'?['b-warn','부담 지속']:staffVerdict==='여유'?['b-down','여유 가능성']:staffVerdict==='균형'?['b-flat','균형']:['b-warn','판단 보류'];
-    const strainWhy=[late?`마감 초과 ${late}건`:'',loadUp?`1명분당 진행 중 ${r1(A.backlogPer)}→${r1(B.backlogPer)}건`:'',orphan.length?`제외된 심사원 담당 진행 ${orphan.length}건`:''].filter(Boolean).join(', ');
-    rows.push(['인력',vb,(staffVerdict==='과부하'?`최근 ${K}주 심사완료 ${B.done}건을 표준(건당 ${std} MD, 방문 이동 포함)으로 환산하면 ${r1(stdUsedMD)} MD가 필요했으나 정규 투입은 ${r1(B.md)} MD로, 약 ${r1(gapMD)} MD(${r1(gapMD/MD_PER_MM)} MM)가 정규 투입으로 설명되지 않습니다(실측 건당 ${r1(B.mdPerCase)} MD, 1명분당 주 ${r1(B.perWeek)}건 — 표준 ${r1(stdWeekPerFte)}건). `:'')+`최근 ${K}주 활동 심사원 ${B.people}명, 배정으로 환산하면 ${r1(B.fte)}명분(직전 ${K}주 ${r1(A.fte)}명분)`+(outNames.length||newcomers.length?` — ${outNames.length?`그중 ${outLabel} 제외`:''}${outNames.length&&newcomers.length?', ':''}${newcomers.length?`신규 투입 ${newcomers.join(', ')} 포함`:''}으로 현재 가용 ${r1(curFte)}명분`:'')+'.'
-      +(B.md?` 투입 주 ${r1(B.md/K)} MD(${K}주 ${r1(B.md)} MD, 약 ${r1(B.md/MD_PER_MM)} MM)${B.mdPerCase===null?'':`, 건당 ${r1(B.mdPerCase)} MD`}.`:'')
-      +(B.perWeek===null?'':` 1명분당 주 ${r1(B.perWeek)}건 처리(직전 ${K}주 ${A.perWeek===null?'—':r1(A.perWeek)+'건'}), 1명분당 진행 중 ${r1(B.backlogPer)}건(${K}주 전 ${A.backlogPer===null?'—':r1(A.backlogPer)+'건'}).`)
-      +(std
-        ?` 표준 건당 ${std} MD 기준: 최근 ${K}주 심사 유입 ${B.revValid}건에 필요 ${r1(needMD)} MD, 현재 가용 ${r1(availMD)} MD(${r1(curFte)}명분 × ${B.wd}영업일) → 필요 ${r1(need)}명분.`
-          +` 진행 중 ${B.backlog}건 소진에 ${r1(backlogMD)} MD${backlogWeeks===null?'':`(현재 가용으로 약 ${r1(backlogWeeks)}주)`}.`
-          +(shortFte!==null&&shortFte>0?` 적정 속도로 처리하려면 ${r1(shortFte)}명분이 더 필요합니다.`:'')
-        :need===null?'':` 지금 심사 수요를 같은 속도로 처리하려면 ${r1(need)}명분이 필요합니다(현재 가용 ${r1(curFte)}명분).`)]);
-    if(overload!==null)caveats.push(`정규 투입으로 설명되지 않는 MD = 처리 실적 × 표준 ${std} MD − 정규 투입 MD(배정 환산 명분 × 영업일). 시트로는 야근·휴일 근무 여부를 알 수 없어 추정치이며, 정규 투입 MD는 REVIEW_RATE 설정에 따라 달라집니다.`);
+    const strainWhy=[late?`마감 초과 ${late}건`:'',loadUp?`1명이 동시에 맡은 건 ${r1(A.backlogPer)}→${r1(B.backlogPer)}건`:'',orphan.length?`제외된 심사원 담당 진행 ${orphan.length}건`:''].filter(Boolean).join(', ');
+    // 인력 줄은 경영진이 바로 읽을 수 있게 "사람 수"와 "일수"로 쓴다. 1일 = 1명이 하루 심사한 양(MD).
+    const dayN=v=>`${r1(v)}일`;
+    const 사람=`최근 ${K}주에 심사한 사람은 ${B.people}명이고, 각자 심사에 쓰는 시간을 합치면 풀타임 ${r1(B.fte)}명과 같습니다(직전 ${K}주 ${r1(A.fte)}명).`;
+    const 지금=outNames.length||newcomers.length
+      ?` 오늘 기준 ${outNames.length?`${outLabel} 제외`:''}${outNames.length&&newcomers.length?', ':''}${newcomers.length?`신규 ${newcomers.join(', ')} 포함`:''}으로 지금 일할 수 있는 인력은 풀타임 ${r1(curFte)}명입니다.`:'';
+    const 일한양=B.md?` 심사에 쓴 시간은 일주일에 ${dayN(B.md/K)}(최근 ${K}주 합계 ${dayN(B.md)}, 약 ${r1(B.md/MD_PER_MM)}개월)${B.mdPerCase===null?'':`, 1건에 평균 ${dayN(B.mdPerCase)}`}입니다.`:'';
+    const 속도=B.perWeek===null?'':` 풀타임 1명이 일주일에 ${r1(B.perWeek)}건을 끝냈고(직전 ${K}주 ${A.perWeek===null?'—':r1(A.perWeek)+'건'}), 1명이 동시에 맡고 있는 건은 ${r1(B.backlogPer)}건입니다(${K}주 전 ${A.backlogPer===null?'—':r1(A.backlogPer)+'건'}).`;
+    const 기준=std
+      ?` 1건에 ${std}일(방문 이동 포함)이 정상이라고 보면, 최근 ${K}주 들어온 ${B.revValid}건을 처리하려면 ${dayN(needMD)}이 필요하고 지금 인력으로 쓸 수 있는 시간은 ${dayN(availMD)}입니다 — 풀타임 ${r1(need)}명이 필요하고 지금은 ${r1(curFte)}명입니다.`
+        +` 쌓여 있는 ${B.backlog}건을 끝내는 데는 ${dayN(backlogMD)}${backlogWeeks===null?'':`(지금 인력으로 약 ${r1(backlogWeeks)}주)`}이 걸립니다.`
+      :need===null?'':` 지금 들어오는 양을 같은 속도로 처리하려면 풀타임 ${r1(need)}명이 필요합니다(지금 ${r1(curFte)}명).`;
+    const 과부하문=staffVerdict==='과부하'
+      ?`최근 ${K}주에 끝낸 ${B.done}건은 정상 속도(1건 ${std}일)라면 ${dayN(stdUsedMD)}이 걸려야 하는데, 근무 시간으로 잡힌 건 ${dayN(B.md)}뿐입니다. 약 ${dayN(gapMD)}(${r1(gapMD/MD_PER_MM)}개월)어치 일이 근무 시간 밖에서 처리됐다는 뜻입니다(1건 평균 ${dayN(B.mdPerCase)}, 풀타임 1명이 주 ${r1(B.perWeek)}건 — 정상은 주 ${r1(stdWeekPerFte)}건). `:'';
+    rows.push(['인력',vb,과부하문+사람+지금+일한양+속도+기준]);
+    if(overload!==null)caveats.push(`근무 시간 밖 작업량 = 끝낸 건수 × ${std}일 − 근무 시간으로 잡힌 일수(풀타임 환산 인원 × 영업일). 야근·휴일 근무 기록이 시트에 없어 추정치이고, 근무 시간은 평균 투입률(REVIEW_RATE) 설정에 따라 달라집니다.`);
     if(staffVerdict==='부담')caveats.push(`처리가 유입을 따라가고 있지만 ${strainWhy}이라 인력에 여유가 있다고 보기 어렵습니다.`);
     caveats.push('심사원 제외는 심사원관리 시트의 "제외" 날짜(활성여부 N)를 기준으로 했습니다. 단기 휴가처럼 시트에 없는 부재는 반영되지 않습니다.');
-    caveats.push(`투입률은 기간 내 배정 건수로 환산했습니다(배정받은 심사원 평균 ${Math.round(avgRate*100)}%${payload.reviewRate?' — 스크립트 속성 REVIEW_RATE':''}, 사람별로는 배정 건수 비례, 1인 최대 100%).`);
+    caveats.push(`풀타임 환산 인원: 심사원은 업무 시간의 일부만 심사에 씁니다. 평균 ${Math.round(avgRate*100)}%로 보고(REVIEW_RATE), 배정을 많이 받은 사람은 더 높게(최대 100%), 적게 받은 사람은 더 낮게 잡아 합친 값입니다. 1일 = 1명이 하루 심사한 양(MD), 1개월 = ${MD_PER_MM}일.`);
 
     const demandPhrase=dRecv===null?`직전 ${K}주에 접수가 없어 비교할 수 없고`:dRecv>=30?`영업일당 직전 ${K}주보다 ${dRecv}% 늘어 급증세이고`:dRecv>=10?`영업일당 직전 ${K}주보다 ${dRecv}% 늘어 증가세이고`:dRecv<=-10?`영업일당 직전 ${K}주보다 ${-dRecv}% 줄어 감소세이고`:'직전 ${K}주와 비슷한 수준이고';
     const capPhrase=flow===null?`최근 ${K}주 심사 유입이 없습니다`
@@ -717,7 +739,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       :flow>=1.1?`처리가 유입을 앞서 적체가 ${dBack<0?`${-dBack}건 줄었습니다`:'줄고 있습니다'}${staffVerdict==='부담'?` — 다만 ${strainWhy}`:''}`
       :`현재 인력으로 처리가 유입을 따라가고 있습니다`;
     const revPhrase=dRev===null?'':dRev>=10?`심사 유입은 ${dRev}% 늘었으며 `:dRev<=-10?`심사 유입은 ${-dRev}% 줄었으며 `:'심사 유입은 비슷하며 ';
-    const overPhrase=staffVerdict==='과부하'?` 최근 ${K}주 처리량을 표준(건당 ${std} MD)으로 환산하면 ${r1(stdUsedMD)} MD가 필요했으나 정규 투입은 ${r1(B.md)} MD로, 약 ${r1(gapMD)} MD(${r1(gapMD/MD_PER_MM)} MM)가 정규 투입으로 설명되지 않습니다${shortFte>0?` — 적정 인력 대비 ${r1(shortFte)}명분이 부족한 상태에서 처리량을 유지하고 있습니다`:''}.`:'';
+    const overPhrase=staffVerdict==='과부하'?` 최근 ${K}주 처리량은 정상 속도라면 ${r1(stdUsedMD)}일이 필요한데 근무 시간은 ${r1(B.md)}일뿐이라, 약 ${r1(gapMD)}일(${r1(gapMD/MD_PER_MM)}개월)어치를 근무 시간 밖에서 처리한 것으로 보입니다${shortFte>0?` — 풀타임 ${r1(shortFte)}명이 부족한 상태에서 처리량을 유지하고 있습니다`:''}.`:'';
     const head=`기업 신청은 ${demandPhrase}, ${revPhrase}${capPhrase}.${overPhrase}`;
 
     const fmt=v=>v===null||v===undefined?'—':r1(v).toLocaleString('ko-KR');
@@ -749,10 +771,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     }
     const tr=(k,a,b,unit,flow)=>{const p=a===null||b===null||a===undefined||b===undefined?null:flow?chgWD(a,b):chg(a,b);return [k,fmt(a),fmt(b),a?sgn(p)+(flow?' *':''):'—',unit];};
     const tbl=[
-      tr('접수 (기업 신청)',A.recv,B.recv,'건',1),tr('　그중 종료',A.end,B.end,'건',1),tr('심사접수 (심사 유입)',A.rev,B.rev,'건',1),tr('심사완료',A.done,B.done,'건',1),tr('진행 중(기간 말)',A.backlog,B.backlog,'건'),tr('영업일',A.wd,B.wd,'WD'),
-      tr('활동 심사원',A.people,B.people,'명'),tr('배정 환산 인원',A.fte,B.fte,'명분'),tr('현재 가용 인원 (오늘, 제외 반영)',null,curFte,'명분'),tr('1명분당 주 처리',A.perWeek,B.perWeek,'건'),tr('1명분당 진행 중',A.backlogPer,B.backlogPer,'건'),
-      tr(`투입 (${K}주 합계)`,A.md,B.md,'MD',1),tr(`투입 (${K}주 합계)`,A.md/MD_PER_MM,B.md/MD_PER_MM,'MM',1),tr('건당 투입 (실측)',A.mdPerCase,B.mdPerCase,'MD'),
-    ].concat(std?[tr(`필요 MD (유입 × ${std})`,A.revValid*std,needMD,'MD',1),tr('표준 환산 소요 MD (완료 × '+std+')',A.done*std,stdUsedMD,'MD',1),tr('정규 투입 밖 작업량 (표준 소요 − 정규 투입)',A.md?A.done*std-A.md:null,gapMD,'MD'),tr('가용 MD (현재 가용 × 영업일)',null,availMD,'MD')]:[]);
+      tr('접수 (기업 신청)',A.recv,B.recv,'건',1),tr('　그중 종료',A.end,B.end,'건',1),tr('심사접수 (심사 유입)',A.rev,B.rev,'건',1),tr('심사완료',A.done,B.done,'건',1),tr('진행 중(기간 말)',A.backlog,B.backlog,'건'),tr('처리기간 중앙값 (접수→심사완료)',pA.med,pB.med,'WD'),tr('최초 마감 내 완료율',pA.ok,pB.ok,'%'),tr('영업일',A.wd,B.wd,'WD'),
+      tr('심사한 사람',A.people,B.people,'명'),tr('풀타임 환산 인원',A.fte,B.fte,'명'),tr('지금 일할 수 있는 인원 (풀타임 환산)',null,curFte,'명'),tr('풀타임 1명당 주 처리',A.perWeek,B.perWeek,'건'),tr('1명이 동시에 맡은 건',A.backlogPer,B.backlogPer,'건'),
+      tr(`심사에 쓴 시간 (${K}주 합계)`,A.md,B.md,'일',1),tr(`심사에 쓴 시간 (${K}주 합계)`,A.md/MD_PER_MM,B.md/MD_PER_MM,'개월',1),tr('1건에 쓴 시간 (실제)',A.mdPerCase,B.mdPerCase,'일'),
+    ].concat(std?[tr(`들어온 건 처리에 필요한 시간 (×${std}일)`,A.revValid*std,needMD,'일',1),tr(`끝낸 건에 정상적으로 들었어야 할 시간 (×${std}일)`,A.done*std,stdUsedMD,'일',1),tr('근무 시간 밖 작업량',A.md&&A.done*std>A.md?A.done*std-A.md:null,gapMD>0?gapMD:null,'일'),tr('지금 인력으로 쓸 수 있는 시간',null,availMD,'일')]:[]);
     const rng=w=>`${+w.a.slice(5,7)}/${+w.a.slice(8,10)}~${+w.b.slice(5,7)}/${+w.b.slice(8,10)}`;
 
     $('#brief-desc').textContent=`최근 ${K}주(오늘까지 ${7*K}일)와 직전 ${K}주 비교 · 건수 증감은 영업일당으로 보정(명절·공휴일로 영업일 수가 달라도 공정하게 비교) · 위 기간 필터와 관계없음, 담당 심사원 필터는 적용 · 종료(취소·부적합)는 수요에는 넣고 처리·적체에서는 뺌`;
@@ -795,13 +817,13 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     if(caveats.length)md.push('### 참고','',...caveats.map(c=>`- ${c}`),'');
     briefMd=md.join('\n');
     // Gemini에는 집계값만 보낸다(기업명·제품명·접수번호·심사원 이름 없음).
-    const pick=o=>({접수_기업신청:o.recv,종료:o.end,유효접수:o.valid,심사접수_심사유입:o.rev,심사유입_종료제외:o.revValid,심사완료:o.done,기간말진행중:o.backlog,영업일:o.wd,
+    const pick=o=>({처리기간중앙값WD:o.pt.med,심사접수후완료중앙값WD:o.pt.rev,최초마감내완료율:o.pt.ok,연장포함마감내완료율:o.pt.okExt,통보소요중앙값WD:o.pt.lag,접수_기업신청:o.recv,종료:o.end,유효접수:o.valid,심사접수_심사유입:o.rev,심사유입_종료제외:o.revValid,심사완료:o.done,기간말진행중:o.backlog,영업일:o.wd,
       활동심사원:o.people,배정환산인원:r1(o.fte),평균투입률:avgRate,일명분당주처리:o.perWeek===null?null:r1(o.perWeek),일명분당진행중:o.backlogPer===null?null:r1(o.backlogPer),
       투입MD_기간합계:r1(o.md),투입MD_주당:r1(o.md/K),투입MM:r1(o.md/MD_PER_MM),건당MD:o.mdPerCase===null?null:r1(o.mdPerCase)});
     briefFacts={기준일:T,범위:state.owner?'심사원 1명':'전체',직전기간:{기간:rng(w0),...pick(A)},최근기간:{기간:rng(w1),...pick(B)},
       두기간전진행중:start0,마감초과:late,접수증감률:dRecv,심사접수증감률:dRev,접수에서심사접수까지_중앙값WD:lagRv===null?null:r1(lagRv),처리율_심사유입대비:flow===null?null:Math.round(flow*100),소진예상주:clear===null?null:r1(clear),
       이동평균_묶는주수:N,이동평균_주당:maShow.slice(-4).map(p=>({주시작:p.a,접수:r1(p.recv),심사접수:r1(p.rev),완료:r1(p.done)})),최근3개월월평균접수:r1(q1),그전3개월월평균접수:r1(q0),이번달접수:mRecv(cur),이번달월말환산:curProj,월별:months6,
-      인력판단:staffVerdict,현재가용명분:r1(curFte),제외된심사원수:outNames.length,제외심사원담당진행건:orphan.length,필요인원_명분:need===null?null:r1(need),부족명분:shortFte===null?null:r1(shortFte),표준환산소요MD_기간:stdUsedMD===null?null:r1(stdUsedMD),과부하배수:overload===null?null:r1(overload),정규투입으로설명되지않는MD_기간:gapMD===null?null:r1(gapMD),표준건당MD:std||null,필요MD_기간:needMD===null?null:r1(needMD),가용MD_기간:r1(availMD),진행중소진필요MD:backlogMD===null?null:r1(backlogMD),화면판단:{결론:head,항목:rows.map(([l,b])=>`${l}:${b[1]}`)},caveats};
+      진행중경과중앙값WD:actMed,인력판단:staffVerdict,현재가용명분:r1(curFte),제외된심사원수:outNames.length,제외심사원담당진행건:orphan.length,필요인원_명분:need===null?null:r1(need),부족명분:shortFte===null?null:r1(shortFte),표준환산소요MD_기간:stdUsedMD===null?null:r1(stdUsedMD),과부하배수:overload===null?null:r1(overload),정규투입으로설명되지않는MD_기간:gapMD===null?null:r1(gapMD),표준건당MD:std||null,필요MD_기간:needMD===null?null:r1(needMD),가용MD_기간:r1(availMD),진행중소진필요MD:backlogMD===null?null:r1(backlogMD),화면판단:{결론:head,항목:rows.map(([l,b])=>`${l}:${b[1]}`)},caveats};
     $('#brief-ai').hidden=!payload.aiSummary;
   }
 
