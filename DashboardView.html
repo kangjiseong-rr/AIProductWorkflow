@@ -808,6 +808,17 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       return `<div class="brief-ma"><div class="card-head"><div class="legend"><b style="color:var(--ink);font-weight:600">${N===1?'주별':N+'주 이동평균'} (주당 환산 건수)</b><span><i class="sw" style="background:var(--s1)"></i>접수</span><span><i class="sw" style="background:#d9a535"></i>심사접수</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div><div class="seg" role="group" aria-label="묶는 주 수">${[1,2,3,4].map(n=>`<button type="button" data-mawin="${n}" aria-pressed="${n===N}">${n}주</button>`).join('')}</div></div><div class="plot"><svg viewBox="0 0 ${w} ${h}" height="${h}" style="max-width:${w}px" role="img" aria-label="${N}주 이동평균">${out}</svg></div></div>`;
     }
     const tr=(k,a,b,unit,flow)=>{const p=a===null||b===null||a===undefined||b===undefined?null:flow?chgWD(a,b):chg(a,b);return [k,fmt(a),fmt(b),a?sgn(p)+(flow?' *':''):'—',unit];};
+    // 겹치는 K주 집계: 기준일(일요일)을 1주씩 앞으로 밀며 매번 K주를 묶는다. 최근 6개 시점. 건수는 영업일당 주(5일) 환산.
+    const firstRecv=S.mine.map(r=>r.received).filter(Boolean).sort()[0]||T;
+    const roll=[];
+    for(let i=5;i>=0;i--){const b=iso(t0(lastSun)-7*i*DAY),w={a:iso(t0(b)-(7*K-1)*DAY),b};if(w.b<firstRecv)continue;roll.push({w,o:win(w),i});}
+    const pw=(o,k)=>o.wd?o[k]/o.wd*5:null;
+    const rollRows=[
+      ['접수 (주당)','건',o=>pw(o,'recv')],['심사접수 (주당)','건',o=>pw(o,'rev')],['심사완료 (주당)','건',o=>pw(o,'done')],
+      ['진행 중 (기간 말)','건',o=>o.backlog],['처리기간 중앙값','WD',o=>o.pt.med],['최초 마감 내 완료율','%',o=>o.pt.ok],
+      ['풀타임 환산 인원','명',o=>o.fte],['풀타임 1명당 주 처리','건',o=>o.perWeek],['1명이 동시에 맡은 건','건',o=>o.backlogPer],['1건에 쓴 시간 (실제)','일',o=>o.mdPerCase],
+    ].concat(std?[['근무 시간 밖 작업량 (주당)','일',o=>o.md&&o.wd&&o.done*std>o.md?(o.done*std-o.md)/o.wd*5:null]]:[]);
+    const rollHead=roll.map(x=>`~${+x.w.b.slice(5,7)}/${+x.w.b.slice(8,10)}${x.i===0?' (최근)':x.i===K?' (겹치지 않는 그 전)':''}`);
     const tbl=[
       tr('접수 (기업 신청)',A.recv,B.recv,'건',1),tr('　그중 종료',A.end,B.end,'건',1),tr('심사접수 (심사 유입)',A.rev,B.rev,'건',1),tr('심사완료',A.done,B.done,'건',1),tr('진행 중(기간 말)',A.backlog,B.backlog,'건'),tr('처리기간 중앙값 (접수→심사완료)',pA.med,pB.med,'WD'),tr('최초 마감 내 완료율',pA.ok,pB.ok,'%'),tr('영업일',A.wd,B.wd,'WD'),
       tr('심사한 사람',A.people,B.people,'명'),tr('풀타임 환산 인원',A.fte,B.fte,'명'),tr('지금 일할 수 있는 인원 (풀타임 환산)',null,curFte,'명'),tr('풀타임 1명당 주 처리',A.perWeek,B.perWeek,'건'),tr('1명이 동시에 맡은 건',A.backlogPer,B.backlogPer,'건'),
@@ -820,14 +831,14 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     $('#brief').innerHTML=`<div class="brief-head">${lines(head)}</div>`
       +`<div id="brief-body"><div class="brief-grid">${rows.map(([l,b,t])=>`<div class="brief-row"><span class="lab">${l}</span>${badge(b)}<span>${lines(t)}</span></div>`).join('')}</div>`
       +maChart()
-      +`<div class="tbl-wrap brief-tbl"><table><thead><tr><th>지표</th><th>그 전 ${K}주 (${rng(w0)})</th><th>최근 ${K}주 (${rng(w1)})</th><th>변화</th></tr></thead><tbody>`
-      +tbl.map(([k,a,b,p,u])=>`<tr><td>${k} <span class="muted">${u}</span></td><td>${a}</td><td>${b}</td><td>${p}</td></tr>`).join('')+`</tbody></table></div>`
+      +`<div class="tbl-wrap brief-tbl"><div class="legend" style="margin-bottom:2px"><b style="color:var(--ink);font-weight:600">${K}주 집계를 1주씩 밀며 본 추이</b><span>각 열 = 그 날짜까지의 ${K}주 · 이웃한 열은 ${K>1?`${K-1}주가 겹침`:'겹치지 않음'}</span></div><table><thead><tr><th>지표</th>${rollHead.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`
+      +rollRows.map(([k,u,fn])=>`<tr><td>${k} <span class="muted">${u}</span></td>${roll.map(x=>`<td${x.i===0?' style="font-weight:600"':''}>${fmt(fn(x.o))}</td>`).join('')}</tr>`).join('')+`</tbody></table></div>`
       +`<div class="brief-note">월별 접수/심사접수/완료: ${months6.map(m=>`${+m.month.slice(5,7)}월 ${m.recv}/${m.review}/${m.done}`).join(' · ')} — 이번 달은 진행 중`
-      +` · 1 MM = ${MD_PER_MM} MD · * 표시 변화율은 영업일당 기준`
+      +` · 1 MM = ${MD_PER_MM} MD · 건수(주당)는 영업일 보정값`
       +(caveats.length?`<br>※ ${caveats.map(esc).join('<br>※ ')}`:'')+`</div></div>`;
 
     briefText=[`[AI확인제 심사 현황 요약] ${T} 기준${state.owner?' · 심사원 1명 기준':''}`,head,...rows.map(([l,b,t])=>`- ${l}(${b[1]}): ${t}`),
-      '',`지표\t그 전 ${K}주 (${rng(w0)})\t최근 ${K}주 (${rng(w1)})\t변화`,...tbl.map(([k,a,b,p,u])=>`${k.trim()}(${u})\t${a}\t${b}\t${p}`),
+      '',`지표\t${rollHead.join('\t')}`,...rollRows.map(([k,u,fn])=>`${k}(${u})\t${roll.map(x=>fmt(fn(x.o))).join('\t')}`),
       ...caveats.map(c=>'※ '+c)].join('\n');
     // MD 다운로드: 현황 카드(사실) → 현황 요약(판단) → 비교표 → 이동평균 → 각주
     const md=[];
@@ -841,9 +852,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     }
     md.push('## 현황 요약','',`**${head}**`,'');
     rows.forEach(([l,b,t])=>{md.push(`### ${l} — ${b[1]}`,'');String(t).split(/(?<=\.)\s+(?=\S)/).filter(x=>!x.includes('그래프에서')).forEach(x=>md.push(`- ${x}`));md.push('');});
-    md.push('### 비교표','',`| 지표 | 그 전 ${K}주 (${rng(w0)}) | 최근 ${K}주 (${rng(w1)}) | 변화 |`,'|---|---:|---:|---:|');
-    tbl.forEach(([k,a,b,p,u])=>md.push(`| ${mdCell(k)} (${u}) | ${a} | ${b} | ${p} |`));
-    md.push('','\* 변화율은 영업일당 기준','');
+    md.push(`### ${K}주 집계 추이 (1주씩 밀며, 각 열 = 그 날짜까지의 ${K}주)`,'',`| 지표 | ${rollHead.join(' | ')} |`,`|---|${roll.map(()=>'---:').join('|')}|`);
+    rollRows.forEach(([k,u,fn])=>md.push(`| ${k} (${u}) | ${roll.map(x=>fmt(fn(x.o))).join(' | ')} |`));
     if(maShow.length){
       md.push(`### ${N===1?'주별':N+'주 이동평균'} (주당 환산 건수)`,'','| 주 시작 | 접수 | 심사접수 | 완료 |','|---|---:|---:|---:|');
       maShow.forEach(p=>md.push(`| ${p.a} | ${r1(p.recv)} | ${r1(p.rev)} | ${r1(p.done)} |`));
