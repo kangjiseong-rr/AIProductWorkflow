@@ -138,6 +138,8 @@ function 심사일정자료조회() {
     aiSummary: !!PropertiesService.getScriptProperties().getProperty(현황요약_키속성),
     // 심사원관리 시트의 활성여부·제외(제외 시작일). 현황 요약에서 현재 가용 인원과 담당자 제외 건을 계산한다.
     reviewers: _심사원제외읽기_(ss, tz, 오늘),
+    // 표준 건당 MD(스크립트 속성 REVIEW_MD_PER_CASE, 예: 2.5). 있으면 인력 판단을 "필요 MD vs 가용 MD"로 한다.
+    mdPerCaseStd: (v => (isFinite(v) && v > 0 ? v : null))(parseFloat(PropertiesService.getScriptProperties().getProperty('REVIEW_MD_PER_CASE'))),
     records: [],
   };
   const 마지막행 = 시트.getLastRow();
