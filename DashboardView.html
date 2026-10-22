@@ -627,19 +627,28 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       +(net>0?` 이 흐름이 이어지면 20영업일 뒤 약 ${B.backlog+net}건.`:'')]);
     // 인력 판단: 지금 심사 수요(심사접수일 기준, 종료 제외)를 최근 4주 1인당 처리 속도로 소화하는 데 필요한 인원 vs 활동 심사원 수
     const need=B.perWeek?wk(B.revValid,B)/B.perWeek:null;
-    const staffVerdict=need===null||!B.fte?null:need>B.fte*1.1?'부족':need<B.fte*0.9?'여유':'균형';
-    const vb=staffVerdict==='부족'?['b-up','부족 신호']:staffVerdict==='여유'?['b-down','여유 가능성']:staffVerdict==='균형'?['b-flat','균형']:['b-warn','판단 보류'];
+    // 인력 판단은 처리량(유입 대비)만으로 하지 않는다. 처리가 유입을 앞서도 마감 초과·1명분당 적체 증가가 있으면 여유가 아니다.
+    // 휴가·결원은 데이터에 없으므로 "여유"는 마감 초과 0건, 1명분당 진행 건수 감소, 처리 ≥ 유입이 모두 맞을 때만 "여유 가능성"으로 표시한다.
+    const loadUp=B.backlogPer!==null&&A.backlogPer!==null&&B.backlogPer>A.backlogPer*1.05;
+    const strain=late>0||loadUp;
+    const staffVerdict=need===null||!B.fte?null
+      :need>B.fte*1.1?'부족'
+      :strain?'부담'
+      :need<B.fte*0.9&&B.backlogPer!==null&&A.backlogPer!==null&&B.backlogPer<A.backlogPer?'여유':'균형';
+    const vb=staffVerdict==='부족'?['b-up','부족 신호']:staffVerdict==='부담'?['b-warn','부담 지속']:staffVerdict==='여유'?['b-down','여유 가능성']:staffVerdict==='균형'?['b-flat','균형']:['b-warn','판단 보류'];
+    const strainWhy=[late?`마감 초과 ${late}건`:'',loadUp?`1명분당 진행 중 ${r1(A.backlogPer)}→${r1(B.backlogPer)}건`:''].filter(Boolean).join(', ');
     rows.push(['인력',vb,`최근 4주 활동 심사원 ${B.people}명, 배정으로 환산하면 ${r1(B.fte)}명분(직전 4주 ${r1(A.fte)}명분).`
       +(B.md?` 투입 주 ${r1(B.md/4)} MD(4주 ${r1(B.md)} MD, 약 ${r1(B.md/MD_PER_MM)} MM)${B.mdPerCase===null?'':`, 건당 ${r1(B.mdPerCase)} MD`}.`:'')
       +(B.perWeek===null?'':` 1명분당 주 ${r1(B.perWeek)}건 처리(직전 4주 ${A.perWeek===null?'—':r1(A.perWeek)+'건'}), 1명분당 진행 중 ${r1(B.backlogPer)}건(4주 전 ${A.backlogPer===null?'—':r1(A.backlogPer)+'건'}).`)
       +(need===null?'':` 지금 심사 수요를 같은 속도로 처리하려면 ${r1(need)}명분이 필요합니다.`)]);
-    if(staffVerdict==='여유')caveats.push('처리량은 들어온 건수를 넘을 수 없어 여유가 실제보다 작게 보일 수 있습니다. 1명분당 진행 중 건수 추이와 함께 보세요.');
+    if(staffVerdict==='부담')caveats.push(`처리가 유입을 따라가고 있지만 ${strainWhy}이라 인력에 여유가 있다고 보기 어렵습니다.`);
+    caveats.push('휴가·결원 등 실제 근무 여부는 시트에 없어 반영되지 않습니다. 배정이 없던 사람은 인원에서 빠지고, 진행 건을 가진 채 빠진 인력은 적체로만 드러납니다.');
     caveats.push(`투입률은 기간 내 배정 건수로 환산했습니다(최다 배정자 ${Math.round(topRate*100)}%${payload.reviewRate?' — 스크립트 속성 REVIEW_RATE':''}, 나머지는 배정 건수 비례). 실제 근무 시간과는 다를 수 있습니다.`);
 
     const demandPhrase=dRecv===null?'직전 4주에 접수가 없어 비교할 수 없고':dRecv>=30?`영업일당 직전 4주보다 ${dRecv}% 늘어 급증세이고`:dRecv>=10?`영업일당 직전 4주보다 ${dRecv}% 늘어 증가세이고`:dRecv<=-10?`영업일당 직전 4주보다 ${-dRecv}% 줄어 감소세이고`:'직전 4주와 비슷한 수준이고';
     const capPhrase=flow===null?'최근 4주 심사 유입이 없습니다'
       :flow<0.9?`처리가 유입을 따라가지 못해 적체가 ${dBack>0?`${dBack}건 늘었습니다`:'쌓이고 있습니다'}${staffVerdict==='부족'?' — 인력 보강 검토가 필요합니다':''}`
-      :flow>=1.1?`처리가 유입을 앞서 적체가 ${dBack<0?`${-dBack}건 줄었습니다`:'줄고 있습니다'}${staffVerdict==='여유'?' — 현재 인력에 여유가 있습니다':''}`
+      :flow>=1.1?`처리가 유입을 앞서 적체가 ${dBack<0?`${-dBack}건 줄었습니다`:'줄고 있습니다'}${staffVerdict==='부담'?` — 다만 ${strainWhy}`:''}`
       :`현재 인력으로 처리가 유입을 따라가고 있습니다`;
     const revPhrase=dRev===null?'':dRev>=10?`심사 유입은 ${dRev}% 늘었으며 `:dRev<=-10?`심사 유입은 ${-dRev}% 줄었으며 `:'심사 유입은 비슷하며 ';
     const head=`기업 신청은 ${demandPhrase}, ${revPhrase}${capPhrase}.`;
