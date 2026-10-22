@@ -240,6 +240,7 @@ function _영업일수_(시작, 종료, 휴일) {
  * remainingWD    : 오늘 → 현재 마감(연장마감일 우선). 적합통보 전·종료 아닌 건만, 지났으면 음수.
  * reviewWD       : 심사접수일 → 심사완료일(없으면 적합통보일). TTA 인수 이후 실제 심사 기간. 둘 중 하나라도 없으면 null.
  * intakeWD       : 접수일자 → 심사접수일. 단계별 소요 기간용으로 당일 = 1WD(_소요영업일_).
+ * reviewToNoticeWD : 심사접수일 → 적합통보일. 단계별 소요 기간용, 당일 = 1WD.
  * noticeLagWD    : 심사완료일 → 적합통보일(통보 전이면 오늘까지). 심사완료일이 없으면 null.
  * pendingNotice  : 통보 대기 — 종료가 아니고 적합통보일이 없는데 심사완료일이 있거나 상태가 완료인 건.
  */
@@ -255,6 +256,7 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
   레코드.remainingWD = 종료 || 레코드.notice ? null : _영업일수_(오늘, 마감, 휴일);
   레코드.reviewWD = 레코드.review && 심사끝 ? _영업일수_(레코드.review, 심사끝, 휴일) : null;
   레코드.intakeWD = 레코드.received && 레코드.review ? _소요영업일_(레코드.received, 레코드.review, 휴일) : null;
+  레코드.reviewToNoticeWD = 레코드.review && 레코드.notice ? _소요영업일_(레코드.review, 레코드.notice, 휴일) : null;
   레코드.noticeLagWD = 레코드.completion
     ? _영업일수_(레코드.completion, 레코드.notice || 오늘, 휴일)
     : null;
