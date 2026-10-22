@@ -138,7 +138,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>완료 건수</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-med"></i>중앙값</span></div>
       <div class="plot" id="hist"></div></div>
     <div class="card"><h3>누적 완료율</h3><div class="desc">N WD 안에 완료된 비율 (처리기간 분포를 누적한 곡선)</div>
-      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>누적 완료율</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-line" style="border-color:var(--crit)"></i>처리 최대 45WD</span><span>○ 기록 최대</span></div>
+      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>누적 완료율</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-line" style="border-color:var(--crit)"></i>처리 최대 45WD</span><span id="cdf-max"></span></div>
       <div class="plot" id="cdf"></div></div>
     <div class="card"><div class="card-head"><h3 id="strip-title">월별 처리기간 추이</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-trend="month" aria-pressed="true">월별</button><button type="button" data-trend="week" aria-pressed="false">주차별</button></div></div>
       <div class="desc" id="strip-desc"></div>
@@ -277,6 +277,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   /* ── 누적 완료율 (CDF, 계단형) ── */
   function cdf(done){
     const el=$('#cdf');const vals=done.map(r=>r.elapsedWD).sort((a,b)=>a-b);
+    $('#cdf-max').textContent='';
     if(!vals.length){el.innerHTML='<div class="empty">선택 기간에 완료된 건이 없습니다.</div>';return;}
     // 최대 마감 45WD에 초과분 여유를 두어 x축은 50WD로 고정한다(그보다 늦은 건은 오른쪽 끝 밖에 있다고 표시)
     const maxX=50,over=vals.filter(v=>v>maxX).length,w=W(el),h=230,m={t:16,r:12,b:30,l:40};
@@ -297,6 +298,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const lx=x(MAXWD);
     s+=`<line x1="${lx}" x2="${lx}" y1="${m.t-6}" y2="${y(0)}" stroke="var(--crit)" stroke-dasharray="4 3" stroke-width="1.5"/><text x="${lx-4}" y="${y(0)-6}" text-anchor="end" style="fill:var(--crit)">처리 최대 ${MAXWD}WD</text>`;
     const top=vals[vals.length-1];
+    $('#cdf-max').textContent=`○ 기록 최대 ${top}WD`;
     if(top<=maxX)s+=`<circle cx="${x(top)}" cy="${y(100)}" r="4.5" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/><text class="ann" x="${x(top)+(top>maxX-12?-8:8)}" y="${y(100)+16}" text-anchor="${top>maxX-12?'end':'start'}">기록 최대 ${top}WD</text>`;
     else s+=`<text class="ann" x="${w-m.r}" y="${m.t+26}" text-anchor="end">기록 최대 ${top}WD</text>`;
     for(let v=0;v<=maxX;v++){
