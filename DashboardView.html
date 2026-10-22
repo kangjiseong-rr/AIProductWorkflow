@@ -96,7 +96,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
 .brief.folded #brief-body,.brief.folded .desc,.brief.folded #brief-ai-out{display:none}
 .brief.folded .brief-head{margin-bottom:0}
 .brief-row{display:flex;gap:10px;align-items:baseline;line-height:1.55}
-.brief-row{padding:6px 0;border-bottom:1px solid var(--grid)}
+.brief-row{padding:8px 0;border-bottom:1px solid var(--grid);line-height:1.7}
 .brief-row:last-child{border-bottom:0}
 .brief-row .lab{flex:0 0 58px;font-weight:600;color:var(--sub)}
 .brief-row .badge{min-width:68px;text-align:center;margin-right:0}
@@ -699,6 +699,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const head=`기업 신청은 ${demandPhrase}, ${revPhrase}${capPhrase}.${overPhrase}`;
 
     const fmt=v=>v===null||v===undefined?'—':r1(v).toLocaleString('ko-KR');
+    // 문장(마침표+공백) 단위로 줄을 나눠 읽기 쉽게
+    const lines=t=>String(t).split(/(?<=\.)\s+(?=\S)/).filter(Boolean).map(esc).join('<br>');
     function maChart(){
       if(maShow.length<2)return '';
       const w=Math.min(760,Math.max(320,($('#brief').clientWidth||760))),h=190,m={t:14,r:70,b:26,l:34};
@@ -731,8 +733,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     ].concat(std?[tr(`필요 MD (유입 × ${std})`,A.revValid*std,needMD,'MD',1),tr('표준 환산 소요 MD (완료 × '+std+')',A.done*std,stdUsedMD,'MD',1),tr('정규 투입 밖 작업량 (표준 소요 − 정규 투입)',A.md?A.done*std-A.md:null,gapMD,'MD'),tr('가용 MD (현재 가용 × 영업일)',null,availMD,'MD')]:[]);
     const rng=w=>`${+w.a.slice(5,7)}/${+w.a.slice(8,10)}~${+w.b.slice(5,7)}/${+w.b.slice(8,10)}`;
 
-    $('#brief').innerHTML=`<div class="brief-head">${esc(head)}</div>`
-      +`<div id="brief-body"><div class="brief-grid">${rows.map(([l,b,t])=>`<div class="brief-row"><span class="lab">${l}</span>${badge(b)}<span>${esc(t)}</span></div>`).join('')}</div>`
+    $('#brief').innerHTML=`<div class="brief-head">${lines(head)}</div>`
+      +`<div id="brief-body"><div class="brief-grid">${rows.map(([l,b,t])=>`<div class="brief-row"><span class="lab">${l}</span>${badge(b)}<span>${lines(t)}</span></div>`).join('')}</div>`
       +maChart()
       +`<div class="tbl-wrap brief-tbl"><table><thead><tr><th>지표</th><th>직전 4주 (${rng(w0)})</th><th>최근 4주 (${rng(w1)})</th><th>변화</th></tr></thead><tbody>`
       +tbl.map(([k,a,b,p,u])=>`<tr><td>${k} <span class="muted">${u}</span></td><td>${a}</td><td>${b}</td><td>${p}</td></tr>`).join('')+`</tbody></table></div>`
