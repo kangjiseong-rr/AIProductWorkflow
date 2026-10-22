@@ -136,6 +136,8 @@ function 심사일정자료조회() {
     reviewRate: _투입률정규화_(PropertiesService.getScriptProperties().getProperty(현황요약_투입률속성)),
     // Gemini 보고 문장 버튼 표시 여부(키 값은 화면에 보내지 않는다)
     aiSummary: !!PropertiesService.getScriptProperties().getProperty(현황요약_키속성),
+    // 심사원관리 시트의 활성여부·제외(제외 시작일). 현황 요약에서 현재 가용 인원과 담당자 제외 건을 계산한다.
+    reviewers: _심사원제외읽기_(ss, tz, 오늘),
     records: [],
   };
   const 마지막행 = 시트.getLastRow();
@@ -270,6 +272,41 @@ function _투입률정규화_(v) {
   if (!isFinite(n) || n < 0) return null;
   if (문자.includes('%') || n > 1) n /= 100;
   return Math.min(n, 1);
+}
+
+/**
+ * 심사원관리 시트(읽기만): 심사원명·활성여부·제외. 제외는 '10/6'처럼 월/일만 적어도 되며 오늘이 속한 연도로 본다.
+ * 활성여부가 N인데 제외일이 비어 있으면 excludeFrom='' + active=false(시점 모름 → 지금은 제외).
+ */
+function _심사원제외읽기_(ss, tz, 오늘) {
+  const 시트 = ss.getSheetByName(SHEET.심사원관리);
+  if (!시트 || 시트.getLastRow() < 2) return [];
+  const 값 = 시트.getRange(1, 1, 시트.getLastRow(), 시트.getLastColumn()).getValues();
+  const 헤더 = 값[0].map(v => String(v).trim());
+  const 이름 = 헤더.indexOf('심사원명');
+  const 활성 = 헤더.indexOf('활성여부');
+  const 제외 = 헤더.indexOf('제외');
+  if (이름 < 0) return [];
+  return 값.slice(1).map(행 => {
+    const name = String(행[이름] == null ? '' : 행[이름]).trim();
+    if (!name) return null;
+    return {
+      name,
+      active: 활성 < 0 || String(행[활성] || '').trim().toUpperCase() !== 'N',
+      excludeFrom: 제외 < 0 ? '' : _제외일정규화_(행[제외], tz, 오늘),
+    };
+  }).filter(Boolean);
+}
+
+function _제외일정규화_(v, tz, 오늘) {
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  }
+  const 문자 = String(v == null ? '' : v).trim();
+  const 전체 = _타임라인날짜정규화_(문자);
+  if (전체) return 전체;
+  const m = 문자.match(/^(d{1,2})s*[/.-월]s*(d{1,2})s*일?.?$/);
+  return m ? _타임라인날짜정규화_(`${오늘.slice(0, 4)}-${m[1]}-${m[2]}`) : '';
 }
 
 /**
