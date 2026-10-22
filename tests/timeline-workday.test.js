@@ -19,8 +19,12 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(root, 'Timeline.js'), 'utf8') +
-  '\nglobalThis.__t = { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회 };', context);
-const { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회 } = context.__t;
+  '\nglobalThis.__t = { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회, _투입률정규화_ };', context);
+const { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회, _투입률정규화_ } = context.__t;
+
+// 투입률(REVIEW_RATE): 30%·0.3·30 모두 0.3, 빈 값·문자는 null
+[['30%', 0.3], [0.3, 0.3], ['30', 0.3], ['0.5', 0.5], ['', null], [null, null], ['abc', null], [150, 1]]
+  .forEach(([v, e]) => { const g = _투입률정규화_(v); if (g === null ? e !== null : Math.abs(g - e) > 1e-9) throw new Error('투입률 ' + v + ': ' + g); });
 
 const eq = (actual, expected, label) => {
   if (actual !== expected) throw new Error(`${label}: expected ${expected}, got ${actual}`);
@@ -60,6 +64,7 @@ const sheet = rows => ({
     getValues: () => rows.slice(r - 1, r - 1 + nr).map(row => row.slice(c - 1, c - 1 + nc)),
   }),
 });
+context.PropertiesService = { getScriptProperties: () => ({ getProperty: k => ({ REVIEW_RATE: '30%' })[k] || null }) };
 context.SpreadsheetApp = {
   getActiveSpreadsheet: () => ({
     getUrl: () => 'https://sheet',
@@ -80,6 +85,8 @@ void 원래Date;
 
 eq(결과.today, '2026-10-16', '오늘(한국)');
 eq(결과.records.length, 5, '빈 행 제외');
+eq(결과.reviewRate, 0.3, '투입률 스크립트 속성 전달');
+eq(결과.aiSummary, false, 'Gemini 키 없으면 버튼 숨김');
 eq(결과.records[0].elapsedWD, 10, '완료 건 처리기간 = 접수일자→적합통보일 WD');
 eq(결과.records[0].remainingWD, null, '완료 건은 잔여 없음');
 // 10/1 → 10/16: 10/2,6,7,8,12,13,14,15,16 = 9WD (10/5·10/9 공휴일)

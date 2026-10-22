@@ -81,6 +81,22 @@ th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white
 th:first-child,td:first-child{text-align:left}
 th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-select:none}
 .empty{color:var(--sub);padding:28px 0;text-align:center}
+.brief{margin-top:10px}
+.brief-actions{display:flex;gap:6px}
+#db .brief-actions button{min-height:26px;padding:2px 10px;font-size:12px}
+.brief-head{font-size:15px;font-weight:600;margin:4px 0 10px;line-height:1.5}
+.brief-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:10px 24px}
+.brief-row{display:flex;gap:10px;align-items:baseline;line-height:1.55}
+.brief-row .lab{flex:0 0 34px;font-weight:600;color:var(--sub)}
+.badge{display:inline-block;font-size:11px;font-weight:600;border-radius:10px;padding:1px 8px;margin-right:6px;white-space:nowrap}
+.b-up{background:#fbe3df;color:#a8443a}.b-down{background:#e1f0e4;color:#2f7a3c}.b-flat{background:#efeeea;color:var(--sub)}.b-warn{background:#fbf0d6;color:#8a6510}
+.brief-tbl{margin-top:14px}
+.brief-tbl table{width:auto;min-width:560px}
+.brief-tbl td:first-child{padding-right:28px}
+.brief-tbl th{cursor:default}
+.brief-note{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+#brief-ai-out{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px;white-space:pre-line;line-height:1.6}
+#brief-ai-out .muted{display:block;margin-top:6px}
 #tip{position:fixed;pointer-events:none;background:#1f1f1e;color:#fff;font-size:12px;line-height:1.4;padding:6px 9px;border-radius:6px;z-index:50;max-width:280px;white-space:pre-line}
 </style>
 </head>
@@ -97,6 +113,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <label>담당 심사원<select id="owner"><option value="">전체 심사원</option></select></label>
     <span class="muted">접수 지표는 접수일자, 완료 지표는 심사완료일(비어 있으면 적합통보일) 기준으로 기간을 적용합니다. 진행 현황은 항상 오늘 기준입니다. 기간·일수는 모두 영업일(WD)입니다.</span>
   </div>
+  <div class="card full brief"><div class="card-head"><h3>현황 요약</h3><div class="brief-actions"><button type="button" id="brief-copy">요약 복사</button><button type="button" id="brief-ai" hidden>Gemini 보고 문장</button></div></div>
+    <div class="desc">최근 4주(오늘까지 28일)와 직전 4주 비교 · 위 기간 필터와 관계없이 고정, 담당 심사원 필터는 적용 · 종료(취소·부적합)는 수요에는 넣고 처리·적체에서는 뺌</div>
+    <div id="brief"></div><div id="brief-ai-out" hidden></div></div>
   <div class="tiles" id="tiles"></div>
   <div class="charts">
     <div class="card"><h3>처리기간 분포</h3><div class="desc">심사원 처리기간: 접수일자 → 심사완료일(비어 있으면 적합통보일) WD. 막대 높이 = 해당 구간 완료 건수</div>
@@ -443,6 +462,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   /* ── 심사원별 배정·완료 히트맵: 월별 / 주차별 / 일별(평일만, 주말 발생은 다음 월요일) ── */
   const HEAT=[['#f3f2ef','var(--muted)'],['#e4eefa','#0b0b0b'],['#d0e1f6','#0b0b0b'],['#b6cff0','#0b0b0b'],['#97b9e6','#0b0b0b'],['#749fd8','#fff'],['#5585c6','#fff']];
   const HEAT_DONE=[['#f3f2ef','var(--muted)'],['#e2f2e9','#0b0b0b'],['#c8e6d4','#0b0b0b'],['#a8d6ba','#0b0b0b'],['#86c49f','#0b0b0b'],['#62ad80','#fff'],['#449664','#fff']];
+  const HEAT_SUM=[['none','var(--muted)'],['#fbe9e6','#0b0b0b'],['#f6d3cd','#0b0b0b'],['#efb6ac','#0b0b0b'],['#e39486','#0b0b0b'],['#d27060','#fff'],['#b9503f','#fff']];
   // 월별은 칸당 건수가 커서 3건 단위로 한 단계씩 올린다(주차·일별은 1건 단위).
   const heatStep=(n,unit)=>{if(n<=0)return 0;const v=Math.ceil(n/unit);return v>=8?6:v>=6?5:v;};
   function heat(S){
@@ -498,7 +518,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       +`<tr class="pair-bot">${line(nm,dc,HEAT_DONE,'완료','k-d')}</tr><tr class="gap"><td colspan="${span}"></td></tr>`).join('');
     const sums=cells=>cols.map(k=>names.reduce((a,nm)=>a+(cells[nm+'|'+k]||[]).length,0));
     const 종료합=assigned.filter(r=>r.cancel).length;
-    const sumRow=(label,cells,total,cls,extra)=>`<th class="kind ${cls}">${label}</th>${sums(cells).map(n=>`<td class="c sum">${n||''}</td>`).join('')}<td class="tot">${total}${extra||''}</td>`;
+    // 합계 칸은 붉은 계열로, 배정·완료 합계를 통틀어 가장 큰 값 대비 6단계로 칠한다(범례 없음).
+    const sumMax=Math.max(1,...sums(ac),...sums(dc));
+    const sumCell=n=>{const [bg,fg]=HEAT_SUM[n?Math.max(1,Math.ceil(n/sumMax*6)):0];return `<td class="c sum" style="background:${bg};color:${fg}" title="${n}건">${n||''}</td>`;};
+    const sumRow=(label,cells,total,cls,extra)=>`<th class="kind ${cls}">${label}</th>${sums(cells).map(sumCell).join('')}<td class="tot">${total}${extra||''}</td>`;
     el.innerHTML=`<table class="heat"><thead><tr><th class="name"></th><th class="kind"></th>${head}<th style="text-align:right;padding-left:10px">합계</th></tr></thead><tbody>${rows}`
       +`<tr class="sum"><th class="name" rowspan="2" style="color:var(--sub)">합계</th>${sumRow('배정',ac,assigned.length,'k-a',종료합?`<span class="muted"> (종료 ${종료합})</span>`:'')}</tr>`
       +`<tr class="sum">${sumRow('완료',dc,finished.length,'k-d')}</tr></tbody></table>`;
@@ -510,9 +533,134 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     el.scrollLeft=el.scrollWidth;
   }
 
+  /* ── 현황 요약 (경영진 보고용): 수요·처리·적체·인력을 최근 4주 vs 직전 4주로 ── */
+  const MD_PER_MM=21;
+  let briefFacts=null,briefText='';
+  function brief(S){
+    const DAY=86400000,t0=d=>Date.parse(d+'T00:00:00Z'),iso=t=>new Date(t).toISOString().slice(0,10);
+    const T=payload.today,hol=new Set(payload.holidays||[]);
+    const isWD=d=>{const w=new Date(t0(d)).getUTCDay();return w>0&&w<6&&!hol.has(d);};
+    const wdIn=(a,b)=>{let n=0;for(let t=t0(a);t<=t0(b);t+=DAY)if(isWD(iso(t)))n++;return n;};
+    const w0={a:iso(t0(T)-55*DAY),b:iso(t0(T)-28*DAY)},w1={a:iso(t0(T)-27*DAY),b:T};
+    const inW=(d,w)=>!!d&&d>=w.a&&d<=w.b;
+    // 적체(진행 중) = 그날까지 접수됐고 아직 심사완료(없으면 적합통보)되지 않은 건. 종료 건은 뺀다.
+    const backlogAt=d=>S.mine.filter(r=>!r.cancel&&r.received&&r.received<=d&&(r.fin?r.fin>d:!r.done)).length;
+    // 활동 심사원 = 그 기간에 배정(심사접수일, 없으면 접수일자)이나 심사완료가 있는 심사원. 투입률(REVIEW_RATE)이 있으면 MD = 인원 × 영업일 × 투입률.
+    const rate=payload.reviewRate;
+    const people=w=>new Set(S.mine.filter(r=>r.reviewer&&(inW(r.review||r.received,w)||(!r.cancel&&inW(r.fin,w)))).map(r=>r.reviewer)).size;
+    const win=w=>{
+      const recv=S.mine.filter(r=>inW(r.received,w)),end=recv.filter(r=>r.cancel).length;
+      const o={recv:recv.length,end,valid:recv.length-end,done:S.mine.filter(r=>!r.cancel&&inW(r.fin,w)).length,wd:wdIn(w.a,w.b),backlog:backlogAt(w.b)};
+      o.people=people(w);o.perWeek=o.people?o.done/4/o.people:null;o.backlogPer=o.people?o.backlog/o.people:null;
+      if(rate){o.md=o.people*o.wd*rate;o.mdPerCase=o.done?o.md/o.done:null;}
+      return o;
+    };
+    const A=win(w0),B=win(w1),start0=backlogAt(iso(t0(w0.a)-DAY));
+    const r1=v=>Math.round(v*10)/10,chg=(a,b)=>a?Math.round((b-a)/a*100):null;
+    const sgn=p=>p===null?'비교 불가(직전 0건)':`${p>0?'+':''}${p}%`;
+    const late=S.active.filter(r=>r.late).length;
+
+    // 월별 접수·완료(최근 6개월, 이번 달은 영업일 경과 비율로 월말 환산)
+    const mk=Array.from({length:7},(_,i)=>{const d=new Date(t0(T));d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()-6+i);return d.toISOString().slice(0,7);});
+    const mRecv=k=>S.mine.filter(r=>ym(r.received)===k).length,mDone=k=>S.mine.filter(r=>!r.cancel&&ym(r.fin)===k).length;
+    const cur=mk[6],curEnd=iso(Date.UTC(+cur.slice(0,4),+cur.slice(5,7),0));
+    const curRatio=wdIn(cur+'-01',curEnd)/Math.max(1,wdIn(cur+'-01',T));
+    const months6=mk.slice(1).map(k=>({month:k,recv:mRecv(k),done:mDone(k)}));
+    const curProj=Math.round(mRecv(cur)*curRatio);
+    const q1=(mRecv(mk[3])+mRecv(mk[4])+mRecv(mk[5]))/3,q0=(mRecv(mk[0])+mRecv(mk[1])+mRecv(mk[2]))/3;
+
+    const lvl=p=>p===null?['b-warn','신규']:p>=30?['b-up','급증']:p>=10?['b-up','증가']:p<=-30?['b-down','급감']:p<=-10?['b-down','감소']:['b-flat','보합'];
+    const badge=([c,t])=>`<span class="badge ${c}">${t}</span>`;
+    const dRecv=chg(A.recv,B.recv),flow=B.valid?B.done/B.valid:null,dBack=B.backlog-A.backlog;
+    const flowB=flow===null?['b-flat','접수 없음']:flow>=1.1?['b-down','적체 해소 중']:flow>=0.9?['b-flat','균형']:['b-up','처리 부족'];
+    const weekDone=B.done/4,clear=weekDone?B.backlog/weekDone:null,net=B.valid-B.done;
+    const caveats=[];
+    if(A.recv+B.recv<10)caveats.push(`최근 8주 접수가 ${A.recv+B.recv}건으로 적어 증감률이 크게 흔들릴 수 있습니다.`);
+
+    const rows=[];
+    rows.push(['수요',lvl(dRecv),`최근 4주 접수 ${B.recv}건(주 ${r1(B.recv/4)}건, 영업일 하루 ${r1(B.wd?B.recv/B.wd:0)}건), 직전 4주 ${A.recv}건 대비 ${sgn(dRecv)}.`
+      +` 최근 3개월 월평균 ${r1(q1)}건, 그 전 3개월 ${r1(q0)}건${q0?` 대비 ${sgn(chg(q0,q1))}`:''}.`
+      +` 이번 달 ${mRecv(cur)}건(월말 환산 약 ${curProj}건).`]);
+    rows.push(['처리',flowB,`최근 4주 심사완료 ${B.done}건(주 ${r1(weekDone)}건), 직전 4주 ${A.done}건.`
+      +(flow===null?'':` 같은 기간 유효 접수(종료 제외) ${B.valid}건 대비 ${Math.round(flow*100)}%를 처리했습니다.`)]);
+    rows.push(['적체',dBack>0?['b-up','증가']:dBack<0?['b-down','감소']:['b-flat','변동 없음'],
+      `진행 중 ${B.backlog}건(4주 전 ${A.backlog}건, 8주 전 ${start0}건). 마감 초과 ${late}건.`
+      +(clear===null?'':` 지금 처리 속도면 소진까지 약 ${r1(clear)}주.`)
+      +(net>0?` 이 흐름이 이어지면 4주 뒤 약 ${B.backlog+net}건.`:'')]);
+    // 인력 판단: 지금 수요(유효 접수)를 최근 4주 1인당 처리 속도로 소화하는 데 필요한 인원 vs 활동 심사원 수
+    const need=B.perWeek?B.valid/4/B.perWeek:null;
+    const staffVerdict=need===null||!B.people?null:need>B.people*1.1?'부족':need<B.people*0.9?'여유':'균형';
+    const vb=staffVerdict==='부족'?['b-up','부족 신호']:staffVerdict==='여유'?['b-down','여유 가능성']:staffVerdict==='균형'?['b-flat','균형']:['b-warn','판단 보류'];
+    rows.push(['인력',vb,`최근 4주 활동 심사원 ${B.people}명(직전 4주 ${A.people}명).`
+      +(B.perWeek===null?'':` 1인당 주 ${r1(B.perWeek)}건 처리(직전 4주 ${A.perWeek===null?'—':r1(A.perWeek)+'건'}), 1인당 진행 중 ${r1(B.backlogPer)}건(4주 전 ${A.backlogPer===null?'—':r1(A.backlogPer)+'건'}).`)
+      +(need===null?'':` 지금 수요를 같은 속도로 처리하려면 ${r1(need)}명이 필요합니다.`)
+      +(rate&&B.md?` 투입 ${r1(B.md)} MD(약 ${r1(B.md/MD_PER_MM)} MM)${B.mdPerCase===null?'':`, 건당 ${r1(B.mdPerCase)} MD`}.`:'')]);
+    if(staffVerdict==='여유')caveats.push('처리량은 들어온 건수를 넘을 수 없어 여유가 실제보다 작게 보일 수 있습니다. 1인당 진행 중 건수 추이와 함께 보세요.');
+    caveats.push(rate?`MD는 활동 심사원 × 영업일 × 투입률 ${Math.round(rate*100)}%(스크립트 속성 REVIEW_RATE)로 추정했습니다.`:'심사원별 투입 시간 자료가 없어 MD·MM은 표시하지 않습니다. 인원은 그 기간에 배정·완료가 있던 심사원 수입니다.');
+
+    const demandPhrase=dRecv===null?'직전 4주에 접수가 없어 비교할 수 없고':dRecv>=30?`직전 4주보다 ${dRecv}% 늘어 급증세이고`:dRecv>=10?`직전 4주보다 ${dRecv}% 늘어 증가세이고`:dRecv<=-10?`직전 4주보다 ${-dRecv}% 줄어 감소세이고`:'직전 4주와 비슷한 수준이고';
+    const capPhrase=flow===null?'최근 4주 유효 접수가 없습니다'
+      :flow<0.9?`처리가 접수를 따라가지 못해 적체가 ${dBack>0?`${dBack}건 늘었습니다`:'쌓이고 있습니다'}${staffVerdict==='부족'?' — 인력 보강 검토가 필요합니다':''}`
+      :flow>=1.1?`처리가 접수를 앞서 적체가 ${dBack<0?`${-dBack}건 줄었습니다`:'줄고 있습니다'}${staffVerdict==='여유'?' — 현재 인력에 여유가 있습니다':''}`
+      :`현재 인력으로 처리가 접수를 따라가고 있습니다`;
+    const head=`수요는 ${demandPhrase}, ${capPhrase}.`;
+
+    const fmt=v=>v===null||v===undefined?'—':r1(v).toLocaleString('ko-KR');
+    const tr=(k,a,b,unit)=>{const p=a===null||b===null||a===undefined||b===undefined?null:chg(a,b);return [k,fmt(a),fmt(b),a?sgn(p):'—',unit];};
+    const tbl=[
+      tr('접수',A.recv,B.recv,'건'),tr('　그중 종료',A.end,B.end,'건'),tr('심사완료',A.done,B.done,'건'),tr('진행 중(기간 말)',A.backlog,B.backlog,'건'),tr('영업일',A.wd,B.wd,'WD'),
+      tr('활동 심사원',A.people,B.people,'명'),tr('1인당 주 처리',A.perWeek,B.perWeek,'건'),tr('1인당 진행 중',A.backlogPer,B.backlogPer,'건'),
+    ].concat(rate?[tr('투입(추정)',A.md,B.md,'MD'),tr('투입(추정)',A.md/MD_PER_MM,B.md/MD_PER_MM,'MM'),tr('건당 투입(추정)',A.mdPerCase,B.mdPerCase,'MD')]:[]);
+    const rng=w=>`${+w.a.slice(5,7)}/${+w.a.slice(8,10)}~${+w.b.slice(5,7)}/${+w.b.slice(8,10)}`;
+
+    $('#brief').innerHTML=`<div class="brief-head">${esc(head)}</div>`
+      +`<div class="brief-grid">${rows.map(([l,b,t])=>`<div class="brief-row"><span class="lab">${l}</span><span>${badge(b)}${esc(t)}</span></div>`).join('')}</div>`
+      +`<div class="tbl-wrap brief-tbl"><table><thead><tr><th>지표</th><th>직전 4주 (${rng(w0)})</th><th>최근 4주 (${rng(w1)})</th><th>변화</th></tr></thead><tbody>`
+      +tbl.map(([k,a,b,p,u])=>`<tr><td>${k} <span class="muted">${u}</span></td><td>${a}</td><td>${b}</td><td>${p}</td></tr>`).join('')+`</tbody></table></div>`
+      +`<div class="brief-note">월별 접수(완료): ${months6.map(m=>`${+m.month.slice(5,7)}월 ${m.recv}(${m.done})`).join(' · ')} — 이번 달은 진행 중`
+      +(rate?` · 1 MM = ${MD_PER_MM} MD`:'')
+      +(caveats.length?`<br>※ ${caveats.map(esc).join('<br>※ ')}`:'')+`</div>`;
+
+    briefText=[`[AI확인제 심사 현황 요약] ${T} 기준${state.owner?' · 심사원 1명 기준':''}`,head,...rows.map(([l,b,t])=>`- ${l}(${b[1]}): ${t}`),
+      '',`지표\t직전 4주 (${rng(w0)})\t최근 4주 (${rng(w1)})\t변화`,...tbl.map(([k,a,b,p,u])=>`${k.trim()}(${u})\t${a}\t${b}\t${p}`),
+      ...caveats.map(c=>'※ '+c)].join('\n');
+    // Gemini에는 집계값만 보낸다(기업명·제품명·접수번호·심사원 이름 없음).
+    const pick=o=>({접수:o.recv,종료:o.end,유효접수:o.valid,심사완료:o.done,기간말진행중:o.backlog,영업일:o.wd,
+      활동심사원:o.people,일인당주처리:o.perWeek===null?null:r1(o.perWeek),일인당진행중:o.backlogPer===null?null:r1(o.backlogPer),
+      ...(rate?{투입MD추정:r1(o.md),투입MM추정:r1(o.md/MD_PER_MM),건당MD추정:o.mdPerCase===null?null:r1(o.mdPerCase)}:{})});
+    briefFacts={기준일:T,범위:state.owner?'심사원 1명':'전체',직전4주:{기간:rng(w0),...pick(A)},최근4주:{기간:rng(w1),...pick(B)},
+      '8주전진행중':start0,마감초과:late,접수증감률:dRecv,처리율:flow===null?null:Math.round(flow*100),소진예상주:clear===null?null:r1(clear),
+      최근3개월월평균접수:r1(q1),그전3개월월평균접수:r1(q0),이번달접수:mRecv(cur),이번달월말환산:curProj,월별:months6,
+      인력판단:staffVerdict,필요인원:need===null?null:r1(need),투입률:rate,화면판단:{결론:head,항목:rows.map(([l,b])=>`${l}:${b[1]}`)},caveats};
+    $('#brief-ai').hidden=!payload.aiSummary;
+  }
+
+  function copyText(s){
+    const done=()=>{const b=$('#brief-copy');b.textContent='복사됨';setTimeout(()=>b.textContent='요약 복사',1500);};
+    const fallback=()=>{const t=document.createElement('textarea');t.value=s;document.body.appendChild(t);t.select();try{document.execCommand('copy');done();}finally{t.remove();}};
+    if(navigator.clipboard)navigator.clipboard.writeText(s).then(done,fallback);else fallback();
+  }
+  function aiBrief(){
+    const out=$('#brief-ai-out'),btn=$('#brief-ai');
+    out.hidden=false;out.textContent='Gemini가 보고 문장을 만드는 중…';btn.disabled=true;
+    google.script.run
+      .withSuccessHandler(res=>{
+        btn.disabled=false;
+        // 화면 집계에 없는 숫자가 들어갔는지 확인(날짜·4주 같은 기간 표현은 제외)
+        const 근거=new Set((JSON.stringify(briefFacts).match(/-?\d+(\.\d+)?/g)||[]).map(Number).concat([4,8,3,6]));
+        const 모름=[...new Set((res.text.match(/\d+(\.\d+)?/g)||[]).map(Number))].filter(n=>!근거.has(n)&&!근거.has(-n));
+        out.innerHTML=`${esc(res.text)}<span class="muted">Gemini(${esc(res.model)})${res.cached?' · 캐시':''}가 위 집계값으로 만든 문장입니다.`
+          +(모름.length?` <b style="color:var(--crit)">집계에 없는 숫자 ${모름.join(', ')} — 표와 대조하세요.</b>`:' 숫자는 모두 집계값과 일치합니다.')+`</span>`;
+        briefText+=`\n\n[Gemini 보고 문장]\n${res.text}`;
+      })
+      .withFailureHandler(e=>{btn.disabled=false;out.textContent='Gemini 호출 실패: '+(e&&e.message||e);})
+      .현황요약AI문장(briefFacts);
+  }
+
   function render(){
     if(!payload)return;
     const S=sets();
+    brief(S);$('#brief-ai-out').hidden=true;
     tiles(S);hist(S.done);cdf(S.done);trend(S.done);monthly(S.recv,S.done);comply(S);heat(S);table(S);
   }
 
@@ -530,6 +678,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   root.querySelectorAll('[data-volume]').forEach(b=>b.addEventListener('click',()=>{state.volume=b.dataset.volume;const S=sets();monthly(S.recv,S.done);}));
   $('#owner').addEventListener('change',e=>{state.owner=e.target.value;render();});
   $('#refresh').addEventListener('click',load);
+  $('#brief-copy').addEventListener('click',()=>copyText(briefText));
+  $('#brief-ai').addEventListener('click',aiBrief);
   let lastW=0;new ResizeObserver(en=>{const w=en[0].contentRect.width;if(Math.abs(w-lastW)>2){lastW=w;render();}}).observe(root);
   load();
 })();

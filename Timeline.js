@@ -132,6 +132,10 @@ function 심사일정자료조회() {
       ? '' : `공휴일 시트에 ${오늘.slice(0, 4)}년 공휴일이 없어 WD가 주말만 제외하고 계산되었습니다.`,
     // 대시보드 일별 히트맵에서 공휴일 칸을 표시하기 위한 목록(yyyy-MM-dd)
     holidays: [...휴일.날짜].sort(),
+    // 현황 요약의 MD·MM 계산용 일률 투입률(스크립트 속성 REVIEW_RATE, 예: 30%). 없으면 null → MD·MM 생략.
+    reviewRate: _투입률정규화_(PropertiesService.getScriptProperties().getProperty(현황요약_투입률속성)),
+    // Gemini 보고 문장 버튼 표시 여부(키 값은 화면에 보내지 않는다)
+    aiSummary: !!PropertiesService.getScriptProperties().getProperty(현황요약_키속성),
     records: [],
   };
   const 마지막행 = 시트.getLastRow();
@@ -247,4 +251,79 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
   레코드.noticeLagWD = 레코드.completion
     ? _영업일수_(레코드.completion, 레코드.notice || 오늘, 휴일)
     : null;
+}
+
+/* ─────────────────────────────────────────────
+ * 현황 요약: 투입률 설정 + Gemini 보고 문장
+ * ───────────────────────────────────────────── */
+const 현황요약_투입률속성 = 'REVIEW_RATE';
+const 현황요약_키속성 = 'GEMINI_API_KEY';
+const 현황요약_모델속성 = 'GEMINI_MODEL';
+const 현황요약_기본모델 = 'gemini-2.5-flash';
+
+/** 30%·0.3·30 → 0.3. 비었거나 숫자가 아니면 null. */
+function _투입률정규화_(v) {
+  if (v === '' || v == null) return null;
+  const 문자 = String(v).trim();
+  let n = typeof v === 'number' ? v : Number(문자.replace('%', ''));
+  if (!isFinite(n) || n < 0) return null;
+  if (문자.includes('%') || n > 1) n /= 100;
+  return Math.min(n, 1);
+}
+
+/**
+ * 대시보드 "보고 문장 만들기" — 화면에서 계산한 집계값만 Gemini에 보내 경영진 보고체 문장을 받는다.
+ * 기업명·제품명·접수번호는 보내지 않는다(화면이 만든 facts에 들어 있지 않음). 같은 집계는 6시간 캐시.
+ */
+function 현황요약AI문장(사실) {
+  if (!_조회권한여부()) throw new Error('관리자 또는 조회자로 등록된 계정만 사용할 수 있습니다.');
+  const 속성 = PropertiesService.getScriptProperties();
+  const 키 = 속성.getProperty(현황요약_키속성);
+  if (!키) throw new Error(`스크립트 속성 ${현황요약_키속성}가 없습니다.`);
+  const 본문 = JSON.stringify(사실 || {});
+  if (본문.length > 12000) throw new Error('요약 자료가 너무 큽니다.');
+  const 모델 = 속성.getProperty(현황요약_모델속성) || 현황요약_기본모델;
+
+  const 캐시 = CacheService.getScriptCache();
+  const 캐시키 = 'ai-summary-' + Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 모델 + 본문)).slice(0, 40);
+  const 저장 = 캐시.get(캐시키);
+  if (저장) return { text: 저장, model: 모델, cached: true };
+
+  const 지시 = [
+    '너는 TTA 인공지능 제품·서비스 확인제 심사 운영 현황을 경영진에게 보고하는 담당자다.',
+    '사용자가 주는 JSON의 값만 근거로 보고 문장을 쓴다.',
+    '규칙:',
+    '1) JSON에 없는 숫자·사실·원인을 만들지 않는다. 숫자는 JSON 값을 그대로 인용하고 새로 계산하지 않는다.',
+    '2) 첫 줄: 한 문장 결론. "수요가 늘고 있는가", "인력이 남는가 모자라는가"에 직접 답한다.',
+    '3) 다음 줄부터 "- 수요:", "- 처리:", "- 적체:", "- 인력:" 네 줄. 각 1~2문장.',
+    '4) caveats가 있으면 마지막에 "※ "로 시작하는 한 줄로 덧붙인다.',
+    '5) 보고체(~입니다/~습니다), 과장·추측 금지, 전체 500자 이내, 마크다운 굵게·제목 없이 평문.',
+    '6) 투입률이 null이면 MD·MM을 언급하지 않고 활동 심사원 수와 1인당 처리량으로 인력을 설명한다.',
+  ].join('\n');
+
+  const 응답 = UrlFetchApp.fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(모델)}:generateContent`, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': 키 },
+      muteHttpExceptions: true,
+      payload: JSON.stringify({
+        systemInstruction: { parts: [{ text: 지시 }] },
+        contents: [{ role: 'user', parts: [{ text: 본문 }] }],
+        generationConfig: { temperature: 0.2 },
+      }),
+    });
+  const 코드 = 응답.getResponseCode();
+  let 결과 = null;
+  try { 결과 = JSON.parse(응답.getContentText()); } catch (e) {}
+  if (코드 !== 200) {
+    const 메시지 = 결과 && 결과.error && 결과.error.message || 응답.getContentText().slice(0, 200);
+    throw new Error(`Gemini 호출 실패(${코드}): ${메시지}`);
+  }
+  const 후보 = 결과 && 결과.candidates && 결과.candidates[0];
+  const 문장 = 후보 && 후보.content && (후보.content.parts || []).map(p => p.text || '').join('').trim();
+  if (!문장) throw new Error('Gemini 응답에 문장이 없습니다' + (후보 && 후보.finishReason ? `(${후보.finishReason})` : '') + '.');
+  캐시.put(캐시키, 문장, 6 * 3600);
+  return { text: 문장, model: 모델, cached: false };
 }
