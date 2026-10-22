@@ -464,12 +464,20 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
         r=>`${esc(`${r.seq?r.seq+'. ':''}${r.company} · ${r.reviewer||'미배정'} · ${r.status} · ${r.completion?`심사완료 ${sd(r.completion)} · ${r.noticeLagWD}WD 경과`:'심사완료일·적합통보일 모두 비어 있음(상태만 완료)'} · ${dueText(r)}`)}${r.pendLate?' <span style="color:var(--crit);font-weight:600">· 마감 지남</span>':''}`)
       +listBlock('행정 지연 — 심사는 마감 내 완료, 통보가 마감 뒤','var(--warn)','▲',adm,r=>esc(line(r)));
 
+    const mdList=(t,rs,f)=>rs.length?[`**${t} ${rs.length}건**`,'',...rs.map(r=>`- ${plain(f(r))}`),'']:[];
+    mdSec.comply=['## 마감 준수 · 통보 현황',''];
+    if(!done.length)mdSec.comply.push('선택 기간에 심사가 완료된 건이 없습니다.','');
+    mdSec.comply.push(...mdList('통보 대기 — 심사완료 후 적합통보 안 됨',pend,r=>`${r.seq?r.seq+'. ':''}${r.company} · ${r.reviewer||'미배정'} · ${r.status} · ${r.completion?`심사완료 ${sd(r.completion)} · ${r.noticeLagWD}WD 경과`:'심사완료일·적합통보일 모두 비어 있음(상태만 완료)'} · ${dueText(r)}${r.pendLate?' · 마감 지남':''}`),
+      ...mdList('행정 지연 — 심사는 마감 내 완료, 통보가 마감 뒤',adm,line));
     if(!done.length){el.innerHTML='<div class="empty">선택 기간에 심사가 완료된 건이 없습니다.</div>'+admin;return;}
     const parts=[['first','최초 마감 내 심사완료','var(--good)','●'],['ext','연장 마감 내 심사완료','var(--warn)','▲'],['late','마감 후 심사완료','var(--crit)','■'],['none','마감 미입력','var(--none)','○']];
     const g={};done.forEach(r=>{const k=compliance(r);(g[k]=g[k]||[]).push(r);});
     const n=k=>(g[k]||[]).length;
     const tipOf=p=>`${p[1]} ${n(p[0])}건 (${n1(pct(n(p[0]),done.length))}%)`+(n(p[0])&&p[0]!=='first'?'\n'+g[p[0]].slice(0,15).map(line).join('\n')+(n(p[0])>15?`\n… 외 ${n(p[0])-15}건`:''):'');
     const used=parts.filter(p=>n(p[0]));
+    mdSec.comply.splice(2,0,`심사원 기준(심사완료일을 마감과 비교) · 심사완료 ${done.length}건`,'','| 구분 | 건수 | 비율 |','|---|---:|---:|',
+      ...parts.map(p=>`| ${p[1]} | ${n(p[0])} | ${n1(pct(n(p[0]),done.length))}% |`),'',
+      ...parts.filter(p=>p[0]!=='first'&&n(p[0])).flatMap(p=>[`**${p[1]}**`,'',...g[p[0]].map(r=>`- ${plain(line(r))}`),'']));
     const noComp=done.filter(r=>!r.completion).length;
     el.innerHTML=`<div class="stack">${used.map(p=>`<div style="flex:${n(p[0])};background:${p[2]}" data-tip="${esc(tipOf(p))}"></div>`).join('')}</div>`
       +`<div class="stack-legend">${parts.map(p=>`<span data-tip="${esc(tipOf(p))}"><span style="color:${p[2]}">${p[3]}</span> ${p[1]} <b>${n(p[0])}건</b> <span class="muted">(${n1(pct(n(p[0]),done.length))}%)</span></span>`).join('')}<span class="muted">심사완료 ${done.length}건 기준${noComp?` · 그중 ${noComp}건은 심사완료일이 없어 적합통보일로 판단`:''}</span></div>`
@@ -526,11 +534,15 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       ['심사 → 적합통보',reviewed.filter(r=>r.waitWD!==null&&r.notice),r=>r.noticeAfterWD,''],
       ['심사접수 → 적합통보',valid.filter(r=>r.notice),r=>r.reviewToNoticeWD,'심사접수일 미기재'],
     ];
-    const cell=v=>v===null?'—':n1(v);
+    const cell=v=>v===null?'—':n1(v),mdRows=[];
     $('#start').innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>구간</th><th>집계 / 대상</th><th>통계 제외</th><th>중앙값(WD)</th><th>평균(WD)</th><th>최소(WD)</th><th>최대(WD)</th></tr></thead><tbody>${R.map(([k,all,f,why])=>{
       const a=all.map(f).filter(v=>typeof v==='number'&&isFinite(v)),miss=all.length-a.length;
+      mdRows.push(`| ${k} | ${a.length} / ${all.length} | ${miss?`${miss}건 · ${why}`:'없음'} | ${cell(median(a))} | ${cell(avg(a))} | ${a.length?Math.min(...a):'—'} | ${a.length?Math.max(...a):'—'} |`);
       return `<tr><td>${k}</td><td>${a.length} / ${all.length}</td><td>${miss?`${miss}건 · ${why}`:'없음'}</td><td>${cell(median(a))}</td><td>${cell(avg(a))}</td><td>${a.length?Math.min(...a):'—'}</td><td>${a.length?Math.max(...a):'—'}</td></tr>`;}).join('')}</tbody></table></div>
       <div class="brief-note">대상 = 선택 기간에 심사접수된 ${inRev.length}건에서 종료(취소·부적합) ${cancelN}건을 뺀 ${valid.length}건${writtenN?`(심사일정 요청·심사 구간은 서면심사 ${writtenN}건도 제외)`:''}. 심사일정 요청일·심사일은 특이사항 기재 날짜이며, 날짜를 적은 건만으로 계산합니다. 심사 → 적합통보, 심사접수 → 적합통보는 통보까지 끝난 건만 대상입니다.</div>`;
+    mdSec.start=['## 단계별 소요 기간','','시작일·종료일을 모두 세어 당일 처리 = 1WD · 기간은 심사접수일 기준 · 심사일정 요청일·심사일은 특이사항 기재 날짜(적은 건만 계산)','',
+      '| 구간 | 집계 / 대상 | 통계 제외 | 중앙값(WD) | 평균(WD) | 최소(WD) | 최대(WD) |','|---|---|---|---:|---:|---:|---:|',...mdRows,'',
+      `대상 = 선택 기간에 심사접수된 ${inRev.length}건에서 종료(취소·부적합) ${cancelN}건을 뺀 ${valid.length}건${writtenN?`(심사일정 요청·심사 구간은 서면심사 ${writtenN}건도 제외)`:''}`,''];
   }
 
   /* ── 심사원별 표 ── */
@@ -547,6 +559,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const cols=[['name','심사원'],['active','진행 중'],['supp','보완'],['late','마감 초과'],['soon','임박(≤3WD)'],['pend','통보 대기'],['end','종료'],['done','기간 내 심사완료'],['med','처리 중앙값(WD)'],['avg','처리 평균(WD)'],['ok','최초 마감 내(%)']];
     const sum=k=>rows.reduce((s,r)=>s+r[k],0),all=S.done.map(r=>r.elapsedWD);
     const red=v=>v?' style="color:var(--crit);font-weight:600"':'';
+    mdSec.table=['## 심사원별 현황','','진행·초과·임박·통보 대기는 오늘 기준, 종료는 기간 내 접수, 심사완료·처리기간·준수율은 선택 기간 기준','',
+      `| ${cols.map(c=>c[1]).join(' | ')} |`,`|---|${cols.slice(1).map(()=>'---:').join('|')}|`,
+      ...rows.map(r=>`| ${mdCell(r.name)} | ${r.active} | ${r.supp} | ${r.late} | ${r.soon} | ${r.pend} | ${r.end} | ${r.done} | ${n1(r.med)} | ${n1(r.avg)} | ${n1(r.ok)} |`),
+      `| 합계 | ${sum('active')} | ${sum('supp')} | ${sum('late')} | ${sum('soon')} | ${sum('pend')} | ${sum('end')} | ${sum('done')} | ${n1(median(all))} | ${n1(avg(all))} | ${n1(pct(S.done.filter(r=>compliance(r)==='first').length,S.done.length))} |`,''];
     $('#table').innerHTML=`<table><thead><tr>${cols.map(([k,l])=>`<th data-k="${k}">${l}${key===k?(dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>`
       +rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.active}</td><td>${r.supp}</td><td${red(r.late)}>${r.late}</td><td>${r.soon}</td><td${red(r.pend)}>${r.pend}</td><td>${r.end}</td><td>${r.done}</td><td>${n1(r.med)}</td><td>${n1(r.avg)}</td><td>${n1(r.ok)}</td></tr>`).join('')
       +`<tr style="font-weight:600"><td>합계</td><td>${sum('active')}</td><td>${sum('supp')}</td><td>${sum('late')}</td><td>${sum('soon')}</td><td>${sum('pend')}</td><td>${sum('end')}</td><td>${sum('done')}</td><td>${n1(median(all))}</td><td>${n1(avg(all))}</td><td>${n1(pct(S.done.filter(r=>compliance(r)==='first').length,S.done.length))}</td></tr></tbody></table>`;
@@ -632,7 +648,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
 
   /* ── 현황 요약 (경영진 보고용): 수요·처리·적체·인력을 최근 4주 vs 직전 4주로 ── */
   const MD_PER_MM=21;
-  let briefFacts=null,briefText='',briefMd='',tileRows=null;
+  let briefFacts=null,briefText='',briefMd='',tileRows=null,mdSec={};
   const plain=v=>String(v??'').replace(/<br\s*\/?>/g,' · ').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
   const mdCell=v=>plain(v).replace(/\|/g,'\\|');
   function brief(S){
@@ -894,15 +910,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       '',`지표\t${rollHead.join('\t')}`,...rollRows.map(([k,u,fn])=>`${k}(${u})\t${roll.map(x=>fmt(fn(x.o))).join('\t')}`),
       ...caveats.map(c=>'※ '+c)].join('\n');
     // MD 다운로드: 현황 카드(사실) → 현황 요약(판단) → 비교표 → 이동평균 → 각주
+    // 현황 요약 부분만 만든다. 전체 MD(지표 카드·차트·표 포함)는 fullMd()가 모두 그린 뒤 조립한다.
     const md=[];
-    md.push(`# AI확인제 심사 현황 (${T} 기준)`,'',`- 조회: ${payload.readAt} · 기간 필터: ${$('#period').selectedOptions[0].text} · 심사원: ${state.owner||'전체'}`,'- 일수는 모두 영업일(WD) 기준','');
-    if(tileRows){
-      md.push('## 심사 흐름','','| 단계 | 값 | 기준 | 내역 |','|---|---|---|---|');
-      tileRows.flow.forEach(([k,v,u,d,,when])=>md.push(`| ${mdCell(k)} | ${mdCell(v)}${String(v).includes('<small>')?'':' '+u} | ${when==='현재'?'오늘':'선택 기간'} | ${mdCell(d)} |`));
-      md.push('','## 주요 지표','','| 지표 | 값 | 설명 |','|---|---|---|');
-      tileRows.subs.forEach(([k,v,u,d])=>md.push(`| ${mdCell(k)} | ${mdCell(v)}${v==='—'?'':' '+u} | ${mdCell(d)} |`));
-      md.push('');
-    }
     md.push('## 현황 요약','',`**${head}**`,'');
     rows.forEach(([l,b,t])=>{md.push(`### ${l} — ${b[1]}`,'');String(t).split(/(?<=\.)\s+(?=\S)/).filter(x=>!x.includes('그래프에서')).forEach(x=>md.push(`- ${x}`));md.push('');});
     md.push(`### ${K}주 집계 추이 (1주씩 밀며, 각 열 = 그 날짜까지의 ${K}주)`,'',`| 지표 | ${rollHead.join(' | ')} |`,`|---|${roll.map(()=>'---:').join('|')}|`);
@@ -934,10 +943,56 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const fallback=()=>{const t=document.createElement('textarea');t.value=s;document.body.appendChild(t);t.select();try{document.execCommand('copy');done();}finally{t.remove();}};
     if(navigator.clipboard)navigator.clipboard.writeText(s).then(done,fallback);else fallback();
   }
+  /* 전체 MD: 화면의 지표 카드·차트·표 통계를 모두 담는다(현재 필터 기준) */
+  function fullMd(){
+    const S=sets(),out=[],T=payload.today;
+    const sel=$('#period'),per=sel.selectedOptions&&sel.selectedOptions[0]?sel.selectedOptions[0].text:state.period;
+    out.push(`# AI확인제 심사 현황 (${T} 기준)`,'',`- 조회: ${payload.readAt} · 기간 필터: ${per} · 심사원: ${state.owner||'전체'}`,'- 일수는 모두 영업일(WD) 기준','');
+    if(tileRows){
+      out.push('## 심사 흐름','','| 단계 | 값 | 기준 | 내역 |','|---|---|---|---|');
+      tileRows.flow.forEach(([k,v,u,d,,when])=>out.push(`| ${mdCell(k)} | ${mdCell(v)}${String(v).includes('<small>')?'':' '+u} | ${when==='현재'?'오늘':'선택 기간'} | ${mdCell(d)} |`));
+      out.push('','## 주요 지표','','| 지표 | 값 | 설명 |','|---|---|---|');
+      tileRows.subs.forEach(([k,v,u,d])=>out.push(`| ${mdCell(k)} | ${mdCell(v)}${v==='—'?'':' '+u} | ${mdCell(d)} |`));
+      out.push('');
+    }
+    // 처리기간 분포·누적 완료율(접수일자 → 심사완료일, 선택 기간 완료 건)
+    const vals=S.done.map(r=>r.elapsedWD).sort((a,b)=>a-b);
+    out.push('## 처리기간 (접수일자 → 심사완료일)','');
+    if(vals.length){
+      const within=v=>vals.filter(k=>k<=v).length,top=vals[vals.length-1];
+      out.push(`- 완료 ${vals.length}건 · 중앙값 ${n1(median(vals))}WD · 평균 ${n1(avg(vals))}WD · 최소 ${vals[0]}WD · 기록 최대 ${top}WD`,
+        `- 기본 마감 ${BASIC}WD 내 완료 ${within(BASIC)}건 (${n1(pct(within(BASIC),vals.length))}%) · 처리 최대 ${MAXWD}WD 내 ${within(MAXWD)}건 (${n1(pct(within(MAXWD),vals.length))}%)`,'',
+        '| 처리기간 | 건수 | 누적 완료율 |','|---|---:|---:|');
+      for(let s0=0;s0<=top;s0+=5){const n=vals.filter(v=>v>=s0&&v<s0+5).length;out.push(`| ${s0}–${s0+4}WD | ${n} | ${n1(pct(within(s0+4),vals.length))}% |`);}
+      out.push('');
+      // 처리기간 추이: 심사완료 월별 중앙값(접수일 기준 / 심사접수일 기준)
+      const by={};S.done.forEach(r=>{(by[ym(r.fin)]=by[ym(r.fin)]||[]).push(r);});
+      const mv=(rs,k)=>{const a=rs.map(r=>r[k]).filter(v=>v!==null&&v!==undefined);return a.length?n1(median(a)):'—';};
+      out.push('### 월별 처리기간 추이 (심사완료 월)','','| 월 | 완료 | 접수일 기준 중앙값(WD) | 심사접수일 기준 중앙값(WD) |','|---|---:|---:|---:|',
+        ...Object.keys(by).sort().map(k=>`| ${monthLabel(k)} | ${by[k].length} | ${mv(by[k],'elapsedWD')} | ${mv(by[k],'reviewWD')} |`),'');
+    }else out.push('선택 기간에 완료된 건이 없습니다.','');
+    // 누적 접수 대비 완료(제도 시작부터, 심사원 필터 적용) — 접수·심사접수·완료 건수 차트의 누적선과 같은 기준
+    const all=data.filter(r=>!state.owner||r.reviewer===state.owner);
+    const ca=all.filter(r=>r.received&&r.received<=T).length,cb=all.filter(r=>!r.cancel&&r.fin&&r.fin<=T).length;
+    out.push('## 누적 접수 대비 완료 (제도 시작부터)','',`- 누적 접수 ${ca}건 · 누적 완료 ${cb}건 · 누적 완료율 ${ca?Math.round(cb/ca*100)+'%':'—'}`,'');
+    out.push(...(mdSec.start||[]),...(mdSec.comply||[]),...(mdSec.table||[]));
+    // 심사원별 월별 배정·완료(히트맵 월별 보기와 같은 기준)
+    const assigned=S.mine.filter(r=>inPeriod(r.review||r.received)),finished=S.mine.filter(r=>!r.cancel&&r.fin&&inPeriod(r.fin));
+    const mk=months(assigned.map(r=>ym(r.review||r.received)).concat(finished.map(r=>ym(r.fin))));
+    if(mk.length){
+      const who=r=>r.reviewer||'미배정',names=[...new Set(assigned.concat(finished).map(who))].sort((a,b)=>a==='미배정'?1:b==='미배정'?-1:a.localeCompare(b,'ko'));
+      const c=(rs,nm,k,f)=>rs.filter(r=>who(r)===nm&&ym(f(r))===k).length;
+      out.push('## 심사원별 월별 배정·완료','','배정 = 심사접수일(없으면 접수일자), 완료 = 심사완료일(없으면 적합통보일) · 칸 = 배정/완료','',
+        `| 심사원 | ${mk.map(monthLabel).join(' | ')} | 합계 |`,`|---|${mk.map(()=>'---:').join('|')}|---:|`,
+        ...names.map(nm=>`| ${mdCell(nm)} | ${mk.map(k=>`${c(assigned,nm,k,r=>r.review||r.received)}/${c(finished,nm,k,r=>r.fin)}`).join(' | ')} | ${assigned.filter(r=>who(r)===nm).length}/${finished.filter(r=>who(r)===nm).length} |`),'');
+    }
+    out.push(briefMd);
+    return out.join('\n');
+  }
   // Gemini로 보낼 MD: 심사원 이름을 심사원1·2…로 바꾼다(긴 이름부터 바꿔 부분 일치 방지).
   function aiMd(){
     const names=[...new Set(data.map(r=>r.reviewer).concat((payload.reviewers||[]).map(p=>p.name)).filter(Boolean))].sort((a,b)=>b.length-a.length);
-    let t=briefMd;names.forEach((n,i)=>{t=t.split(n).join(`심사원${i+1}`);});
+    let t=fullMd();names.forEach((n,i)=>{t=t.split(n).join(`심사원${i+1}`);});
     return t;
   }
   let aiText='';
@@ -948,7 +1003,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       .withSuccessHandler(res=>{
         btn.disabled=false;
         // 화면 집계에 없는 숫자가 들어갔는지 확인(날짜·4주 같은 기간 표현은 제외)
-        const 근거=new Set(((JSON.stringify(briefFacts)+briefMd).match(/-?\d+(\.\d+)?/g)||[]).map(Number).concat([4,8,3,6]));
+        const 근거=new Set(((JSON.stringify(briefFacts)+fullMd()).match(/-?\d+(\.\d+)?/g)||[]).map(Number).concat([4,8,3,6]));
         const 모름=[...new Set((res.text.replace(/심사원\d+/g,'').match(/\d+(\.\d+)?/g)||[]).map(Number))].filter(n=>!근거.has(n)&&!근거.has(-n));
         out.innerHTML=`${esc(res.text)}<span class="muted">Gemini(${esc(res.model)})${res.cached?' · 캐시':''}가 대시보드 전체 현황(MD, 심사원 이름 익명화)을 분석한 내용입니다.`
           +(모름.length?` <b style="color:var(--crit)">집계에 없는 숫자 ${모름.join(', ')} — 표와 대조하세요.</b>`:' 숫자는 모두 집계값과 일치합니다.')+`</span>`;
@@ -983,9 +1038,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   $('#refresh').addEventListener('click',load);
   $('#brief-copy').addEventListener('click',()=>copyText(briefText));
   $('#md-download').addEventListener('click',()=>{
-    if(!briefMd)return;
+    if(!payload)return;
     const ai=$('#brief-ai-out');
-    const body=briefMd+(ai.hidden||!aiText?'':`\n## Gemini 분석\n\n${aiText}\n`);
+    const body=fullMd()+(ai.hidden||!aiText?'':`\n## Gemini 분석\n\n${aiText}\n`);
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob(['﻿'+body],{type:'text/markdown;charset=utf-8'}));
     a.download=`AI확인제_심사현황_${payload.today}.md`;
