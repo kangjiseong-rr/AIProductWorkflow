@@ -277,6 +277,35 @@ function _투입률정규화_(v) {
 }
 
 /**
+ * 이 API 키로 generateContent를 쓸 수 있는 flash 계열 모델을 찾는다(기본 모델 제외, 최신 버전 우선, 최대 2개).
+ * 목록은 하루 캐시. 실패하면 빈 목록.
+ */
+function _Gemini예비모델_(키, 기본) {
+  const 캐시 = CacheService.getScriptCache();
+  const 저장 = 캐시.get('gemini-models');
+  let 이름들 = 저장 ? JSON.parse(저장) : null;
+  if (!이름들) {
+    try {
+      const 응답 = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', {
+        headers: { 'x-goog-api-key': 키 }, muteHttpExceptions: true,
+      });
+      if (응답.getResponseCode() !== 200) return [];
+      이름들 = (JSON.parse(응답.getContentText()).models || [])
+        .filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0)
+        .map(m => String(m.name || '').replace(/^models\//, ''))
+        .filter(n => /^gemini-[\d.]+-flash(-lite)?$/.test(n));
+      캐시.put('gemini-models', JSON.stringify(이름들), 24 * 3600);
+    } catch (e) {
+      return [];
+    }
+  }
+  const 버전 = n => parseFloat((n.match(/gemini-([\d.]+)/) || [])[1]) || 0;
+  return 이름들.filter(n => n !== 기본)
+    .sort((a, b) => 버전(b) - 버전(a) || (a.includes('lite') ? 1 : 0) - (b.includes('lite') ? 1 : 0))
+    .slice(0, 2);
+}
+
+/**
  * 심사원관리 시트(읽기만): 심사원명·활성여부·제외. 제외는 '10/6'처럼 월/일만 적어도 되며 오늘이 속한 연도로 본다.
  * 활성여부가 N인데 제외일이 비어 있으면 excludeFrom='' + active=false(시점 모름 → 지금은 제외).
  */
@@ -343,7 +372,9 @@ function 현황요약AI문장(사실) {
   ].join('\n');
 
   // 혼잡(429·500·503)은 잠깐 쉬고 다시 시도한다. 그래도 안 되면 GEMINI_FALLBACK_MODEL(쉼표로 여러 개)을 차례로 쓴다.
-  const 예비 = (속성.getProperty(현황요약_예비모델속성) || '').split(',').map(v => v.trim()).filter(v => v && v !== 모델);
+  // 예비 모델: 스크립트 속성에 있으면 그것, 없으면 이 키로 쓸 수 있는 flash 계열 모델을 API에서 찾아 최대 2개.
+  const 지정예비 = (속성.getProperty(현황요약_예비모델속성) || '').split(',').map(v => v.trim()).filter(v => v && v !== 모델);
+  const 예비 = 지정예비.length ? 지정예비 : _Gemini예비모델_(키, 모델);
   const 요청본문 = JSON.stringify({
     systemInstruction: { parts: [{ text: 지시 }] },
     contents: [{ role: 'user', parts: [{ text: 본문 }] }],
@@ -374,7 +405,7 @@ function 현황요약AI문장(사실) {
   }
   if (!결과) {
     throw new Error(`Gemini 호출 실패(${마지막오류}). 혼잡 오류면 잠시 뒤 다시 눌러 주세요` +
-      (예비.length ? '.' : ` — 스크립트 속성 ${현황요약_예비모델속성}에 예비 모델을 넣으면 자동으로 바꿔 시도합니다.`));
+      (예비.length ? `(예비 모델 ${예비.join(', ')}도 실패).` : '.'));
   }
   const 후보 = 결과 && 결과.candidates && 결과.candidates[0];
   const 문장 = 후보 && 후보.content && (후보.content.parts || []).map(p => p.text || '').join('').trim();
