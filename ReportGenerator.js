@@ -211,6 +211,61 @@ function _보고서폴더조회_(접수번호, 정보) {
   return _접수하위폴더준비_(접수폴더, '02.보고서');
 }
 
+/**
+ * 메뉴: 선택 행의 접수 폴더(Drive)를 새 탭으로 연다. 접수대장·일정관리에서 실행.
+ * 찾기만 하고 폴더를 만들지 않으며 시트도 수정하지 않는다. 실행한 사람의 Drive 권한으로 찾는다.
+ */
+function 선택행드라이브폴더열기() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const 활성시트 = ss.getActiveSheet();
+  if (활성시트.getName() !== SHEET.접수대장 && 활성시트.getName() !== SHEET.일정관리) {
+    ui.alert('접수대장 또는 일정관리 시트에서 대상 건의 행을 클릭(선택)한 뒤 다시 실행하세요.');
+    return;
+  }
+  const 활성행 = ss.getActiveRange().getRow();
+  if (활성행 < 2) {
+    ui.alert('헤더가 아니라 데이터 행을 선택한 뒤 다시 실행하세요.');
+    return;
+  }
+  const 헤더 = 활성시트.getRange(1, 1, 1, 활성시트.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const 접수번호열 = 헤더.indexOf('접수번호') + 1;
+  if (접수번호열 < 1) {
+    ui.alert('이 시트에서 접수번호 컬럼을 찾지 못했습니다.');
+    return;
+  }
+  const 접수번호 = String(활성시트.getRange(활성행, 접수번호열).getValue() || '').trim();
+  if (!접수번호) {
+    ui.alert('선택한 행에 접수번호가 없습니다.');
+    return;
+  }
+
+  let 폴더 = null;
+  try {
+    const 루트 = CONFIG.드라이브폴더ID
+      ? DriveApp.getFolderById(CONFIG.드라이브폴더ID)
+      : (it => (it.hasNext() ? it.next() : null))(DriveApp.getFoldersByName('심사증적_원본보관'));
+    if (루트) {
+      const 정규화접수번호 = _폴더명값정리_(접수번호);
+      const 검색어 = 정규화접수번호.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const 검색 = 루트.searchFolders(`title contains '(${검색어})'`);
+      if (검색.hasNext()) 폴더 = 검색.next();
+      else {
+        const 구형 = 루트.getFoldersByName(정규화접수번호);
+        if (구형.hasNext()) 폴더 = 구형.next();
+      }
+    }
+  } catch (e) {
+    ui.alert(`Drive 폴더를 찾지 못했습니다(권한 확인 필요).\n${e.message}`);
+    return;
+  }
+  if (!폴더) {
+    ui.alert(`접수번호 ${접수번호}의 Drive 폴더가 없거나 접근 권한이 없습니다.`);
+    return;
+  }
+  _새탭열기대화상자_(폴더.getUrl(), `${접수번호} 폴더`);
+}
+
 function _증적명세서Docs생성(ss, 건) {
   const 접수번호 = 건['접수번호'];
   // 심사완료일은 일정관리에서 직접 입력한다. 값이 있으면 접수대장 값보다 우선한다.

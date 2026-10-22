@@ -59,7 +59,12 @@ function _심사일정새탭열기_(화면) {
     ui.alert('심사 일정 웹 앱이 아직 배포되지 않았습니다. 관리자에게 웹 앱 배포를 요청하세요.');
     return;
   }
-  const url = JSON.stringify(`${기본URL}?view=${화면}`).replace(/</g, '\u003c');
+  _새탭열기대화상자_(`${기본URL}?view=${화면}`, 화면 === 'dashboard' ? '심사 현황 대시보드' : '심사 일정 타임라인');
+}
+
+/** 주소를 새 탭으로 연다. 팝업이 막히면 버튼을 대신 보여준다. */
+function _새탭열기대화상자_(주소, 제목) {
+  const url = JSON.stringify(주소).replace(/</g, '\u003c');
   const html = HtmlService.createHtmlOutput(
     '<div style="font:13px Arial,\'Noto Sans KR\',sans-serif;padding:4px 6px">' +
     '<p id="m" style="margin:0 0 12px">새 탭을 여는 중입니다…</p>' +
@@ -69,7 +74,7 @@ function _심사일정새탭열기_(화면) {
     'const w=window.open(u,"_blank");' +
     'if(w){google.script.host.close();}else{document.getElementById("m").textContent="브라우저가 새 탭을 막았습니다. 아래 버튼을 눌러 주세요.";}</script>'
   ).setWidth(360).setHeight(120);
-  ui.showModalDialog(html, 화면 === 'dashboard' ? '심사 현황 대시보드' : '심사 일정 타임라인');
+  SpreadsheetApp.getUi().showModalDialog(html, 제목);
 }
 
 function _심사일정웹앱URL_() {
