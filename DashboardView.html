@@ -150,7 +150,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <div class="card full"><div class="card-head"><h3 id="heat-title">심사원별 주차별 배정·완료 현황</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-heat="month" aria-pressed="false">월별</button><button type="button" data-heat="week" aria-pressed="true">주차별</button><button type="button" data-heat="day" aria-pressed="false">일별</button></div></div><div class="desc" id="heat-desc"></div>
       <div class="heat-legend" id="heat-legend"></div>
       <div class="heat-wrap" id="heat"></div></div>
-    <div class="card full"><h3>심사 착수 속도</h3><div class="desc">특이사항에 적은 날짜 기준 · 심사접수일 → 일정확인요청(적극 대응 지표) → 심사(현장·온라인, 첫 심사일) → 심사완료 · 기간은 심사접수일 기준 · 종료(취소·부적합)·서면심사 제외</div>
+    <div class="card full"><h3>심사 착수 속도</h3><div class="desc">특이사항에 적은 날짜 기준 · 심사접수일 → 일정확인요청(적극 대응 지표) → 심사(현장·온라인, 첫 심사일) · 괄호 안 숫자는 집계 건수 · 기간은 심사접수일 기준 · 특이사항에 날짜가 없는 건은 통계에서 빠지며 표에 구간별 제외 건수를 표시</div>
       <div id="start"></div></div>
     <div class="card full"><h3>마감 준수 · 통보 현황</h3><div class="desc">막대는 심사원 기준(심사완료일을 마감과 비교) · 통보가 늦거나 빠진 건은 아래 행정 확인 목록에 따로 표시 · 위쪽 "마감 초과" 카드는 진행 중인 건만 셉니다</div>
       <div id="comply"></div></div>
@@ -509,16 +509,26 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   /* ── 심사 착수 속도: 특이사항의 일정확인요청일·심사일 ── */
   function start(S){
     const p90=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y);return s[Math.ceil(s.length*.9)-1];};
-    const base=S.rev.filter(r=>!r.cancel&&r.noteMode!=='서면');
-    const req=base.map(r=>r.reqWD).filter(v=>v!==null),wait=base.map(r=>r.waitWD).filter(v=>v!==null),after=base.map(r=>r.afterWD).filter(v=>v!==null);
-    const reviewed=base.filter(r=>r.noteReview&&!r.noteReviewPlanned).length,noted=base.filter(r=>r.noteReq||r.noteReview).length;
-    const stat=(k,a,d)=>`<div class="tile"><div class="k">${k}</div><div class="v">${a.length?n1(median(a)):'—'}<small>${a.length?'WD':''}</small></div><div class="d">${a.length?`상위 10% ${n1(p90(a))}WD · 평균 ${n1(avg(a))}WD · ${a.length}건`:'기재된 건 없음'}${d?` · ${d}`:''}</div></div>`;
-    let h=`<div class="subs">${stat('심사접수 → 일정확인요청',req,'')}${stat('심사접수 → 심사',wait,`요청 → 심사 ${n1(median(base.filter(r=>r.reqWD!==null&&r.waitWD!==null).map(r=>r.waitWD-r.reqWD)))}WD`)}${stat('심사 → 심사완료',after,'')}
-      <div class="tile"><div class="k">특이사항 기재</div><div class="v">${base.length?n1(pct(noted,base.length)):'—'}<small>%</small></div><div class="d">요청·심사일 중 하나라도 ${noted}/${base.length}건 · 심사 실시 ${reviewed}건</div></div></div>`;
+    const inRev=S.rev,cancelN=inRev.filter(r=>r.cancel).length,writtenN=inRev.filter(r=>!r.cancel&&r.noteMode==='서면').length;
+    const base=inRev.filter(r=>!r.cancel&&r.noteMode!=='서면');
+    // 구간마다 대상·집계·제외 사유를 함께 보여준다(특이사항 미기재 건은 통계에서 빠지므로 전체 대표값으로 읽히지 않게)
+    const planned=base.filter(r=>r.noteReviewPlanned).length;
+    const revDone=base.filter(r=>!r.noteReviewPlanned);
+    // [구간, 대상 건, 값(없으면 null → 통계 제외), 제외 사유]
+    const R=[
+      ['심사접수 → 일정확인요청',base,r=>r.reqWD,'요청일 미기재'],
+      ['일정확인요청 → 심사',revDone.filter(r=>r.reqWD!==null),r=>r.waitWD===null?null:r.waitWD-r.reqWD,'심사일 미기재'],
+      ['심사접수 → 심사',revDone,r=>r.waitWD,`심사일 미기재${planned?` (예정 ${planned}건은 대상 아님)`:''}`],
+    ];
+    const cell=v=>v===null?'—':n1(v);
+    let h=`<div class="tbl-wrap"><table><thead><tr><th>구간</th><th>집계 / 대상</th><th>통계 제외</th><th>중앙값(WD)</th><th>상위 10%(WD)</th><th>평균(WD)</th></tr></thead><tbody>${R.map(([k,all,f,why])=>{
+      const a=all.map(f).filter(v=>v!==null),miss=all.length-a.length;
+      return `<tr><td>${k}</td><td>${a.length} / ${all.length}${all.length?` <span class="muted">(${n1(pct(a.length,all.length))}%)</span>`:''}</td><td${miss?' style="color:var(--warn-ink,#8a6510)"':''}>${miss?`${miss}건 · ${why}`:'없음'}</td><td>${cell(median(a))}</td><td>${cell(p90(a))}</td><td>${cell(avg(a))}</td></tr>`;}).join('')}</tbody></table></div>
+      <div class="brief-note">대상 = 선택 기간에 심사접수된 건 ${inRev.length}건에서 종료(취소·부적합) ${cancelN}건${writtenN?`, 서면심사 ${writtenN}건`:''}을 뺀 ${base.length}건. 통계 제외 건이 많으면 중앙값이 실제와 다를 수 있습니다(특이사항을 적은 건만으로 계산).</div>`;
     // 심사원별 중앙값
     const names=[...new Set(base.map(r=>r.reviewer||'미배정'))].sort((a,b)=>a.localeCompare(b,'ko'));
     const md=(rs,k)=>{const a=rs.map(r=>r[k]).filter(v=>v!==null);return a.length?`${n1(median(a))} <span class="muted">(${a.length})</span>`:'—';};
-    if(names.length>1)h+=`<div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>심사원</th><th>심사접수</th><th>→ 일정확인요청 중앙값(WD)</th><th>→ 심사 중앙값(WD)</th><th>심사 → 완료 중앙값(WD)</th></tr></thead><tbody>${names.map(n=>{const rs=base.filter(r=>(r.reviewer||'미배정')===n);return `<tr><td>${esc(n)}</td><td>${rs.length}</td><td>${md(rs,'reqWD')}</td><td>${md(rs,'waitWD')}</td><td>${md(rs,'afterWD')}</td></tr>`;}).join('')}</tbody></table></div>`;
+    if(names.length>1)h+=`<div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>심사원</th><th>심사접수</th><th>→ 일정확인요청 중앙값(WD)</th><th>→ 심사 중앙값(WD)</th></tr></thead><tbody>${names.map(n=>{const rs=base.filter(r=>(r.reviewer||'미배정')===n);return `<tr><td>${esc(n)}</td><td>${rs.length}</td><td>${md(rs,'reqWD')}</td><td>${md(rs,'waitWD')}</td></tr>`;}).join('')}</tbody></table></div>`;
     // 오늘 기준 목록(기간 필터 무관): 요청 전 진행 건, 예정된 심사
     const act=S.mine.filter(r=>r.active&&r.review&&r.noteMode!=='서면');
     const noReq=act.filter(r=>!r.noteReq&&!r.noteReview).sort((a,b)=>(b.sinceReviewWD??0)-(a.sinceReviewWD??0));
