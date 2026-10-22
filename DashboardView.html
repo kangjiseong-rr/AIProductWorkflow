@@ -118,7 +118,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
 <section id="db" aria-label="AI확인제 심사 현황 대시보드">
   <div class="head">
     <div><h2>AI확인제 심사 현황</h2><div class="sub" id="read-time">시트에서 불러오는 중…</div></div>
-    <div><? if (appUrl) { ?><a href="<?= appUrl ?>?view=timeline" target="_top">📊 일정 타임라인</a> &nbsp;<? } ?><button type="button" id="refresh">새로고침</button> <a id="source" href="#" target="_blank" rel="noopener">원본 시트</a></div>
+    <div><? if (appUrl) { ?><a href="<?= appUrl ?>?view=timeline" target="_top">📊 일정 타임라인</a> &nbsp;<? } ?><button type="button" id="md-download">MD 다운로드</button> <button type="button" id="refresh">새로고침</button> <a id="source" href="#" target="_blank" rel="noopener">원본 시트</a></div>
   </div>
   <div id="error" class="message" role="alert" hidden></div>
   <div id="warning" class="message" role="status" hidden></div>
@@ -458,6 +458,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       ['통보 소요 중앙값',lag.length?n1(median(lag)):'—','WD','심사완료 → 적합통보',''],
       ['보완요청 발생',suppRate===null?'—':n1(suppRate),'%','기간 내 접수(취소 제외) 기준',''],
     ];
+    tileRows={flow:F,subs:T};
     $('#tiles').innerHTML=`<div class="flow" aria-label="심사 흐름">${F.map(tile).join('<span class="arrow" aria-hidden="true">›</span>')}</div><div class="subs">${T.map(tile).join('')}</div>`;
   }
 
@@ -559,7 +560,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
 
   /* ── 현황 요약 (경영진 보고용): 수요·처리·적체·인력을 최근 4주 vs 직전 4주로 ── */
   const MD_PER_MM=21;
-  let briefFacts=null,briefText='';
+  let briefFacts=null,briefText='',briefMd='',tileRows=null;
+  const plain=v=>String(v??'').replace(/<br\s*\/?>/g,' · ').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
+  const mdCell=v=>plain(v).replace(/\|/g,'\\|');
   function brief(S){
     const DAY=86400000,t0=d=>Date.parse(d+'T00:00:00Z'),iso=t=>new Date(t).toISOString().slice(0,10);
     const T=payload.today,hol=new Set(payload.holidays||[]);
@@ -747,6 +750,31 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     briefText=[`[AI확인제 심사 현황 요약] ${T} 기준${state.owner?' · 심사원 1명 기준':''}`,head,...rows.map(([l,b,t])=>`- ${l}(${b[1]}): ${t}`),
       '',`지표\t직전 4주 (${rng(w0)})\t최근 4주 (${rng(w1)})\t변화`,...tbl.map(([k,a,b,p,u])=>`${k.trim()}(${u})\t${a}\t${b}\t${p}`),
       ...caveats.map(c=>'※ '+c)].join('\n');
+    // MD 다운로드: 현황 카드(사실) → 현황 요약(판단) → 비교표 → 이동평균 → 각주
+    const md=[];
+    md.push(`# AI확인제 심사 현황 (${T} 기준)`,'',`- 조회: ${payload.readAt} · 기간 필터: ${$('#period').selectedOptions[0].text} · 심사원: ${state.owner||'전체'}`,'- 일수는 모두 영업일(WD) 기준','');
+    if(tileRows){
+      md.push('## 심사 흐름','','| 단계 | 값 | 기준 | 내역 |','|---|---|---|---|');
+      tileRows.flow.forEach(([k,v,u,d,,when])=>md.push(`| ${mdCell(k)} | ${mdCell(v)}${String(v).includes('<small>')?'':' '+u} | ${when==='현재'?'오늘':'선택 기간'} | ${mdCell(d)} |`));
+      md.push('','## 주요 지표','','| 지표 | 값 | 설명 |','|---|---|---|');
+      tileRows.subs.forEach(([k,v,u,d])=>md.push(`| ${mdCell(k)} | ${mdCell(v)}${v==='—'?'':' '+u} | ${mdCell(d)} |`));
+      md.push('');
+    }
+    md.push('## 현황 요약','',`**${head}**`,'');
+    rows.forEach(([l,b,t])=>{md.push(`### ${l} — ${b[1]}`,'');String(t).split(/(?<=\.)\s+(?=\S)/).filter(x=>!x.includes('그래프에서')).forEach(x=>md.push(`- ${x}`));md.push('');});
+    md.push('### 비교표','',`| 지표 | 직전 4주 (${rng(w0)}) | 최근 4주 (${rng(w1)}) | 변화 |`,'|---|---:|---:|---:|');
+    tbl.forEach(([k,a,b,p,u])=>md.push(`| ${mdCell(k)} (${u}) | ${a} | ${b} | ${p} |`));
+    md.push('','\* 변화율은 영업일당 기준','');
+    if(maShow.length){
+      md.push(`### ${N===1?'주별':N+'주 이동평균'} (주당 환산 건수)`,'','| 주 시작 | 접수 | 심사접수 | 완료 |','|---|---:|---:|---:|');
+      maShow.forEach(p=>md.push(`| ${p.a} | ${r1(p.recv)} | ${r1(p.rev)} | ${r1(p.done)} |`));
+      md.push('');
+    }
+    md.push('### 월별 접수 / 심사접수 / 완료','','| 월 | 접수 | 심사접수 | 완료 |','|---|---:|---:|---:|');
+    months6.forEach(m=>md.push(`| ${m.month} | ${m.recv} | ${m.review} | ${m.done} |`));
+    md.push('');
+    if(caveats.length)md.push('### 참고','',...caveats.map(c=>`- ${c}`),'');
+    briefMd=md.join('\n');
     // Gemini에는 집계값만 보낸다(기업명·제품명·접수번호·심사원 이름 없음).
     const pick=o=>({접수_기업신청:o.recv,종료:o.end,유효접수:o.valid,심사접수_심사유입:o.rev,심사유입_종료제외:o.revValid,심사접수전대기_기간말:o.preReview,심사완료:o.done,기간말진행중:o.backlog,영업일:o.wd,
       활동심사원:o.people,배정환산인원:r1(o.fte),평균투입률:avgRate,일명분당주처리:o.perWeek===null?null:r1(o.perWeek),일명분당진행중:o.backlogPer===null?null:r1(o.backlogPer),
@@ -803,6 +831,16 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   $('#owner').addEventListener('change',e=>{state.owner=e.target.value;render();});
   $('#refresh').addEventListener('click',load);
   $('#brief-copy').addEventListener('click',()=>copyText(briefText));
+  $('#md-download').addEventListener('click',()=>{
+    if(!briefMd)return;
+    const ai=$('#brief-ai-out');
+    const body=briefMd+(ai.hidden||!ai.textContent.trim()?'':`\n## Gemini 보고 문장\n\n${ai.textContent.trim()}\n`);
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob(['﻿'+body],{type:'text/markdown;charset=utf-8'}));
+    a.download=`AI확인제_심사현황_${payload.today}.md`;
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+  });
   // 이동평균 묶는 주 수(1~4): 요약 카드는 다시 그릴 때마다 버튼을 새로 만들므로 위임으로 받는다
   $('#brief').addEventListener('click',e=>{const b=e.target.closest('[data-mawin]');if(!b)return;state.maWin=+b.dataset.mawin;brief(sets());});
   // 현황 요약 접기: 결론 한 줄만 남긴다. 상태는 이 브라우저에만 기억(저장 실패해도 무시).
