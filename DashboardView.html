@@ -526,9 +526,9 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       ['심사 → 적합통보',reviewed.filter(r=>r.waitWD!==null&&r.notice),r=>r.noticeAfterWD,''],
     ];
     const cell=v=>v===null?'—':n1(v);
-    $('#start').innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>구간</th><th>집계 / 대상</th><th>통계 제외</th><th>중앙값(WD)</th><th>평균(WD)</th></tr></thead><tbody>${R.map(([k,all,f,why])=>{
+    $('#start').innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>구간</th><th>집계 / 대상</th><th>통계 제외</th><th>중앙값(WD)</th><th>평균(WD)</th><th>최소(WD)</th><th>최대(WD)</th></tr></thead><tbody>${R.map(([k,all,f,why])=>{
       const a=all.map(f).filter(v=>typeof v==='number'&&isFinite(v)),miss=all.length-a.length;
-      return `<tr><td>${k}</td><td>${a.length} / ${all.length}</td><td>${miss?`${miss}건 · ${why}`:'없음'}</td><td>${cell(median(a))}</td><td>${cell(avg(a))}</td></tr>`;}).join('')}</tbody></table></div>
+      return `<tr><td>${k}</td><td>${a.length} / ${all.length}</td><td>${miss?`${miss}건 · ${why}`:'없음'}</td><td>${cell(median(a))}</td><td>${cell(avg(a))}</td><td>${a.length?Math.min(...a):'—'}</td><td>${a.length?Math.max(...a):'—'}</td></tr>`;}).join('')}</tbody></table></div>
       <div class="brief-note">대상 = 선택 기간에 심사접수된 ${inRev.length}건에서 종료(취소·부적합) ${cancelN}건을 뺀 ${valid.length}건${writtenN?`(심사일정 요청·심사 구간은 서면심사 ${writtenN}건도 제외)`:''}. 심사일정 요청일·심사일은 특이사항 기재 날짜이며, 날짜를 적은 건만으로 계산합니다. 심사 → 적합통보는 통보까지 끝난 건만 대상입니다.</div>`;
   }
 
