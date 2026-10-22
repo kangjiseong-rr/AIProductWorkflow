@@ -276,7 +276,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   function cdf(done){
     const el=$('#cdf');const vals=done.map(r=>r.elapsedWD).sort((a,b)=>a-b);
     if(!vals.length){el.innerHTML='<div class="empty">선택 기간에 완료된 건이 없습니다.</div>';return;}
-    const maxX=Math.max(vals[vals.length-1],BASIC+5),w=W(el),h=230,m={t:16,r:12,b:30,l:40};
+    // 최대 마감 45WD에 초과분 여유를 두어 x축은 50WD로 고정한다(그보다 늦은 건은 오른쪽 끝 밖에 있다고 표시)
+    const maxX=50,over=vals.filter(v=>v>maxX).length,w=W(el),h=230,m={t:16,r:12,b:30,l:40};
     const {y,g}=frame(w,h,m,100,[0,25,50,75,100],v=>v+'%');
     const iw=w-m.l-m.r,x=v=>m.l+v/maxX*iw;
     const at=v=>vals.filter(k=>k<=v).length*100/vals.length;
@@ -286,6 +287,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const step=maxX>40?10:5;
     for(let v=0;v<=maxX;v+=step)s+=`<text x="${x(v)}" y="${h-12}" text-anchor="middle">${v}</text>`;
     s+=`<text x="${w-m.r}" y="${h-1}" text-anchor="end">WD</text>`;
+    if(over)s+=`<text x="${w-m.r}" y="${m.t+12}" text-anchor="end" style="fill:var(--muted)">50WD 초과 ${over}건</text>`;
     const bx=x(BASIC),bp=at(BASIC);
     s+=`<line x1="${bx}" x2="${bx}" y1="${m.t-6}" y2="${y(0)}" stroke="var(--ink)" stroke-dasharray="4 3" stroke-width="1.5"/>`;
     s+=`<circle cx="${bx}" cy="${y(bp)}" r="4.5" fill="var(--s1)" stroke="var(--card)" stroke-width="2"/><text class="ann" x="${bx+8}" y="${y(bp)+16}">15WD 내 ${n1(bp)}%</text>`;
@@ -409,6 +411,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const y2Max=niceMax(Math.max(1,...ms.map(k=>Math.max(ca[k],cv[k],cb[k])))),y2=v=>m.t+(h-m.t-m.b)*(1-v/y2Max);
     let g2='';ticks(y2Max).forEach(t=>{g2+=`<text x="${w-m.r+6}" y="${y2(t)+4}" text-anchor="start" style="fill:var(--muted)">${t}</text>`;});
     g2+=`<text x="${w-4}" y="10" text-anchor="end" style="fill:var(--muted)">누적</text>`;
+    // 접수 대비 완료 비율(누적 완료 ÷ 누적 접수). 심사접수 대비는 표시하지 않는다.
+    const pct=(n,d)=>d?`${Math.round(n/d*100)}%`:'–';
+    const L=ms[ms.length-1];
+    g2+=`<text x="${m.l}" y="10" style="fill:var(--sub);font-weight:600">누적 완료율 ${pct(cb[L],ca[L])} <tspan style="fill:var(--muted);font-weight:400">(완료 ${cb[L]} ÷ 접수 ${ca[L]})</tspan></text>`;
     const iw=w-m.l-m.r,band=iw/ms.length,bw=Math.max(2,Math.min(16,band*.26));
     let s=g+g2;
     const bar=(x0,v,c)=>{if(!v)return '';const top=y(v),hh=y(0)-top,r=Math.min(4,hh,bw/2);return `<path d="M${x0},${y(0)}V${top+r}q0,-${r} ${r},-${r}h${bw-2*r}q${r},0 ${r},${r}V${y(0)}Z" fill="${c}"/>`;};
@@ -418,8 +424,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       s+=(isOpen(k)?'<g opacity=".4">':'<g>')+bar(c-bw*1.5-1,a[k]||0,'var(--s1)')+bar(c-bw/2,v[k]||0,'#d9a535')+bar(c+bw/2+1,b[k]||0,'var(--s2)')+'</g>';
       s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}${isOpen(k)?' (진행 중 — 아직 끝나지 않음)':''}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''}
 심사접수 ${v[k]||0}건
-완료 ${b[k]||0}건
-누적: 접수 ${ca[k]} · 심사접수 ${cv[k]} · 완료 ${cb[k]}`)}"/>`;
+완료 ${b[k]||0}건${a[k]?` (접수 대비 ${pct(b[k]||0,a[k])})`:''}
+누적: 접수 ${ca[k]} · 심사접수 ${cv[k]} · 완료 ${cb[k]} (접수 대비 ${pct(cb[k],ca[k])})`)}"/>`;
       const newMonth=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));
       if(i%every===0||isOpen(k))s+=`<text x="${c}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}${isOpen(k)?'*':''}</text>`;
     });
@@ -427,7 +433,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     [[ca,'var(--s1)'],[cv,'#d9a535'],[cb,'var(--s2)']].forEach(([o,c])=>{
       const pts=ms.map((k,i)=>`${m.l+band*(i+.5)},${y2(o[k])}`).join(' ');
       s+=`<polyline fill="none" stroke="${c}" stroke-width="1.6" stroke-dasharray="4 3" points="${pts}" style="pointer-events:none"/>`;
-      const L=ms[ms.length-1];s+=`<circle cx="${m.l+band*(ms.length-.5)}" cy="${y2(o[L])}" r="2.6" fill="${c}" style="pointer-events:none"/>`;
+      s+=`<circle cx="${m.l+band*(ms.length-.5)}" cy="${y2(o[L])}" r="2.6" fill="${c}" style="pointer-events:none"/>`;
     });
     el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="${week?'주차별':'월별'} 접수·심사접수·완료 건수와 누적">${s}</svg>`;
   }
