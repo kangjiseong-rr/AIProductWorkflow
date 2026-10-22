@@ -22,7 +22,13 @@ body{background:#fcfcfb}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:10px 0 4px}
 .filters label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--sub);min-width:150px}
 .message{font-size:12px;color:var(--crit);padding:4px 0}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:10px;margin:10px 0 14px}
+.tiles{display:flex;gap:14px;margin:10px 0 14px;flex-wrap:wrap;align-items:stretch}
+.flow{flex:1 1 640px;display:flex;align-items:stretch;gap:4px}
+.flow .tile{flex:1 1 0;min-width:0;background:#eaf4fd;border:2px solid #4f86cc}
+.flow .tile .k{color:#2f5f9e;font-weight:600}
+.flow .arrow{flex:0 0 auto;align-self:center;color:#4f86cc;font-size:16px;font-weight:600}
+.subs{flex:1 1 420px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tile .when{font-size:10px;font-weight:400;color:var(--muted);margin-left:auto}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .tile .k{font-size:12px;color:var(--sub);display:flex;align-items:center;gap:5px}
 .tile .v{font-size:26px;font-weight:600;line-height:1.25;font-variant-numeric:tabular-nums}
@@ -416,25 +422,33 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const late=a.filter(r=>r.late).length,soon=a.filter(r=>r.soon).length;
     const st=k=>a.filter(r=>r.status===k).length;
     const firstOk=S.done.filter(r=>compliance(r)==='first').length;
-    const recvValid=S.recv.filter(r=>!/^종료\(취소\)/.test(r.status));
+    const recvValid=S.recv.filter(r=>!/^종료(취소)/.test(r.status));
     const suppRate=pct(recvValid.filter(r=>r.supplement).length,recvValid.length);
     const lag=S.done.filter(r=>r.completion&&r.notice).map(r=>r.noticeLagWD).filter(v=>v!==null);
     const pend=S.pend.length,pendLate=S.pend.filter(r=>r.pendLate).length;
     // 기간 내 접수 건의 현재 구성: 종료(취소·부적합) / 심사완료(통보 대기 포함) / 진행. 합이 접수 건수와 같다.
     const recvEnd=S.recv.filter(r=>r.cancel).length,recvCancel=S.recv.filter(r=>/취소/.test(r.status)).length;
     const recvDone=S.recv.filter(r=>!r.cancel&&r.fin).length,recvAct=S.recv.length-recvEnd-recvDone;
+    const noticed=S.mine.filter(r=>!r.cancel&&r.notice&&inPeriod(r.notice)).length;
+    const wait=st('대기'),rev=st('심사중')+st('보완'),supp=st('보완'),other=a.length-wait-rev;
+    const tile=([k,v,u,d,c,when])=>`<div class="tile"><div class="k">${c?`<i class="ico" style="background:${c}"></i>`:''}${k}${when?`<span class="when">${when}</span>`:''}</div><div class="v">${v}<small>${v==='—'?'':u}</small></div><div class="d">${d}</div></div>`;
+    // 메인: 심사 흐름 순서(접수 → 대기 → 심사중 → 완료/종료 → 통보). 접수·완료·통보는 선택 기간, 대기·심사중은 오늘 기준.
+    const F=[
+      ['접수',S.recv.length,'건',`진행 ${recvAct} · 심사완료 ${recvDone} · 종료 ${recvEnd}`,'','기간'],
+      ['대기',wait,'건','심사 시작 전','','현재'],
+      ['심사중',rev,'건',`그중 보완 ${supp}건${other?` · 상태 미기재 ${other}`:''}`,'','현재'],
+      ['완료 / 취소',`${S.done.length}<small>건</small> / ${recvEnd}`,'건',`취소 ${recvCancel} · 부적합 ${recvEnd-recvCancel}`,'','기간'],
+      ['통보',noticed,'건',pend?`통보 대기 ${pend}건 · 그중 마감 지남 ${pendLate}건`:'통보 대기 없음','','기간'],
+    ];
     const T=[
-      ['진행 중',a.length,'건',`대기 ${st('대기')} · 심사중 ${st('심사중')} · 보완 ${st('보완')}`,''],
-      ['마감 초과',late,'건','심사 진행 중인 건 · 오늘 기준 마감 경과','var(--crit)'],
+      ['마감 초과',late,'건','심사 진행 중 · 오늘 기준','var(--crit)'],
       ['마감 임박',soon,'건','잔여 3WD 이하','var(--warn)'],
-      ['통보 대기',pend,'건',pend?`심사완료 후 미통보 · 그중 마감 지남 ${pendLate}건`:'심사완료 후 미통보 없음',pend?'var(--crit)':''],
-      ['기간 내 접수',S.recv.length,'건',`진행 ${recvAct} · 심사완료 ${recvDone} · 종료 ${recvEnd}<br>보완요청 발생 ${n1(suppRate)}%`,''],
-      ['종료',recvEnd,'건',recvEnd?`취소 ${recvCancel} · 부적합 ${recvEnd-recvCancel} · 접수일자 기준 · 실적 제외`:'기간 내 접수 중 종료 없음',recvEnd?'var(--none)':''],
-      ['기간 내 심사완료',S.done.length,'건',lag.length?`통보까지 중앙값 ${n1(median(lag))}WD`:'심사완료일 기준(없으면 통보일)',''],
       ['처리기간 중앙값',median(vals)===null?'—':n1(median(vals)),'WD',`평균 ${n1(avg(vals))}WD · 접수→심사완료`,''],
       ['최초 마감 내 심사완료',pct(firstOk,S.done.length)===null?'—':n1(pct(firstOk,S.done.length)),'%',`${firstOk}/${S.done.length}건`,'var(--good)'],
+      ['통보 소요 중앙값',lag.length?n1(median(lag)):'—','WD','심사완료 → 적합통보',''],
+      ['보완요청 발생',suppRate===null?'—':n1(suppRate),'%','기간 내 접수(취소 제외) 기준',''],
     ];
-    $('#tiles').innerHTML=T.map(([k,v,u,d,c])=>`<div class="tile"><div class="k">${c?`<i class="ico" style="background:${c}"></i>`:''}${k}</div><div class="v">${v}<small>${v==='—'?'':u}</small></div><div class="d">${d}</div></div>`).join('');
+    $('#tiles').innerHTML=`<div class="flow" aria-label="심사 흐름">${F.map(tile).join('<span class="arrow" aria-hidden="true">›</span>')}</div><div class="subs">${T.map(tile).join('')}</div>`;
   }
 
   /* ── 심사원별 표 ── */
