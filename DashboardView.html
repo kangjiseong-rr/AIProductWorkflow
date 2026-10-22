@@ -139,8 +139,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       <div class="desc" id="strip-desc"></div>
       <div class="legend" id="strip-legend"></div>
       <div class="plot" id="strip"></div></div>
-    <div class="card"><div class="card-head"><h3 id="volume-title">월별 접수·완료 건수</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-volume="month" aria-pressed="true">월별</button><button type="button" data-volume="week" aria-pressed="false">주차별</button></div></div><div class="desc" id="volume-desc">접수는 접수일자 월, 완료는 심사완료일(없으면 적합통보일) 월 기준</div>
-      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>접수</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div>
+    <div class="card"><div class="card-head"><h3 id="volume-title">월별 접수·심사접수·완료 건수</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-volume="month" aria-pressed="true">월별</button><button type="button" data-volume="week" aria-pressed="false">주차별</button></div></div><div class="desc" id="volume-desc">접수는 접수일자 월, 완료는 심사완료일(없으면 적합통보일) 월 기준</div>
+      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>접수 (기업 신청)</span><span><i class="sw" style="background:#d9a535"></i>심사접수 (심사 유입)</span><span><i class="sw" style="background:var(--s2)"></i>완료</span></div>
       <div class="plot" id="monthly"></div></div>
     <div class="card full"><div class="card-head"><h3 id="heat-title">심사원별 주차별 배정·완료 현황</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-heat="month" aria-pressed="false">월별</button><button type="button" data-heat="week" aria-pressed="true">주차별</button><button type="button" data-heat="day" aria-pressed="false">일별</button></div></div><div class="desc" id="heat-desc"></div>
       <div class="heat-legend" id="heat-legend"></div>
@@ -216,7 +216,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     // 심사 완료 = 취소가 아니고 심사완료일(없으면 적합통보일)이 기간 안
     const done=mine.filter(r=>!r.cancel&&r.fin&&inPeriod(r.fin)&&r.elapsedWD!==null);
     const recv=mine.filter(r=>inPeriod(r.received));
-    return {mine,done,recv,active:mine.filter(r=>r.active),pend:mine.filter(r=>r.pend)};
+    const rev=mine.filter(r=>inPeriod(r.review));
+    return {mine,done,recv,rev,active:mine.filter(r=>r.active),pend:mine.filter(r=>r.pend)};
   }
 
   /* ── 공통: SVG 축·툴팁 ── */
@@ -357,41 +358,42 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   }
 
   /* ── 월별 접수·완료 건수 (묶은 막대) ── */
-  function monthly(recv,done){
+  function monthly(recv,done,rev){
     const el=$('#monthly'),week=state.volume==='week',DAYMS=86400000;
-    $('#volume-title').textContent=week?'주차별 접수·완료 건수':'월별 접수·완료 건수';
+    $('#volume-title').textContent=week?'주차별 접수·심사접수·완료 건수':'월별 접수·심사접수·완료 건수';
     $('#volume-desc').textContent=week
-      ?'접수는 접수일자 주, 완료는 심사완료일(없으면 적합통보일) 주 기준(월요일 시작) · 종료(취소·부적합)는 접수에만 포함'
-      :'접수는 접수일자 월, 완료는 심사완료일(없으면 적합통보일) 월 기준 · 종료(취소·부적합)는 접수에만 포함';
-    root.querySelectorAll('[data-heat]').forEach(b=>b.addEventListener('click',()=>{state.heat=b.dataset.heat;heat(sets());}));
-  root.querySelectorAll('[data-volume]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.volume===state.volume)));
+      ?'접수는 접수일자, 심사접수는 심사접수일, 완료는 심사완료일(없으면 적합통보일) 주 기준(월요일 시작) · 종료(취소·부적합)는 접수에만 포함'
+      :'접수는 접수일자, 심사접수는 심사접수일, 완료는 심사완료일(없으면 적합통보일) 월 기준 · 종료(취소·부적합)는 접수에만 포함';
+    root.querySelectorAll('[data-volume]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.volume===state.volume)));
     const mon=d=>{const t=Date.parse(d+'T00:00:00Z');return new Date(t-((new Date(t).getUTCDay()+6)%7)*DAYMS).toISOString().slice(0,10);};
     const keyOf=week?mon:ym;
     let ms;
-    const 키들=recv.map(r=>keyOf(r.received)).concat(done.map(r=>keyOf(r.fin))).filter(Boolean).sort();
+    const 키들=recv.map(r=>keyOf(r.received)).concat(done.map(r=>keyOf(r.fin)),rev.map(r=>keyOf(r.review))).filter(Boolean).sort();
     if(week){
       ms=[];
       if(키들.length)for(let t=Date.parse(키들[0]+'T00:00:00Z');t<=Date.parse(키들[키들.length-1]+'T00:00:00Z');t+=7*DAYMS)ms.push(new Date(t).toISOString().slice(0,10));
     }else ms=months(키들);
     if(!ms.length){el.innerHTML='<div class="empty">선택 기간에 자료가 없습니다.</div>';return;}
     const cnt=(rs,f)=>{const o={};rs.forEach(r=>{const k=keyOf(f(r));o[k]=(o[k]||0)+1;});return o;};
-    const a=cnt(recv,r=>r.received),b=cnt(done,r=>r.fin),e=cnt(recv.filter(r=>r.cancel),r=>r.received);
+    const a=cnt(recv,r=>r.received),b=cnt(done,r=>r.fin),v=cnt(rev,r=>r.review),e=cnt(recv.filter(r=>r.cancel),r=>r.received);
     const label=k=>week?`${+k.slice(5,7)}/${+k.slice(8,10)}`:monthLabel(k);
     const tipLabel=k=>week?`${label(k)} 주`:`${monthLabel(k)}월`;
-    const w=W(el),h=230,m={t:16,r:12,b:30,l:34},yMax=niceMax(Math.max(1,...ms.map(k=>Math.max(a[k]||0,b[k]||0))));
+    const w=W(el),h=230,m={t:16,r:12,b:30,l:34},yMax=niceMax(Math.max(1,...ms.map(k=>Math.max(a[k]||0,b[k]||0,v[k]||0))));
     const {y,g}=frame(w,h,m,yMax,ticks(yMax),v=>v);
-    const iw=w-m.l-m.r,band=iw/ms.length,bw=Math.max(2,Math.min(18,band*.32));
+    const iw=w-m.l-m.r,band=iw/ms.length,bw=Math.max(2,Math.min(16,band*.26));
     let s=g;
     const bar=(x0,v,c)=>{if(!v)return '';const top=y(v),hh=y(0)-top,r=Math.min(4,hh,bw/2);return `<path d="M${x0},${y(0)}V${top+r}q0,-${r} ${r},-${r}h${bw-2*r}q${r},0 ${r},${r}V${y(0)}Z" fill="${c}"/>`;};
     const every=Math.max(1,Math.ceil(ms.length/(w/56)));
     ms.forEach((k,i)=>{
       const c=m.l+band*(i+.5);
-      s+=bar(c-bw-1,a[k]||0,'var(--s1)')+bar(c+1,b[k]||0,'var(--s2)');
-      s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''} · 완료 ${b[k]||0}건`)}"/>`;
+      s+=bar(c-bw*1.5-1,a[k]||0,'var(--s1)')+bar(c-bw/2,v[k]||0,'#d9a535')+bar(c+bw/2+1,b[k]||0,'var(--s2)');
+      s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''}
+심사접수 ${v[k]||0}건
+완료 ${b[k]||0}건`)}"/>`;
       const newMonth=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));
       if(i%every===0)s+=`<text x="${c}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}</text>`;
     });
-    el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="${week?'주차별':'월별'} 접수·완료 건수">${s}</svg>`;
+    el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="${week?'주차별':'월별'} 접수·심사접수·완료 건수">${s}</svg>`;
   }
 
   /* ── 마감 준수 ── */
@@ -782,7 +784,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     if(!payload)return;
     const S=sets();
     brief(S);$('#brief-ai-out').hidden=true;
-    tiles(S);hist(S.done);cdf(S.done);trend(S.done);monthly(S.recv,S.done);comply(S);heat(S);table(S);
+    tiles(S);hist(S.done);cdf(S.done);trend(S.done);monthly(S.recv,S.done,S.rev);comply(S);heat(S);table(S);
   }
 
   function load(){
@@ -796,7 +798,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
 
   $('#period').addEventListener('change',e=>{state.period=e.target.value;render();});
   root.querySelectorAll('[data-trend]').forEach(b=>b.addEventListener('click',()=>{state.trend=b.dataset.trend;trend(sets().done);}));
-  root.querySelectorAll('[data-volume]').forEach(b=>b.addEventListener('click',()=>{state.volume=b.dataset.volume;const S=sets();monthly(S.recv,S.done);}));
+  root.querySelectorAll('[data-heat]').forEach(b=>b.addEventListener('click',()=>{state.heat=b.dataset.heat;heat(sets());}));
+  root.querySelectorAll('[data-volume]').forEach(b=>b.addEventListener('click',()=>{state.volume=b.dataset.volume;const S=sets();monthly(S.recv,S.done,S.rev);}));
   $('#owner').addEventListener('change',e=>{state.owner=e.target.value;render();});
   $('#refresh').addEventListener('click',load);
   $('#brief-copy').addEventListener('click',()=>copyText(briefText));
