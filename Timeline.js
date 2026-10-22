@@ -132,7 +132,7 @@ function 심사일정자료조회() {
       ? '' : `공휴일 시트에 ${오늘.slice(0, 4)}년 공휴일이 없어 WD가 주말만 제외하고 계산되었습니다.`,
     // 대시보드 일별 히트맵에서 공휴일 칸을 표시하기 위한 목록(yyyy-MM-dd)
     holidays: [...휴일.날짜].sort(),
-    // 현황 요약의 MD·MM 계산용 일률 투입률(스크립트 속성 REVIEW_RATE, 예: 30%). 없으면 null → MD·MM 생략.
+    // 현황 요약의 최다 배정자 투입률(스크립트 속성 REVIEW_RATE, 예: 30%). 나머지는 화면에서 배정 건수 비례로 환산. 없으면 null(=100%).
     reviewRate: _투입률정규화_(PropertiesService.getScriptProperties().getProperty(현황요약_투입률속성)),
     // Gemini 보고 문장 버튼 표시 여부(키 값은 화면에 보내지 않는다)
     aiSummary: !!PropertiesService.getScriptProperties().getProperty(현황요약_키속성),
@@ -299,7 +299,7 @@ function 현황요약AI문장(사실) {
     '3) 다음 줄부터 "- 수요:", "- 처리:", "- 적체:", "- 인력:" 네 줄. 각 1~2문장.',
     '4) caveats가 있으면 마지막에 "※ "로 시작하는 한 줄로 덧붙인다.',
     '5) 보고체(~입니다/~습니다), 과장·추측 금지, 전체 500자 이내, 마크다운 굵게·제목 없이 평문.',
-    '6) 투입률이 null이면 MD·MM을 언급하지 않고 활동 심사원 수와 1인당 처리량으로 인력을 설명한다.',
+    '6) 인력의 명분·MD는 배정 건수로 환산한 추정치임을 한 번 밝힌다.',
   ].join('\n');
 
   const 응답 = UrlFetchApp.fetch(
