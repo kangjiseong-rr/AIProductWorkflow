@@ -133,3 +133,11 @@ if (!/function doGet\(e\) \{[\s\S]*?if \(!_조회권한여부\(\)\)/.test(timeli
 if (!/function 심사일정자료조회\(\) \{\s*if \(!_조회권한여부\(\)\)/.test(timelineSrc)) throw new Error('심사일정자료조회의 조회 권한 확인이 없습니다.');
 
 console.log('Timeline workday test passed.');
+
+// 대시보드·타임라인 화면 스크립트: 문법 오류가 없고, 전역 open()(=window.open)을 실수로 부르지 않는다.
+for (const 파일 of ['DashboardView.html', 'TimelineView.html']) {
+  const html = fs.readFileSync(path.join(root, 파일), 'utf8');
+  const 스크립트 = (html.match(/<script>([\s\S]*?)<\/script>/g) || []).map(s => s.replace(/^<script>|<\/script>$/g, '')).join('\n;\n');
+  new Function(스크립트);
+  if (/(^|[^.\w$])open\(/m.test(스크립트)) throw new Error(`${파일}: 전역 open( 호출이 있습니다(window.open으로 새 탭이 열림)`);
+}
