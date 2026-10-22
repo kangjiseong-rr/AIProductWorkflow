@@ -150,6 +150,8 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     <div class="card full"><div class="card-head"><h3 id="heat-title">심사원별 주차별 배정·완료 현황</h3><div class="seg" role="group" aria-label="집계 단위"><button type="button" data-heat="month" aria-pressed="false">월별</button><button type="button" data-heat="week" aria-pressed="true">주차별</button><button type="button" data-heat="day" aria-pressed="false">일별</button></div></div><div class="desc" id="heat-desc"></div>
       <div class="heat-legend" id="heat-legend"></div>
       <div class="heat-wrap" id="heat"></div></div>
+    <div class="card full"><h3>심사 착수 속도</h3><div class="desc">특이사항에 적은 날짜 기준 · 심사접수일 → 일정확인요청(적극 대응 지표) → 심사(현장·온라인, 첫 심사일) → 심사완료 · 기간은 심사접수일 기준 · 종료(취소·부적합)·서면심사 제외</div>
+      <div id="start"></div></div>
     <div class="card full"><h3>마감 준수 · 통보 현황</h3><div class="desc">막대는 심사원 기준(심사완료일을 마감과 비교) · 통보가 늦거나 빠진 건은 아래 행정 확인 목록에 따로 표시 · 위쪽 "마감 초과" 카드는 진행 중인 건만 셉니다</div>
       <div id="comply"></div></div>
     <div class="card full"><h3>심사원별 현황</h3><div class="desc">진행·초과·임박·통보 대기는 오늘 기준, 종료(취소·부적합)는 기간 내 접수 건 기준, 심사완료·처리기간·준수율은 선택 기간 기준(심사완료일, 없으면 적합통보일) · 통보 지연은 심사원 실적에 넣지 않음 · 열 제목을 누르면 정렬</div>
@@ -502,6 +504,32 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     ];
     tileRows={flow:F,subs:T};
     $('#tiles').innerHTML=`<div class="flow" aria-label="심사 흐름">${F.map(tile).join('<span class="arrow" aria-hidden="true">›</span>')}</div><div class="subs">${T.map(tile).join('')}</div>`;
+  }
+
+  /* ── 심사 착수 속도: 특이사항의 일정확인요청일·심사일 ── */
+  function start(S){
+    const p90=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y);return s[Math.ceil(s.length*.9)-1];};
+    const base=S.rev.filter(r=>!r.cancel&&r.noteMode!=='서면');
+    const req=base.map(r=>r.reqWD).filter(v=>v!==null),wait=base.map(r=>r.waitWD).filter(v=>v!==null),after=base.map(r=>r.afterWD).filter(v=>v!==null);
+    const reviewed=base.filter(r=>r.noteReview&&!r.noteReviewPlanned).length,noted=base.filter(r=>r.noteReq||r.noteReview).length;
+    const stat=(k,a,d)=>`<div class="tile"><div class="k">${k}</div><div class="v">${a.length?n1(median(a)):'—'}<small>${a.length?'WD':''}</small></div><div class="d">${a.length?`상위 10% ${n1(p90(a))}WD · 평균 ${n1(avg(a))}WD · ${a.length}건`:'기재된 건 없음'}${d?` · ${d}`:''}</div></div>`;
+    let h=`<div class="subs">${stat('심사접수 → 일정확인요청',req,'')}${stat('심사접수 → 심사',wait,`요청 → 심사 ${n1(median(base.filter(r=>r.reqWD!==null&&r.waitWD!==null).map(r=>r.waitWD-r.reqWD)))}WD`)}${stat('심사 → 심사완료',after,'')}
+      <div class="tile"><div class="k">특이사항 기재</div><div class="v">${base.length?n1(pct(noted,base.length)):'—'}<small>%</small></div><div class="d">요청·심사일 중 하나라도 ${noted}/${base.length}건 · 심사 실시 ${reviewed}건</div></div></div>`;
+    // 심사원별 중앙값
+    const names=[...new Set(base.map(r=>r.reviewer||'미배정'))].sort((a,b)=>a.localeCompare(b,'ko'));
+    const md=(rs,k)=>{const a=rs.map(r=>r[k]).filter(v=>v!==null);return a.length?`${n1(median(a))} <span class="muted">(${a.length})</span>`:'—';};
+    if(names.length>1)h+=`<div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>심사원</th><th>심사접수</th><th>→ 일정확인요청 중앙값(WD)</th><th>→ 심사 중앙값(WD)</th><th>심사 → 완료 중앙값(WD)</th></tr></thead><tbody>${names.map(n=>{const rs=base.filter(r=>(r.reviewer||'미배정')===n);return `<tr><td>${esc(n)}</td><td>${rs.length}</td><td>${md(rs,'reqWD')}</td><td>${md(rs,'waitWD')}</td><td>${md(rs,'afterWD')}</td></tr>`;}).join('')}</tbody></table></div>`;
+    // 오늘 기준 목록(기간 필터 무관): 요청 전 진행 건, 예정된 심사
+    const act=S.mine.filter(r=>r.active&&r.review&&r.noteMode!=='서면');
+    const noReq=act.filter(r=>!r.noteReq&&!r.noteReview).sort((a,b)=>(b.sinceReviewWD??0)-(a.sinceReviewWD??0));
+    const plan=S.mine.filter(r=>!r.cancel&&r.noteReviewPlanned).sort((a,b)=>a.noteReview.localeCompare(b.noteReview));
+    const md2=s=>`${+s.slice(5,7)}/${+s.slice(8,10)}`;
+    const list=(title,rows,cols,empty)=>`<div style="flex:1 1 340px;min-width:0"><h4 style="margin:14px 0 6px;font-size:13px">${title}</h4>${rows.length?`<div class="tbl-wrap"><table><tbody>${rows.map(cols).join('')}</tbody></table></div>`:`<div class="muted">${empty}</div>`}</div>`;
+    h+=`<div style="display:flex;gap:18px;flex-wrap:wrap">`
+      +list(`일정확인요청 전 ${noReq.length}건 <span class="muted" style="font-weight:400">· 심사접수 후 경과 순 · 오늘 기준</span>`,noReq,r=>`<tr><td${r.sinceReviewWD>=3?' style="color:var(--crit);font-weight:600"':''}>${r.sinceReviewWD??'—'}WD</td><td>${esc(r.reviewer||'미배정')}</td><td>${esc(r.company)}</td><td>${esc(r.status)}</td><td class="muted">${md2(r.review)} 심사접수</td></tr>`,'요청 전인 진행 건이 없습니다.')
+      +list(`예정된 심사 ${plan.length}건`,plan,r=>`<tr><td>${md2(r.noteReview)}</td><td>${esc(r.noteMode||'방식 미기재')}</td><td>${esc(r.reviewer||'미배정')}</td><td>${esc(r.company)}</td></tr>`,'예정된 심사가 없습니다.')
+      +`</div><div class="brief-note">특이사항 기재 예: <b>(9/2) 심사일정확인요청, (9/17) 현장 심사</b> — 날짜를 (월/일)로 앞에 쓰고 "일정확인요청"·"현장 심사"·"온라인 심사"를 적으면 집계됩니다. 날짜가 여러 개면 첫 심사일 기준, 3WD 이상 경과는 빨간색.</div>`;
+    $('#start').innerHTML=h;
   }
 
   /* ── 심사원별 표 ── */
@@ -933,7 +961,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     if(!payload)return;
     const S=sets();
     brief(S);$('#brief-ai-out').hidden=true;
-    tiles(S);hist(S.done);cdf(S.done);trend(S.done);monthly(S.recv,S.done,S.rev);comply(S);heat(S);table(S);
+    tiles(S);hist(S.done);cdf(S.done);trend(S.done);monthly(S.recv,S.done,S.rev);start(S);comply(S);heat(S);table(S);
   }
 
   function load(){

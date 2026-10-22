@@ -176,6 +176,7 @@ function 심사일정자료조회() {
     });
     if (날짜오류.length) 레코드.dateIssues = 날짜오류;
     _타임라인WD계산_(레코드, 오늘, 휴일.날짜);
+    _특이사항심사일_(레코드, 오늘, 휴일.날짜);
     결과.records.push(레코드);
   }
   return 결과;
@@ -255,6 +256,65 @@ function _타임라인WD계산_(레코드, 오늘, 휴일) {
   레코드.noticeLagWD = 레코드.completion
     ? _영업일수_(레코드.completion, 레코드.notice || 오늘, 휴일)
     : null;
+}
+
+/**
+ * 특이사항 자유기재에서 심사 일정을 읽는다(시트에 심사일 열이 없음). 예: "(9/2)심사일정확인요청, (9/17) 현장 심사 예정".
+ * 날짜 토큰 "(M/D …)"·"(M, D)"·괄호 없는 "M/D" 뒤 문구로 구분한다.
+ *   일정 문구(일정확인요청·일정협의) → 첫 날짜가 noteReq
+ *   심사·현장/온라인 확인 문구      → 첫 날짜가 noteReview (재심사가 있어도 첫 심사일), noteMode = 현장|온라인|''
+ *   보완요청·적합통보 등             → 무시
+ * 날짜가 없는 "서면"은 noteMode='서면'만 둔다(통계 제외). 연도는 심사접수일(없으면 접수일자) 기준, 60일 넘게 앞서면 다음 해.
+ * noteReviewPlanned: 심사일이 오늘 이후(예정).
+ * waitWD    : 심사접수일 → 심사일 (지난 심사만)
+ * reqWD     : 심사접수일 → 일정확인요청일 (적극 대응 지표)
+ * afterWD   : 심사일 → 심사완료일(없으면 적합통보일)
+ */
+function _특이사항심사일_(레코드, 오늘, 휴일) {
+  const 메모 = String(레코드.note || '');
+  const 기준 = 레코드.review || 레코드.received;
+  레코드.noteReq = '';
+  레코드.noteReview = '';
+  레코드.noteMode = /서면/.test(메모) ? '서면' : '';
+  레코드.noteReviewPlanned = false;
+  레코드.waitWD = null;
+  레코드.reqWD = null;
+  레코드.afterWD = null;
+  // 심사접수 후 오늘까지(요청·심사 미기재 건 목록 정렬용)
+  레코드.sinceReviewWD = 레코드.review ? _영업일수_(레코드.review, 오늘, 휴일) : null;
+  if (!메모 || !기준) return;
+
+  const 토큰 = /\(\s*(\d{1,2})\s*[\/,]\s*(\d{1,2})[^)]*\)|(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/g;
+  const 날짜들 = [];
+  let m;
+  while ((m = 토큰.exec(메모))) {
+    날짜들.push({ mo: Number(m[1] || m[3]), d: Number(m[2] || m[4]), 시작: m.index, 끝: 토큰.lastIndex });
+  }
+  const 기준시각 = Date.parse(기준 + 'T00:00:00Z');
+  날짜들.forEach((t, i) => {
+    const 문구 = 메모.slice(t.끝, i + 1 < 날짜들.length ? 날짜들[i + 1].시작 : 메모.length);
+    let y = Number(기준.slice(0, 4));
+    let 시각 = Date.UTC(y, t.mo - 1, t.d);
+    if (시각 < 기준시각 - 60 * 타임라인_하루) 시각 = Date.UTC(++y, t.mo - 1, t.d);
+    const 날 = new Date(시각);
+    if (날.getUTCMonth() !== t.mo - 1 || 날.getUTCDate() !== t.d) return;
+    const 키 = 날.toISOString().slice(0, 10);
+    if (/일정/.test(문구)) {
+      if (!레코드.noteReq) 레코드.noteReq = 키;
+    } else if (/심사|현장|온라인/.test(문구)) {
+      if (!레코드.noteReview) {
+        레코드.noteReview = 키;
+        레코드.noteMode = /현장/.test(문구) ? '현장' : /온라인/.test(문구) ? '온라인' : '';
+      }
+    }
+  });
+  if (레코드.noteReq && 레코드.review) 레코드.reqWD = _영업일수_(레코드.review, 레코드.noteReq, 휴일);
+  if (!레코드.noteReview) return;
+  레코드.noteReviewPlanned = 레코드.noteReview > 오늘;
+  if (레코드.noteReviewPlanned || !레코드.review) return;
+  레코드.waitWD = _영업일수_(레코드.review, 레코드.noteReview, 휴일);
+  const 심사끝 = 레코드.completion || 레코드.notice;
+  if (심사끝) 레코드.afterWD = _영업일수_(레코드.noteReview, 심사끝, 휴일);
 }
 
 /* ─────────────────────────────────────────────
