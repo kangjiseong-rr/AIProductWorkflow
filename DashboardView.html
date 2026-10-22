@@ -327,8 +327,6 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     }else ms=months(done.map(keyOf));
     const label=k=>week?`${+k.slice(5,7)}/${+k.slice(8,10)}`:monthLabel(k);
     const tipLabel=k=>week?`${label(k)} 주`:`${monthLabel(k)}월`;
-    // 이번 주·이번 달은 아직 끝나지 않았다: 흐리게 칠하고 "(진행 중)" 표시
-    const curKey=keyOf(payload.today),open=k=>k===curKey;
     const w=W(el),h=230,m={t:16,r:12,b:30,l:34};
     const all=done.flatMap(r=>SER.map(z=>r[z.k])).filter(v=>v!==null&&v!==undefined);
     const yMax=niceMax(Math.max(...all,BASIC+5),4);
@@ -382,16 +380,18 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const a=cnt(recv,r=>r.received),b=cnt(done,r=>r.fin),v=cnt(rev,r=>r.review),e=cnt(recv.filter(r=>r.cancel),r=>r.received);
     const label=k=>week?`${+k.slice(5,7)}/${+k.slice(8,10)}`:monthLabel(k);
     const tipLabel=k=>week?`${label(k)} 주`:`${monthLabel(k)}월`;
+    // 이번 주·이번 달은 아직 끝나지 않았다: 흐리게 칠하고 "(진행 중)" 표시
+    const curKey=keyOf(payload.today),isOpen=k=>k===curKey;
     root.querySelectorAll('[data-volview]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.volview===state.volView)));
     $('#volume-legend').style.display=state.volView==='heat'?'none':'';
     if(state.volView==='heat'){
       // 히트맵: 행 = 접수·심사접수·완료, 칸 색은 행마다 그 행의 최댓값 대비 6단계(행끼리 규모가 달라도 각자의 높낮이가 보이게)
       const R3=[['접수','기업 신청 · 접수일자',a,HEAT,'k-a'],['심사접수','심사 유입 · 심사접수일',v,HEAT_REV,'k-r'],['완료','심사완료일(없으면 적합통보일)',b,HEAT_DONE,'k-d']];
-      const head=ms.map((k,i)=>{const nm=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));return `<th class="${nm||!week?'mo':''}" title="${tipLabel(k)}">${week?(nm?+k.slice(5,7)+'월<br>':'<br>')+label(k):+k.slice(5,7)+'월<br><span style="font-weight:400">'+k.slice(2,4)+'년</span>'}${open(k)?'*':''}</th>`;}).join('');
+      const head=ms.map((k,i)=>{const nm=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));return `<th class="${nm||!week?'mo':''}" title="${tipLabel(k)}">${week?(nm?+k.slice(5,7)+'월<br>':'<br>')+label(k):+k.slice(5,7)+'월<br><span style="font-weight:400">'+k.slice(2,4)+'년</span>'}${isOpen(k)?'*':''}</th>`;}).join('');
       const body=R3.map(([nm,sub,o,ramp,cls])=>{
         const mx=Math.max(1,...ms.map(k=>o[k]||0)),tot=ms.reduce((t,k)=>t+(o[k]||0),0);
         return `<tr><th class="name ${cls}" style="min-width:74px" title="${sub}">${nm}</th>${ms.map(k=>{const n=o[k]||0,[bg,fg]=ramp[n?Math.max(1,Math.ceil(n/mx*6)):0];
-          return `<td class="c" style="background:${bg};color:${fg}${open(k)?';opacity:.45;outline:1px dashed var(--muted)':''}" data-tip="${esc(`${tipLabel(k)}${open(k)?' (진행 중)':''} · ${nm} ${n}건${nm==='접수'&&e[k]?` (이 중 종료 ${e[k]})`:''}`)}">${n||'·'}</td>`;}).join('')}<td class="tot">${tot}</td></tr>`;
+          return `<td class="c" style="background:${bg};color:${fg}${isOpen(k)?';opacity:.45;outline:1px dashed var(--muted)':''}" data-tip="${esc(`${tipLabel(k)}${isOpen(k)?' (진행 중)':''} · ${nm} ${n}건${nm==='접수'&&e[k]?` (이 중 종료 ${e[k]})`:''}`)}">${n||'·'}</td>`;}).join('')}<td class="tot">${tot}</td></tr>`;
       }).join('<tr class="gap"><td colspan="'+(ms.length+2)+'"></td></tr>');
       el.innerHTML=`<div class="heat-wrap"><table class="heat"><thead><tr><th class="name"></th>${head}<th style="text-align:right;padding-left:10px">합계</th></tr></thead><tbody>${body}</tbody></table></div><div class="muted" style="margin-top:4px">칸 색은 행마다 그 행의 최댓값 대비 농도입니다(행끼리 색 농도는 비교하지 않음). * 흐린 칸은 아직 끝나지 않은 이번 주·이번 달입니다.</div>`;
       const wrap=el.querySelector('.heat-wrap');wrap.scrollLeft=wrap.scrollWidth;
@@ -405,12 +405,12 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const every=Math.max(1,Math.ceil(ms.length/(w/56)));
     ms.forEach((k,i)=>{
       const c=m.l+band*(i+.5);
-      s+=(open(k)?'<g opacity=".4">':'<g>')+bar(c-bw*1.5-1,a[k]||0,'var(--s1)')+bar(c-bw/2,v[k]||0,'#d9a535')+bar(c+bw/2+1,b[k]||0,'var(--s2)')+'</g>';
-      s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}${open(k)?' (진행 중 — 아직 끝나지 않음)':''}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''}
+      s+=(isOpen(k)?'<g opacity=".4">':'<g>')+bar(c-bw*1.5-1,a[k]||0,'var(--s1)')+bar(c-bw/2,v[k]||0,'#d9a535')+bar(c+bw/2+1,b[k]||0,'var(--s2)')+'</g>';
+      s+=`<rect class="hit" x="${m.l+band*i}" y="${m.t}" width="${band}" height="${y(0)-m.t}" data-tip="${esc(`${tipLabel(k)}${isOpen(k)?' (진행 중 — 아직 끝나지 않음)':''}\n접수 ${a[k]||0}건${e[k]?` (이 중 종료 ${e[k]})`:''}
 심사접수 ${v[k]||0}건
 완료 ${b[k]||0}건`)}"/>`;
       const newMonth=week&&(i===0||k.slice(5,7)!==ms[i-1].slice(5,7));
-      if(i%every===0||open(k))s+=`<text x="${c}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}${open(k)?'*':''}</text>`;
+      if(i%every===0||isOpen(k))s+=`<text x="${c}" y="${h-12}" text-anchor="middle"${newMonth?' class="ann"':''}>${label(k)}${isOpen(k)?'*':''}</text>`;
     });
     el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="${week?'주차별':'월별'} 접수·심사접수·완료 건수">${s}</svg>`;
   }
