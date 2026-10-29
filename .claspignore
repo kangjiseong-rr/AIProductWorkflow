@@ -8,9 +8,11 @@
 !ReviewerAssignment.js
 !ReportGenerator.js
 !MailDraft.js
+!MailDraftComplete.js
+!Timeline.js
 !ExcelUpload.html
 !MailDraftCC.html
-!Timeline.js
-!TimelineView.html
+!MailDraftCompleteCC.html
 !DashboardView.html
+!TimelineView.html
 !appsscript.json
