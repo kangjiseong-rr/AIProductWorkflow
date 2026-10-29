@@ -143,8 +143,8 @@ function 심사일정자료조회() {
     aiSummary: !!PropertiesService.getScriptProperties().getProperty(현황요약_키속성),
     // 심사원관리 시트의 활성여부·제외(제외 시작일). 현황 요약에서 현재 가용 인원과 담당자 제외 건을 계산한다.
     reviewers: _심사원제외읽기_(ss, tz, 오늘),
-    // 표준 건당 MD(스크립트 속성 REVIEW_MD_PER_CASE, 예: 2.5). 있으면 인력 판단을 "필요 MD vs 가용 MD"로 한다.
-    mdPerCaseStd: (v => (isFinite(v) && v > 0 ? v : null))(parseFloat(PropertiesService.getScriptProperties().getProperty(현황요약_건당MD속성))),
+    // 표준 건당 MD(스크립트 속성 REVIEW_MD_PER_CASE, 없으면 기본 2.5일). 인력 판단을 "필요 MD vs 가용 MD"로 한다.
+    ..._건당MD설정_(),
     // 관리자만 인력 산정 설정(참여율·건당 MD)을 저장할 수 있다
     isAdmin: _관리자여부(),
     records: [],
@@ -340,13 +340,21 @@ function _특이사항심사일_(레코드, 오늘, 휴일) {
  * ───────────────────────────────────────────── */
 const 현황요약_투입률속성 = 'REVIEW_RATE';
 const 현황요약_건당MD속성 = 'REVIEW_MD_PER_CASE';
+const 현황요약_기본건당MD = 2.5;
+
+/** 저장된 건당 표준 MD(없으면 기본값)와 저장 여부. */
+function _건당MD설정_() {
+  const v = parseFloat(PropertiesService.getScriptProperties().getProperty(현황요약_건당MD속성));
+  const 저장 = isFinite(v) && v > 0;
+  return { mdPerCaseStd: 저장 ? v : 현황요약_기본건당MD, mdPerCaseSaved: 저장, mdPerCaseDefault: 현황요약_기본건당MD };
+}
 const 현황요약_키속성 = 'GEMINI_API_KEY';
 const 현황요약_모델속성 = 'GEMINI_MODEL';
 const 현황요약_예비모델속성 = 'GEMINI_FALLBACK_MODEL';
 const 현황요약_기본모델 = 'gemini-3.8-flash';
 
 /**
- * 대시보드 "인력 산정 설정" 저장(관리자만). 평균 참여율(REVIEW_RATE)·건당 표준 MD(REVIEW_MD_PER_CASE, 비우면 삭제).
+ * 대시보드 "인력 산정 설정" 저장(관리자만). 평균 참여율(REVIEW_RATE)·건당 표준 MD(REVIEW_MD_PER_CASE, 비우면 삭제 → 기본값).
  * 스크립트 속성만 바꾸며 시트는 건드리지 않는다.
  */
 function 현황요약설정저장(설정) {
@@ -359,7 +367,7 @@ function 현황요약설정저장(설정) {
   속성.setProperty(현황요약_투입률속성, `${Math.round(율 * 1000) / 10}%`);
   if (md값 === null) 속성.deleteProperty(현황요약_건당MD속성);
   else 속성.setProperty(현황요약_건당MD속성, String(md값));
-  return { reviewRate: 율, mdPerCaseStd: md값 };
+  return { reviewRate: 율, ..._건당MD설정_() };
 }
 
 /** 30%·0.3·30 → 0.3. 비었거나 숫자가 아니면 null. */

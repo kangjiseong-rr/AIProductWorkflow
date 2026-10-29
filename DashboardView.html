@@ -167,7 +167,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   </div>
   <div class="card full brief"><div class="card-head"><h3>현황 요약</h3><div class="brief-actions"><div class="seg" role="group" aria-label="기준"><button type="button" data-base="today" aria-pressed="false">오늘 기준</button><button type="button" data-base="week" aria-pressed="true">끝난 주 기준</button></div><div class="seg" role="group" aria-label="비교 기간"><button type="button" data-cmp="1" aria-pressed="false">1주</button><button type="button" data-cmp="2" aria-pressed="false">2주</button><button type="button" data-cmp="3" aria-pressed="false">3주</button><button type="button" data-cmp="4" aria-pressed="true">4주</button></div><button type="button" id="brief-fold" aria-expanded="true">접기</button><button type="button" id="brief-copy">요약 복사</button><button type="button" id="brief-ai" hidden>Gemini 분석</button></div></div>
     <div class="desc" id="brief-desc">최근 4주(오늘까지 28일)와 직전 4주 비교 · 건수 증감은 영업일당으로 보정(명절·공휴일로 영업일 수가 달라도 공정하게 비교) · 위 기간 필터와 관계없이 고정, 담당 심사원 필터는 적용 · 종료(취소·부적합)는 수요에는 넣고 처리·적체에서는 뺌</div>
-    <div class="brief-set" id="brief-set"><b>인력 산정 설정</b><label>평균 참여율 <input id="set-rate" type="number" min="1" max="100" step="5" inputmode="decimal">%</label><label>건당 표준 MD <input id="set-md" type="number" min="0" step="0.5" placeholder="미설정" inputmode="decimal">일</label><button type="button" id="set-apply">적용</button><button type="button" id="set-save" hidden>설정 저장</button><span id="set-note" class="muted"></span></div>
+    <div class="brief-set" id="brief-set"><b>인력 산정 설정</b><label>평균 참여율 <input id="set-rate" type="number" min="1" max="100" step="5" inputmode="decimal">%</label><label>건당 표준 MD <input id="set-md" type="number" min="0" step="0.5" inputmode="decimal">일</label><button type="button" id="set-apply">적용</button><button type="button" id="set-save" hidden>설정 저장</button><span id="set-note" class="muted"></span></div>
     <div id="brief"></div><div id="brief-ai-out" hidden></div></div>
 </section>
 <div id="tip" hidden></div>
@@ -862,7 +862,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const ppl=Object.keys(RD.o).sort((a,b)=>RD.c[b]-RD.c[a]||a.localeCompare(b,'ko')).map(n=>({n,c:RD.c[n],r:RD.o[n],st:outAt(n,T)?`제외${제외.get(n)?` ${md2(제외.get(n))}~`:''}`:'가용'}))
       .concat(newcomers.map(n=>({n,c:0,r:avgRate,st:'신규(평균 참여율)'})));
     const rateSrc=state.rateOverride!==null?'이 화면에서 바꾼 값(저장 안 됨)':payload.reviewRate?'저장된 설정(REVIEW_RATE)':'설정 없음 → 100%';
-    const stdSrc=state.stdOverride!==null?'이 화면에서 바꾼 값(저장 안 됨)':payload.mdPerCaseStd?'저장된 설정(REVIEW_MD_PER_CASE)':'설정 없음';
+    const stdSrc=state.stdOverride!==null?'이 화면에서 바꾼 값(저장 안 됨)':payload.mdPerCaseSaved?'저장된 설정(REVIEW_MD_PER_CASE)':`기본값(저장된 설정 없음)`;
     const v=x=>x===null||x===undefined?'—':r1(x);
     const calc=[
       ['평균 참여율',`${Math.round(avgRate*100)}%`,rateSrc],
@@ -1122,24 +1122,24 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   // 인력 산정 설정: 적용 = 이 화면에서만 다시 계산, 설정 저장 = 관리자만 스크립트 속성에 저장(모든 사람에게 적용)
   function setFields(){
     $('#set-rate').value=Math.round((state.rateOverride??payload.reviewRate??1)*100);
-    const md=state.stdOverride===null?payload.mdPerCaseStd:state.stdOverride;$('#set-md').value=md||'';
+    const md=state.stdOverride===null?payload.mdPerCaseStd:state.stdOverride;$('#set-md').value=md||'';$('#set-md').placeholder=`기본 ${payload.mdPerCaseDefault}`;
     $('#set-save').hidden=!payload.isAdmin;
     $('#set-note').textContent=state.rateOverride!==null||state.stdOverride!==null?'이 화면에만 적용됨(저장 안 됨)':'';
   }
   function readFields(){
-    const r=parseFloat($('#set-rate').value),m=$('#set-md').value===''?0:parseFloat($('#set-md').value);
+    const r=parseFloat($('#set-rate').value),empty=$('#set-md').value==='',m=empty?payload.mdPerCaseDefault:parseFloat($('#set-md').value);
     if(!(r>0&&r<=100)){$('#set-note').textContent='평균 참여율은 1~100%로 입력하세요.';return null;}
-    if(!(m>=0&&m<100)){$('#set-note').textContent='건당 표준 MD는 0 이상 숫자로 입력하세요(비우면 미설정).';return null;}
-    return {r:r/100,m};
+    if(!(m>0&&m<100)){$('#set-note').textContent=`건당 표준 MD는 0보다 큰 숫자로 입력하세요(비우면 기본 ${payload.mdPerCaseDefault}일).`;return null;}
+    return {r:r/100,m,empty};
   }
   $('#set-apply').addEventListener('click',()=>{const x=readFields();if(!x)return;state.rateOverride=x.r;state.stdOverride=x.m;brief(sets());setFields();});
   $('#set-save').addEventListener('click',()=>{
     const x=readFields();if(!x)return;
     $('#set-save').disabled=true;$('#set-note').textContent='저장 중…';
     google.script.run
-      .withSuccessHandler(res=>{$('#set-save').disabled=false;payload.reviewRate=res.reviewRate;payload.mdPerCaseStd=res.mdPerCaseStd;state.rateOverride=null;state.stdOverride=null;brief(sets());setFields();$('#set-note').textContent='저장했습니다(모든 사용자에게 적용).';})
+      .withSuccessHandler(res=>{$('#set-save').disabled=false;payload.reviewRate=res.reviewRate;payload.mdPerCaseStd=res.mdPerCaseStd;payload.mdPerCaseSaved=res.mdPerCaseSaved;state.rateOverride=null;state.stdOverride=null;brief(sets());setFields();$('#set-note').textContent='저장했습니다(모든 사용자에게 적용).';})
       .withFailureHandler(e=>{$('#set-save').disabled=false;$('#set-note').textContent='저장 실패: '+(e&&e.message||e);})
-      .현황요약설정저장({rate:`${Math.round(x.r*1000)/10}%`,md:x.m||''});
+      .현황요약설정저장({rate:`${Math.round(x.r*1000)/10}%`,md:x.empty?'':x.m});
   });
   // 현황 요약 접기: 결론 한 줄만 남긴다. 상태는 이 브라우저에만 기억(저장 실패해도 무시).
   const setFold=on=>{root.querySelector('.brief').classList.toggle('folded',on);const b=$('#brief-fold');b.textContent=on?'펼치기':'접기';b.setAttribute('aria-expanded',String(!on));};
