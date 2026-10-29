@@ -19,8 +19,12 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(root, 'Timeline.js'), 'utf8') +
-  '\nglobalThis.__t = { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회 };', context);
-const { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회 } = context.__t;
+  '\nglobalThis.__t = { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회, _투입률정규화_, _특이사항심사일_ };', context);
+const { _영업일수_, _타임라인날짜정규화_, 심사일정자료조회, _투입률정규화_, _특이사항심사일_ } = context.__t;
+
+// 투입률(REVIEW_RATE): 30%·0.3·30 모두 0.3, 빈 값·문자는 null
+[['30%', 0.3], [0.3, 0.3], ['30', 0.3], ['0.5', 0.5], ['', null], [null, null], ['abc', null], [150, 1]]
+  .forEach(([v, e]) => { const g = _투입률정규화_(v); if (g === null ? e !== null : Math.abs(g - e) > 1e-9) throw new Error('투입률 ' + v + ': ' + g); });
 
 const eq = (actual, expected, label) => {
   if (actual !== expected) throw new Error(`${label}: expected ${expected}, got ${actual}`);
@@ -60,6 +64,7 @@ const sheet = rows => ({
     getValues: () => rows.slice(r - 1, r - 1 + nr).map(row => row.slice(c - 1, c - 1 + nc)),
   }),
 });
+context.PropertiesService = { getScriptProperties: () => ({ getProperty: k => ({ REVIEW_RATE: '30%' })[k] || null }) };
 context.SpreadsheetApp = {
   getActiveSpreadsheet: () => ({
     getUrl: () => 'https://sheet',
@@ -80,6 +85,8 @@ void 원래Date;
 
 eq(결과.today, '2026-10-16', '오늘(한국)');
 eq(결과.records.length, 5, '빈 행 제외');
+eq(결과.reviewRate, 0.3, '투입률 스크립트 속성 전달');
+eq(결과.aiSummary, false, 'Gemini 키 없으면 버튼 숨김');
 eq(결과.records[0].elapsedWD, 10, '완료 건 처리기간 = 접수일자→적합통보일 WD');
 eq(결과.records[0].remainingWD, null, '완료 건은 잔여 없음');
 // 10/1 → 10/16: 10/2,6,7,8,12,13,14,15,16 = 9WD (10/5·10/9 공휴일)
@@ -125,4 +132,51 @@ const timelineSrc = fs.readFileSync(path.join(root, 'Timeline.js'), 'utf8');
 if (!/function doGet\(e\) \{[\s\S]*?if \(!_조회권한여부\(\)\)/.test(timelineSrc)) throw new Error('doGet의 조회 권한 확인이 없습니다.');
 if (!/function 심사일정자료조회\(\) \{\s*if \(!_조회권한여부\(\)\)/.test(timelineSrc)) throw new Error('심사일정자료조회의 조회 권한 확인이 없습니다.');
 
+// 특이사항 심사 일정 파싱 (일정관리 시트의 실제 기재 형태)
+const 메모 = (note, review = '2026-09-01', extra = {}) => {
+  const r = { note, review, received: review, ...extra };
+  _특이사항심사일_(r, '2026-10-22', new Set());
+  return r;
+};
+[
+  ['(9/2)심사일정확인요청, (9/17) 현장 심사 예정', '2026-09-02', '2026-09-17', '현장'],
+  ['(8/26) 심사일정 확인요청 (9/9) 현장 심사', '2026-08-26', '2026-09-09', '현장', '2026-08-18'],
+  ['(8/10, 14시) 현장심사, (8/18) 적합 통보', '', '2026-08-10', '현장', '2026-08-03'],
+  ['(9/3)심사일정확인요청, (9, 15) 현장 심사 예정', '2026-09-03', '2026-09-15', '현장'],
+  ['(9/21) 심사일정 확인 요청, 10/28 온라인 심사', '2026-09-21', '2026-10-28', '온라인', '2026-09-16'],
+  ['(10/22 )현장 심사', '', '2026-10-22', '현장', '2026-09-30'],
+  ['(7/29)현장 확인, (8/3)보고서 작성 완, (8/5) 적합 통보', '', '2026-07-29', '현장', '2026-07-24'],
+  ['(8/7)확인(온라인) 예정, (8/7) 적합 통보', '', '2026-08-07', '온라인', '2026-07-30'],
+  ['(8/28)심사예정', '', '2026-08-28', '', '2026-08-18'],
+  ['(10/7) 온라인 심사, 보완요청', '', '2026-10-07', '온라인', '2026-09-29'],
+  ['(8/21) 보완요청', '', '', '', '2026-08-18'],
+  ['(9/18) 적합 통보', '', '', '', '2026-09-14'],
+  ['(9/7)심사일정협의중', '2026-09-07', '', '', '2026-09-02'],
+  ['saas 서면', '', '', '서면', '2026-09-21'],
+].forEach(([note, req, rev, mode, review]) => {
+  const r = 메모(note, review);
+  eq(r.noteReq, req, `요청일 ${note}`);
+  eq(r.noteReview, rev, `심사일 ${note}`);
+  eq(r.noteMode, mode, `방식 ${note}`);
+});
+// 연말 → 다음 해, 지난 심사만 waitWD, 예정은 noteReviewPlanned
+eq(메모('(1/5) 현장 심사', '2025-12-22').noteReview, '2026-01-05', '해 넘김');
+const 지난 = 메모('(9/2)심사일정확인요청, (9/8) 현장 심사', '2026-09-01', { completion: '2026-09-14', notice: '2026-09-15' });
+eq(지난.reqWD, 2, '심사접수→요청 WD (당일 = 1WD)');
+eq(지난.waitWD, 6, '심사접수→심사 WD');
+eq(지난.noticeAfterWD, 6, '심사→적합통보 WD');
+eq(메모('(9/1) 현장 심사', '2026-09-01').waitWD, 1, '당일 심사 = 1WD');
+eq(메모('(9/7) 현장 심사', '2026-09-05').waitWD, 1, '토요일 심사접수 → 월요일 심사 = 1WD');
+const 예정 = 메모('(10/29) 현장심사', '2026-10-01');
+eq(예정.noteReviewPlanned, true, '오늘 이후는 예정');
+eq(예정.waitWD, null, '예정은 대기 기간 미집계');
+
 console.log('Timeline workday test passed.');
+
+// 대시보드·타임라인 화면 스크립트: 문법 오류가 없고, 전역 open()(=window.open)을 실수로 부르지 않는다.
+for (const 파일 of ['DashboardView.html', 'TimelineView.html']) {
+  const html = fs.readFileSync(path.join(root, 파일), 'utf8');
+  const 스크립트 = (html.match(/<script>([\s\S]*?)<\/script>/g) || []).map(s => s.replace(/^<script>|<\/script>$/g, '')).join('\n;\n');
+  new Function(스크립트);
+  if (/(^|[^.\w$])open\(/m.test(스크립트)) throw new Error(`${파일}: 전역 open( 호출이 있습니다(window.open으로 새 탭이 열림)`);
+}
