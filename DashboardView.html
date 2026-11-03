@@ -505,7 +505,6 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const firstOk=S.done.filter(r=>compliance(r)==='first').length;
     const recvValid=S.recv.filter(r=>!/^종료(취소)/.test(r.status));
     const suppRate=pct(recvValid.filter(r=>r.supplement).length,recvValid.length);
-    const pend=S.pend.length,pendLate=S.pend.filter(r=>r.pendLate).length;
     // 기간 내 접수 건의 현재 구성: 종료(취소·부적합) / 심사완료(통보 대기 포함) / 진행. 합이 접수 건수와 같다.
     const recvEnd=S.recv.filter(r=>r.cancel).length,recvCancel=S.recv.filter(r=>/취소/.test(r.status)).length;
     const recvDone=S.recv.filter(r=>!r.cancel&&r.fin).length,recvAct=S.recv.length-recvEnd-recvDone;
@@ -519,7 +518,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       ['대기',wait,'건','심사 시작 전','','현재'],
       ['심사중',rev,'건',`그중 보완 ${supp}건${other?` · 상태 미기재 ${other}`:''}`,'','현재'],
       ['완료 / 취소',`${S.done.length}<small>건</small> / ${recvEnd}`,'건',`취소 ${recvCancel} · 부적합 ${recvEnd-recvCancel}`,'','기간'],
-      ['통보',noticeRate===null?noticed:`${noticed}<small>건</small> <span class="rate">(${n1(noticeRate)}%)</span>`,noticeRate===null?'건':'',(noticeRate===null?'':`접수 ${S.recv.length}건 대비 · `)+(pend?`통보 대기 ${pend}건 · 그중 마감 지남 ${pendLate}건`:'통보 대기 없음'),'','기간'],
+      ['통보',noticeRate===null?noticed:`${noticed}<small>건</small> <span class="rate">(${n1(noticeRate)}%)</span>`,noticeRate===null?'건':'',noticeRate===null?'기간 내 접수 없음':`비율 = 기간 내 통보 ${noticed}건 ÷ 기간 내 접수 ${S.recv.length}건`,'','기간'],
     ];
     const T=[
       ['마감 초과',late,'건','심사 진행 중 · 오늘 기준','var(--crit)'],
