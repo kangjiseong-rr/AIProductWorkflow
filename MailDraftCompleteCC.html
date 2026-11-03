@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: Arial, "Noto Sans KR", sans-serif; color: #202124; margin: 0; padding: 20px 24px; }
+      .summary { background: #f8f9fa; border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.6; margin-bottom: 16px; word-break: break-all; }
+      .summary b { color: #1a73e8; }
+      .field-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+      .field-input { width: 100%; border: 1px solid #dadce0; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 16px; }
+      .cc-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+      .cc-list { max-height: 160px; overflow-y: auto; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 12px; }
+      label.cc-item { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 13px; cursor: pointer; }
+      .cc-empty { color: #5f6368; font-size: 13px; padding: 6px 2px; }
+      .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+      button { border: 1px solid #dadce0; border-radius: 6px; padding: 9px 16px; background: white; cursor: pointer; }
+      button.primary { border-color: #1a73e8; background: #1a73e8; color: white; }
+      button:disabled { opacity: .55; cursor: default; }
+      .status { min-height: 20px; margin-top: 12px; font-size: 13px; }
+      .error { color: #b3261e; }
+      .success { color: #137333; }
+    </style>
+  </head>
+  <body>
+    <div class="summary">
+      접수번호 <b><?= 접수번호 ?></b> · 받는사람 <b><?= 받는사람 ?></b><br>
+      제목: <?= 제목 ?>
+    </div>
+    <div class="field-title">보고서 링크</div>
+    <input id="reportLink" class="field-input" type="text" placeholder="기술심사보고서 Google Docs 링크를 붙여넣으세요">
+    <div class="cc-title">참조(CC)로 추가할 사람을 선택하세요 (선택 안 해도 됩니다)</div>
+    <div class="cc-list" id="ccList"></div>
+    <div class="status" id="status"></div>
+    <div class="actions">
+      <button type="button" onclick="google.script.host.close()">취소</button>
+      <button id="submitButton" class="primary" type="button" onclick="submitDraft()">임시보관함에 생성</button>
+    </div>
+    <script>
+      const 접수번호 = '<?= 접수번호 ?>';
+      const 심사원목록 = <?!= 심사원목록JSON ?>;
+      const ccList = document.getElementById('ccList');
+      const status = document.getElementById('status');
+      const submitButton = document.getElementById('submitButton');
+      const reportLink = document.getElementById('reportLink');
+
+      if (!심사원목록.length) {
+        ccList.innerHTML = '<div class="cc-empty">심사원관리 시트에 등록된 활성 심사원이 없습니다.</div>';
+      } else {
+        심사원목록.forEach(s => {
+          const label = document.createElement('label');
+          label.className = 'cc-item';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = s.이메일;
+          label.appendChild(checkbox);
+          label.appendChild(document.createTextNode(` ${s.심사원명} <${s.이메일}>`));
+          ccList.appendChild(label);
+        });
+      }
+
+      function submitDraft(force) {
+        const 링크값 = reportLink.value.trim();
+        if (!링크값) {
+          status.className = 'status error';
+          status.textContent = '보고서 링크를 입력하세요.';
+          return;
+        }
+        const 선택CC = Array.from(ccList.querySelectorAll('input[type=checkbox]:checked')).map(el => el.value);
+        submitButton.disabled = true;
+        status.className = 'status';
+        status.textContent = '생성 중...';
+        google.script.run
+          .withSuccessHandler(result => {
+            if (result && result.불일치) {
+              submitButton.disabled = false;
+              status.className = 'status error';
+              const 계속진행 = confirm(
+                `붙여넣은 링크의 문서 제목에서 접수번호 "${result.링크접수번호}"가 확인됐습니다.\n` +
+                `지금 보고하려는 건(${접수번호})과 다릅니다. 그래도 이 링크로 계속 진행할까요?`
+              );
+              if (계속진행) {
+                submitDraft(true);
+              } else {
+                status.textContent = '보고서 링크를 다시 확인해 주세요.';
+              }
+              return;
+            }
+            status.className = 'status success';
+            status.textContent = '임시보관함에 초안이 생성되었습니다.';
+            submitButton.textContent = '완료';
+            submitButton.disabled = false;
+            submitButton.onclick = () => google.script.host.close();
+          })
+          .withFailureHandler(error => {
+            submitButton.disabled = false;
+            status.className = 'status error';
+            status.textContent = error && error.message ? error.message : String(error);
+          })
+          ._기술심사완료보고메일초안_생성(접수번호, 링크값, 선택CC, !!force);
+      }
+    </script>
+  </body>
+</html>
