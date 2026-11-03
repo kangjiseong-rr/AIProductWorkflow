@@ -250,7 +250,9 @@ const 필드정의 = [
     sheetColumn: 'AI기능명_원본', path: 'keyFunctions', type: 'joinField', field: 'funcNm', delimiter: '/', required: false,
     excelAliases: ['AI 기능명', '기능명'],
   },
-  { sheetColumn: '비고', fixedValue: '', required: false, excelAliases: ['비고', '기타'] },
+  // 비고는 TTA 내부 메모(직접 입력) 전용. KOSA 엑셀에는 '비고' 헤더가 없어 예전 별칭('비고','기타')이
+  // 부분일치로 인증비고·제공형태 기타 값을 끌어오던 문제가 있어 별칭을 두지 않는다(2026-10-21).
+  { sheetColumn: '비고', fixedValue: '', required: false, excelAliases: [] },
 ];
 
 // ─────────────────────────────────────────────

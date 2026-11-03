@@ -65,11 +65,27 @@ vm.runInContext(
   fs.readFileSync(path.join(root, 'FieldDefinition.js'), 'utf8') +
   '\n' + parserSource +
   '\n' + reportSource +
-  '\nglobalThis.__schemaTest = { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시, _접수폴더명_ };',
+  '\nglobalThis.__schemaTest = { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시, _접수폴더명_, _구현방식레이블, _구현방식별세부행 };',
   context
 );
 
-const { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시, _접수폴더명_ } = context.__schemaTest;
+const { 포매터, 필드정의, _기능탭데이터병합, _기타포함표시, _접수폴더명_, _구현방식레이블, _구현방식별세부행 } = context.__schemaTest;
+
+// 보고서 라벨 = 신청 화면 이름 (필드_매핑표.md)
+for (const [입력, 기대] of [['B.오픈소스 모델', 'B. 오픈소스 모델'], ['B. 오픈소스 모델', 'B. 오픈소스 모델'], ['c', 'C. 외부 인공지능 API 연계'], ['D', 'D. 온디바이스 인공지능'], ['E', 'E. 혼합형 인공지능 구성'], ['', '미입력']]) {
+  if (_구현방식레이블(입력) !== 기대) throw new Error(`구현방식 레이블: ${입력} → ${_구현방식레이블(입력)} (기대 ${기대})`);
+}
+const 라벨들 = 코드 => _구현방식별세부행({ 구현방식: 코드 }).map(r => r[0]);
+const B라벨 = 라벨들('B.오픈소스 모델').join('|');
+if (B라벨 !== '기능명|인공지능 구현 방식|인공지능 역할|인공지능 연산 자원|인공지능 실행환경 세부정보|BaseModel 명칭·버전|튜닝방법|튜닝 데이터셋|입력 데이터 설명|출력 데이터 설명|기타 참고자료 첨부|아키텍처/데이터 흐름도') {
+  throw new Error('붙임1 B 유형 라벨·순서가 신청 화면과 다릅니다: ' + B라벨);
+}
+if (라벨들('C').includes('인공지능 연산 자원')) throw new Error('C 유형 화면에는 연산 자원 입력란이 없습니다.');
+if (!라벨들('D').includes('타겟 디바이스/하드웨어') || !라벨들('D').includes('인공지능 모델 실행 엔진(추론 런타임)')) throw new Error('D 유형 라벨이 화면과 다릅니다.');
+const reportSrc = fs.readFileSync(path.join(root, 'ReportGenerator.js'), 'utf8');
+for (const 옛라벨 of ["['기타', _v(f['레퍼런스참조위치']", "'인공지능 제품 분류'", "'AI 연산 자원 요약'", "'타겟 하드웨어·OS'", "['주소',"]) {
+  if (reportSrc.includes(옛라벨)) throw new Error('화면과 다른 옛 보고서 라벨이 남아 있습니다: ' + 옛라벨);
+}
 
 const receiptFolderName = _접수폴더명_('AI20260807-0008', {
   순번: 17,
