@@ -569,7 +569,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     });
     const {key,dir}=state.sort;
     rows.sort((a,b)=>key==='name'?dir*a.name.localeCompare(b.name,'ko'):dir*((a[key]??-1)-(b[key]??-1))||a.name.localeCompare(b.name,'ko'));
-    const cols=[['name','심사원'],['active','진행 중'],['supp','보완'],['late','마감 초과'],['soon','임박(≤3WD)'],['pend','통보 대기'],['end','종료'],['done','기간 내 심사완료'],['in15','15WD 이하 처리'],['med','처리 중앙값(WD)'],['avg','처리 평균(WD)'],['ok','최초 마감 내(%)']];
+    const cols=[['name','심사원'],['active','진행 중'],['supp','보완'],['late','마감 초과'],['soon','임박(≤3WD)'],['pend','통보 대기'],['end','종료'],['done','심사완료'],['in15','15WD 내 심사완료'],['med','처리 중앙값(WD)'],['avg','처리 평균(WD)'],['ok','최초 마감 내(%)']];
     const sum=k=>rows.reduce((s,r)=>s+r[k],0),all=S.done.map(r=>r.elapsedWD);
     const red=v=>v?' style="color:var(--crit);font-weight:600"':'';
     mdSec.table=['## 심사원별 현황','','진행·초과·임박·통보 대기는 오늘 기준, 종료는 기간 내 접수, 심사완료·처리기간·준수율은 선택 기간 기준','',
