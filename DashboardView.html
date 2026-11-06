@@ -53,6 +53,7 @@ body{background:#fcfcfb}
 .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
 .sw-line{width:14px;height:0;border-top:2px dashed var(--ink);display:inline-block}
 .sw-med{width:14px;height:0;border-top:2px solid var(--ink);display:inline-block}
+.sw-avg{width:14px;height:0;border-top:2px dotted var(--sub);display:inline-block}
 .plot{width:100%;position:relative}
 .plot svg{display:block;width:100%;overflow:visible}
 .plot text{font-size:11px;fill:var(--sub);font-variant-numeric:tabular-nums}
@@ -144,7 +145,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
   <div class="tiles" id="tiles"></div>
   <div class="charts">
     <div class="card"><h3>처리기간 분포</h3><div class="desc">심사원 처리기간: 접수일자 → 심사완료일(비어 있으면 적합통보일) WD. 막대 높이 = 해당 구간 완료 건수</div>
-      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>완료 건수</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-med"></i>중앙값</span></div>
+      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>완료 건수</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-med"></i>중앙값</span><span><i class="sw-avg"></i>평균</span></div>
       <div class="plot" id="hist"></div></div>
     <div class="card"><h3>누적 완료율</h3><div class="desc">N WD 안에 완료된 비율 (처리기간 분포를 누적한 곡선)</div>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>누적 완료율</span><span><i class="sw-line"></i>기본 마감 15WD</span><span><i class="sw-line" style="border-color:var(--crit)"></i>처리 최대 45WD</span><span id="cdf-max"></span></div>
@@ -279,9 +280,10 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const step=bw*(bins.length>12?2:1);
     for(let v=0;v<=cap;v+=step)s+=`<text x="${x(v)}" y="${h-12}" text-anchor="middle">${v}</text>`;
     s+=`<text x="${w-m.r}" y="${h-1}" text-anchor="end">WD</text>`;
-    const med=median(vals),bx=x(BASIC),mx=x(Math.min(med,cap));
+    const med=median(vals),mean=avg(vals),bx=x(BASIC),mx=x(Math.min(med,cap)),ax=x(Math.min(mean,cap));
     s+=`<line x1="${bx}" x2="${bx}" y1="${m.t-6}" y2="${y(0)}" stroke="var(--ink)" stroke-dasharray="4 3" stroke-width="1.5"/><text class="ann" x="${bx+4}" y="${m.t-2}">15WD</text>`;
     s+=`<line x1="${mx}" x2="${mx}" y1="${m.t+10}" y2="${y(0)}" stroke="var(--ink)" stroke-width="1.5"/><text class="ann" x="${med<=BASIC?mx-4:mx+4}" y="${m.t+20}" text-anchor="${med<=BASIC?'end':'start'}">중앙값 ${n1(med)}</text>`;
+    s+=`<line x1="${ax}" x2="${ax}" y1="${m.t+24}" y2="${y(0)}" stroke="var(--sub)" stroke-dasharray="2 3" stroke-width="2"/><text class="ann" x="${mean<med?ax-4:ax+4}" y="${m.t+34}" text-anchor="${mean<med?'end':'start'}" style="fill:var(--sub)">평균 ${n1(mean)}</text>`;
     el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="처리기간 분포 히스토그램">${s}</svg>`;
   }
 
@@ -706,7 +708,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
       // 심사 수요 = 심사접수일이 이 기간인 건(우리에게 실제로 넘어온 건). 종료 건은 처리와 맞추려고 뺀 값도 둔다.
       const rv=S.mine.filter(r=>inW(r.review,w));
       const dn=S.mine.filter(r=>!r.cancel&&inW(r.fin,w));
-      const pt={med:median(dn.map(r=>r.elapsedWD).filter(v=>v!==null)),rev:median(dn.map(r=>r.reviewWD).filter(v=>v!==null)),
+      const pt={med:median(dn.map(r=>r.elapsedWD).filter(v=>v!==null)),avg:avg(dn.map(r=>r.elapsedWD).filter(v=>v!==null)),rev:median(dn.map(r=>r.reviewWD).filter(v=>v!==null)),
         ok:pct(dn.filter(r=>compliance(r)==='first').length,dn.filter(r=>r.original).length),
         okExt:pct(dn.filter(r=>compliance(r)!=='late'&&r.original).length,dn.filter(r=>r.original).length),
         lag:median(dn.filter(r=>r.completion&&r.notice).map(r=>r.noticeLagWD).filter(v=>v!==null))};
@@ -813,7 +815,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const ptBadge=pB.med===null?['b-flat','완료 없음']:dMed===null?['b-flat','—']:dMed>=1?['b-up','길어짐']:dMed<=-1?['b-down','짧아짐']:['b-flat','비슷'];
     const wdTxt=v=>v===null?'—':`${r1(v)}WD`;
     rows.push(['처리 기간',ptBadge,pB.med===null?`최근 ${U}에 심사완료된 건이 없습니다.`
-      :`최근 ${U} 심사완료 건의 처리기간(접수→심사완료) 중앙값 ${wdTxt(pB.med)}, 그 전 ${U} ${wdTxt(pA.med)}.`
+      :`최근 ${U} 심사완료 건의 처리기간(접수→심사완료) 중앙값 ${wdTxt(pB.med)}(평균 ${wdTxt(pB.avg)}), 그 전 ${U} ${wdTxt(pA.med)}(평균 ${wdTxt(pA.avg)}).`
       +(pB.rev===null?'':` 심사접수 후 심사완료까지는 중앙값 ${wdTxt(pB.rev)}.`)
       +(pB.ok===null?'':` 최초 마감(${BASIC}WD) 안에 끝낸 비율 ${n1(pB.ok)}%(그 전 ${U} ${pA.ok===null?'—':n1(pA.ok)+'%'}), 연장 마감까지 포함하면 ${n1(pB.okExt)}%.`)
       +(pB.lag===null?'':` 심사완료→적합통보 중앙값 ${wdTxt(pB.lag)}.`)
@@ -952,7 +954,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const pw=(o,k)=>o.wd?o[k]/o.wd*5:null;
     const rollRows=[
       ['접수 (주당)','건',o=>pw(o,'recv')],['심사접수 (주당)','건',o=>pw(o,'rev')],['심사완료 (주당)','건',o=>pw(o,'done')],
-      ['진행 중 (기간 말)','건',o=>o.backlog],['처리기간 중앙값','WD',o=>o.pt.med],['최초 마감 내 완료율','%',o=>o.pt.ok],
+      ['진행 중 (기간 말)','건',o=>o.backlog],['처리기간 중앙값','WD',o=>o.pt.med],['처리기간 평균','WD',o=>o.pt.avg],['최초 마감 내 완료율','%',o=>o.pt.ok],
       ['풀타임 환산 인원','명',o=>o.fte],['풀타임 1명당 주 처리','건',o=>o.perWeek],['1명이 동시에 맡은 건','건',o=>o.backlogPer],['1건에 쓴 시간 (실제)','일',o=>o.mdPerCase],
     ].concat(std?[['근무 시간 밖 작업량 (주당)','일',o=>o.md&&o.wd&&o.done*std>o.md?(o.done*std-o.md)/o.wd*5:null]]:[]);
     const rollHead=roll.map(x=>`~${+x.w.b.slice(5,7)}/${+x.w.b.slice(8,10)}${x.i===K?'*':''}`);
@@ -998,7 +1000,7 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     if(caveats.length)md.push('### 참고','',...caveats.map(c=>`- ${c}`),'');
     briefMd=md.join('\n');
     // Gemini에는 집계값만 보낸다(기업명·제품명·접수번호·심사원 이름 없음).
-    const pick=o=>({처리기간중앙값WD:o.pt.med,심사접수후완료중앙값WD:o.pt.rev,최초마감내완료율:o.pt.ok,연장포함마감내완료율:o.pt.okExt,통보소요중앙값WD:o.pt.lag,접수_기업신청:o.recv,종료:o.end,유효접수:o.valid,심사접수_심사유입:o.rev,심사유입_종료제외:o.revValid,심사완료:o.done,기간말진행중:o.backlog,영업일:o.wd,
+    const pick=o=>({처리기간중앙값WD:o.pt.med,처리기간평균WD:o.pt.avg,심사접수후완료중앙값WD:o.pt.rev,최초마감내완료율:o.pt.ok,연장포함마감내완료율:o.pt.okExt,통보소요중앙값WD:o.pt.lag,접수_기업신청:o.recv,종료:o.end,유효접수:o.valid,심사접수_심사유입:o.rev,심사유입_종료제외:o.revValid,심사완료:o.done,기간말진행중:o.backlog,영업일:o.wd,
       활동심사원:o.people,배정환산인원:r1(o.fte),평균투입률:avgRate,일명분당주처리:o.perWeek===null?null:r1(o.perWeek),일명분당진행중:o.backlogPer===null?null:r1(o.backlogPer),
       투입MD_기간합계:r1(o.md),투입MD_주당:r1(o.md/K),투입MM:r1(o.md/MD_PER_MM),건당MD:o.mdPerCase===null?null:r1(o.mdPerCase)});
     briefFacts={기준일:T,기준:today?'오늘 포함 영업일':'끝난 주',범위:state.owner?'심사원 1명':'전체',직전기간:{기간:rng(w0),...pick(A)},최근기간:{기간:rng(w1),...pick(B)},
