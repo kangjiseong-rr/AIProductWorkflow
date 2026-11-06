@@ -563,22 +563,22 @@ th{color:var(--sub);font-weight:600;background:#f7f6f3;cursor:pointer;user-selec
     const names=[...new Set(S.mine.map(r=>r.reviewer||'미배정'))];
     const rows=names.map(n=>{
       const mine=S.mine.filter(r=>(r.reviewer||'미배정')===n),act=mine.filter(r=>r.active),dn=S.done.filter(r=>(r.reviewer||'미배정')===n);
-      const v=dn.map(r=>r.elapsedWD),ok=dn.filter(r=>compliance(r)==='first').length,in15=dn.filter(r=>r.elapsedWD!==null&&r.elapsedWD<=BASIC).length;
+      const v=dn.map(r=>r.elapsedWD),in15=dn.filter(r=>r.elapsedWD!==null&&r.elapsedWD<=BASIC).length;
       return {name:n,active:act.length,supp:act.filter(r=>r.status==='보완').length,late:act.filter(r=>r.late).length,soon:act.filter(r=>r.soon).length,
-        pend:mine.filter(r=>r.pend).length,end:mine.filter(r=>r.cancel&&inPeriod(r.received)).length,done:dn.length,in15,med:median(v),avg:avg(v),ok:pct(ok,dn.length)};
+        pend:mine.filter(r=>r.pend).length,end:mine.filter(r=>r.cancel&&inPeriod(r.received)).length,done:dn.length,in15,ok:pct(in15,dn.length),med:median(v),avg:avg(v)};
     });
     const {key,dir}=state.sort;
     rows.sort((a,b)=>key==='name'?dir*a.name.localeCompare(b.name,'ko'):dir*((a[key]??-1)-(b[key]??-1))||a.name.localeCompare(b.name,'ko'));
-    const cols=[['name','심사원'],['active','진행 중'],['supp','보완'],['late','마감 초과'],['soon','임박(≤3WD)'],['pend','통보 대기'],['end','종료'],['done','심사완료'],['in15','15WD 내 심사완료'],['med','처리 중앙값(WD)'],['avg','처리 평균(WD)'],['ok','최초 마감 내(%)']];
-    const sum=k=>rows.reduce((s,r)=>s+r[k],0),all=S.done.map(r=>r.elapsedWD);
+    const cols=[['name','심사원'],['active','진행 중'],['supp','보완'],['late','마감 초과'],['soon','임박(≤3WD)'],['pend','통보 대기'],['end','종료'],['done','심사완료'],['in15','15WD 내 처리'],['ok','15WD 내 처리(%)'],['med','처리 중앙값(WD)'],['avg','처리 평균(WD)']];
+    const sum=k=>rows.reduce((s,r)=>s+r[k],0),all=S.done.map(r=>r.elapsedWD),okAll=n1(pct(sum('in15'),sum('done')));
     const red=v=>v?' style="color:var(--crit);font-weight:600"':'';
     mdSec.table=['## 심사원별 현황','','진행·초과·임박·통보 대기는 오늘 기준, 종료는 기간 내 접수, 심사완료·처리기간·준수율은 선택 기간 기준','',
       `| ${cols.map(c=>c[1]).join(' | ')} |`,`|---|${cols.slice(1).map(()=>'---:').join('|')}|`,
-      ...rows.map(r=>`| ${mdCell(r.name)} | ${r.active} | ${r.supp} | ${r.late} | ${r.soon} | ${r.pend} | ${r.end} | ${r.done} | ${r.in15} | ${n1(r.med)} | ${n1(r.avg)} | ${n1(r.ok)} |`),
-      `| 합계 | ${sum('active')} | ${sum('supp')} | ${sum('late')} | ${sum('soon')} | ${sum('pend')} | ${sum('end')} | ${sum('done')} | ${sum('in15')} | ${n1(median(all))} | ${n1(avg(all))} | ${n1(pct(S.done.filter(r=>compliance(r)==='first').length,S.done.length))} |`,''];
+      ...rows.map(r=>`| ${mdCell(r.name)} | ${r.active} | ${r.supp} | ${r.late} | ${r.soon} | ${r.pend} | ${r.end} | ${r.done} | ${r.in15} | ${n1(r.ok)} | ${n1(r.med)} | ${n1(r.avg)} |`),
+      `| 합계 | ${sum('active')} | ${sum('supp')} | ${sum('late')} | ${sum('soon')} | ${sum('pend')} | ${sum('end')} | ${sum('done')} | ${sum('in15')} | ${okAll} | ${n1(median(all))} | ${n1(avg(all))} |`,''];
     $('#table').innerHTML=`<table><thead><tr>${cols.map(([k,l])=>`<th data-k="${k}">${l}${key===k?(dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>`
-      +rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.active}</td><td>${r.supp}</td><td${red(r.late)}>${r.late}</td><td>${r.soon}</td><td${red(r.pend)}>${r.pend}</td><td>${r.end}</td><td>${r.done}</td><td>${r.in15}</td><td>${n1(r.med)}</td><td>${n1(r.avg)}</td><td>${n1(r.ok)}</td></tr>`).join('')
-      +`<tr style="font-weight:600"><td>합계</td><td>${sum('active')}</td><td>${sum('supp')}</td><td>${sum('late')}</td><td>${sum('soon')}</td><td>${sum('pend')}</td><td>${sum('end')}</td><td>${sum('done')}</td><td>${sum('in15')}</td><td>${n1(median(all))}</td><td>${n1(avg(all))}</td><td>${n1(pct(S.done.filter(r=>compliance(r)==='first').length,S.done.length))}</td></tr></tbody></table>`;
+      +rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.active}</td><td>${r.supp}</td><td${red(r.late)}>${r.late}</td><td>${r.soon}</td><td${red(r.pend)}>${r.pend}</td><td>${r.end}</td><td>${r.done}</td><td>${r.in15}</td><td>${n1(r.ok)}</td><td>${n1(r.med)}</td><td>${n1(r.avg)}</td></tr>`).join('')
+      +`<tr style="font-weight:600"><td>합계</td><td>${sum('active')}</td><td>${sum('supp')}</td><td>${sum('late')}</td><td>${sum('soon')}</td><td>${sum('pend')}</td><td>${sum('end')}</td><td>${sum('done')}</td><td>${sum('in15')}</td><td>${okAll}</td><td>${n1(median(all))}</td><td>${n1(avg(all))}</td></tr></tbody></table>`;
     $('#table').querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{
       const k=th.dataset.k;state.sort=state.sort.key===k?{key:k,dir:-state.sort.dir}:{key:k,dir:k==='name'?1:-1};render();
     }));
