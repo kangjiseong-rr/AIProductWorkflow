@@ -538,6 +538,7 @@ function onOpen() {
       .addSubMenu(
         ui.createMenu('🗄️ 자주 안 쓰는 기능 (사용빈도 낮음)')
           .addItem('➕ 누락 컬럼 오른쪽 끝 추가', '안전컬럼갱신')
+          .addItem('🪪 사업자번호·법인등록번호 일괄 복구 (원본 엑셀)', '사업자번호법인번호일괄복구')
           .addItem('🔗 일정관리 참조수식 복구', '일정관리참조수식복구')
           .addItem('🔗 Drive 링크로 엑셀 등록', '엑셀파싱등록')
           .addItem('🧾 JSON 파일 등록 (파싱)', 'JSON파싱등록')
