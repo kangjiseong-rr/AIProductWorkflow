@@ -197,8 +197,17 @@ function _사업자번호복구결과기록_(ss, 결과맵) {
       }
     });
 
-    // 선행 0 보존을 위해 텍스트 서식으로 쓴다(표 열 타입 충돌 시 서식만 건너뜀).
-    [사업자범위, 법인범위].forEach(범위 => { try { 범위.setNumberFormat('@'); } catch (e) {} });
+    // 선행 0 보존을 위해 텍스트 서식으로 쓴다. 구글 표에서 유형이 지정된 열(예: 사업자번호=텍스트)은
+    // 숫자 형식을 지정할 수 없어 예외가 나는데, Apps Script는 서식 지정을 큐에 모았다가 다음
+    // 읽기·쓰기 때 실행하므로 flush()까지 try 안에서 해야 예외를 여기서 잡을 수 있다.
+    [사업자범위, 법인범위].forEach(범위 => {
+      try {
+        범위.setNumberFormat('@');
+        SpreadsheetApp.flush();
+      } catch (e) {
+        Logger.log(`텍스트 서식 지정 건너뜀(표 열 유형 충돌 가능): ${e.message}`);
+      }
+    });
     사업자범위.setValues(사업자값);
     법인범위.setValues(법인값);
     SpreadsheetApp.flush();
