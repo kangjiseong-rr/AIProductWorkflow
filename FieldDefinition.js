@@ -89,6 +89,12 @@ const 포매터 = {
       ? `${숫자.slice(0, 3)}-${숫자.slice(3, 5)}-${숫자.slice(5)}`
       : 숫자;
   },
+  법인등록번호정규화(값) {
+    let 숫자 = String(값 || '').replace(/[^0-9]/g, '');
+    // 법인등록번호는 13자리 고정. Excel 숫자 셀에서 탈락한 선행 0을 복원한다.
+    if (숫자 && 숫자.length < 13) 숫자 = 숫자.padStart(13, '0');
+    return 숫자.length === 13 ? `${숫자.slice(0, 6)}-${숫자.slice(6)}` : 숫자;
+  },
   전화번호정규화(값) {
     let 숫자 = String(값 || '').replace(/[^0-9]/g, '');
     if (!숫자) return 숫자;
@@ -129,7 +135,14 @@ const 필드정의 = [
   },
   {
     sheetColumn: '사업자번호', path: 'applicant.businessNo', required: true, formatter: '사업자번호정규화',
-    excelAliases: ['법인등록번호', '사업자등록번호', '사업자번호'],
+    // 보고서 "사업자등록번호" 칸의 원본. 법인등록번호를 별칭에 넣으면 두 컬럼이 다 있는
+    // 엑셀에서 법인등록번호가 먼저 잡혀 보고서에 섞여 나가므로 절대 넣지 않는다.
+    excelAliases: ['사업자등록번호', '사업자번호'],
+  },
+  {
+    // 엑셀 전용(JSON 신청서에는 없음). 보고서에는 쓰지 않고 접수대장에 보관만 한다.
+    sheetColumn: '법인등록번호', fixedValue: '', required: false, formatter: '법인등록번호정규화',
+    excelAliases: ['법인등록번호', '법인번호'],
   },
   {
     sheetColumn: '대표자', path: 'applicant.ceoNm', required: true,
